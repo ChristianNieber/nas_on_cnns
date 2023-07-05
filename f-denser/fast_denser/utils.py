@@ -40,19 +40,15 @@ class TimedStopping(keras.callbacks.Callback):
         ----------
         start_time : float
             time when the training started
-        
-        seconds : float 
+        seconds : float
             maximum time before stopping.
-        
-        verbose : bool 
+        verbose : bool
             verbosity mode.
-
 
         Methods
         -------
         on_train_begin(logs)
             method called upon training beginning
-
         on_epoch_end(epoch, logs={})
             method called after the end of each training epoch
     """
@@ -106,37 +102,29 @@ class Evaluator:
         Stores the dataset, maps the phenotype into a trainable model, and
         evaluates it
 
-
         Attributes
         ----------
         dataset : dict
             dataset instances and partitions
-
         fitness_metric : function
             fitness_metric (y_true, y_pred)
             y_pred are the confidences
-
 
         Methods
         -------
         get_layers(phenotype)
             parses the phenotype corresponding to the layers
             auxiliary function of the assemble_network function
-
         get_learning(learning)
             parses the phenotype corresponding to the learning
             auxiliary function of the assemble_optimiser function
-
         assemble_network(keras_layers, input_size)
             maps the layers phenotype into a keras model
-
         assemble_optimiser(learning)
             maps the learning into a keras optimiser
-
         evaluate(phenotype, load_prev_weights, weights_save_path, parent_weights_path,
                  train_time, num_epochs, datagen=None, input_size=(32, 32, 3))
             evaluates the keras model using the keras optimiser
-
         testing_performance(self, model_path)
             compute testing performance of the model
     """
@@ -162,7 +150,7 @@ class Evaluator:
 
             Parameters
             ----------
-            phenotye : str
+            phenotype : str
                 individual layers phenotype
 
             Returns
@@ -239,7 +227,6 @@ class Evaluator:
             ----------
             keras_layers : list
                 output from get_layers
-
             input_size : tuple
                 network input shape
 
