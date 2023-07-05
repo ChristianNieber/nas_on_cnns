@@ -559,11 +559,6 @@ def load_config(config_file):
         minified = jsmin(js_file.read())
 
     config = json.loads(minified)
-
-    config["TRAINING"]["datagen"] = eval(config["TRAINING"]["datagen"])
-    config["TRAINING"]["datagen_test"] = eval(config["TRAINING"]["datagen_test"])
-    config["TRAINING"]["fitness_metric"] = eval(config["TRAINING"]["fitness_metric"])
-
     return config
 
 
@@ -572,28 +567,49 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
     """
         (1+lambda)-ES
 
-
         Parameters
         ----------
         run : int
             evolutionary run to perform
-
         dataset : str
             dataset to be solved
-
         config_file : str
             path to the configuration file
-
         grammar_path : str
             path to the grammar file
     """
 
     #load config file
     config = load_config(config_file)
-
+    RANDOM_SEEDS = config["EVOLUTIONARY"]["random_seeds"]
+    NUMPY_SEEDS = config["EVOLUTIONARY"]["numpy_seeds"]
+    NUM_GENERATIONS = config["EVOLUTIONARY"]["num_generations"]
+    LAMBDA = config["EVOLUTIONARY"]["lambda"]
     SAVE_PATH = config["EVOLUTIONARY"]["save_path"]
-    save_path = '%s/run_%d/' % (SAVE_PATH, run)
     RESUME = config["EVOLUTIONARY"]["resume"]
+    REUSE_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["reuse_layer"]
+    ADD_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["add_layer"]
+    REMOVE_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["remove_layer"]
+    ADD_CONNECTION = config["EVOLUTIONARY"]["MUTATIONS"]["add_connection"]
+    REMOVE_CONNECTION = config["EVOLUTIONARY"]["MUTATIONS"]["remove_connection"]
+    DSGE_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["dsge_layer"]
+    MACRO_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["macro_layer"]
+    TRAIN_LONGER = config["EVOLUTIONARY"]["MUTATIONS"]["train_longer"]
+    MAX_EPOCHS = config["EVOLUTIONARY"]["max_epochs"]
+
+    NETWORK_STRUCTURE = config["NETWORK"]["network_structure"]
+    MACRO_STRUCTURE = config["NETWORK"]["macro_structure"]
+    OUTPUT_STRUCTURE = config["NETWORK"]["output"]
+    LEVELS_BACK = config["NETWORK"]["levels_back"]
+    NETWORK_STRUCTURE_INIT = config["NETWORK"]["network_structure_init"]
+
+    DEFAULT_TRAIN_TIME = config["TRAINING"]["default_train_time"]
+
+    data_generator = eval(config["TRAINING"]["datagen"])
+    data_generator_test = eval(config["TRAINING"]["datagen_test"])
+    fitness_metric = eval(config["TRAINING"]["fitness_metric"])
+
+    save_path = '%s/run_%d/' % (SAVE_PATH, run)
 
     #load grammar
     grammar = Grammar(grammar_path)
@@ -615,11 +631,11 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
                 os.remove(f)
 
         #set random seeds
-        random.seed(config["EVOLUTIONARY"]["random_seeds"][run])
-        np.random.seed(config["EVOLUTIONARY"]["numpy_seeds"][run])
+        random.seed(RANDOM_SEEDS[run])
+        np.random.seed(NUMPY_SEEDS[run])
 
         #create evaluator
-        cnn_eval = Evaluator(dataset, config["TRAINING"]["fitness_metric"])
+        cnn_eval = Evaluator(dataset, fitness_metric)
 
         #save evaluator
         pickle_evaluator(cnn_eval, save_path)
@@ -634,39 +650,38 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
         random.setstate(pkl_random)
         np.random.set_state(pkl_numpy)
 
-    for gen in range(last_gen+1, config["EVOLUTIONARY"]["num_generations"]):
+    for gen in range(last_gen+1, NUM_GENERATIONS):
         #check the total number of epochs (stop criteria)
-        if total_epochs is not None and total_epochs >= config["EVOLUTIONARY"]["max_epochs"]:
+        if total_epochs is not None and total_epochs >= MAX_EPOCHS:
             break
         if gen == 0:
-            print('[%d] Creating the initial population' % (run))
+            print('[%d] Creating the initial population' % run)
             print('[%d] Performing generation: %d' % (run, gen))
             
             #create initial population
-            population = [Individual(config["NETWORK"]["network_structure"], config["NETWORK"]["macro_structure"],
-                          config["NETWORK"]["output"], _id_).initialise_as_lenet(grammar, config["NETWORK"]["levels_back"],
-                          config["EVOLUTIONARY"]["MUTATIONS"]["reuse_layer"], config["NETWORK"]["network_structure_init"])
-                          for _id_ in range(config["EVOLUTIONARY"]["lambda"])]
+
+            population = [Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, _id_).initialise_as_lenet(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
+                          for _id_ in range(LAMBDA)]
 
             #set initial population variables and evaluate population
             population_fits = []
             for idx, ind in enumerate(population):
                 ind.current_time = 0
                 ind.num_epochs = 0
-                ind.train_time = config["TRAINING"]["default_train_time"]
-                population_fits.append(ind.evaluate(grammar, cnn_eval, config["TRAINING"]["datagen"], config["TRAINING"]["datagen_test"], '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
+                ind.train_time = DEFAULT_TRAIN_TIME
+                population_fits.append(ind.evaluate(grammar, cnn_eval, data_generator, data_generator_test, '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
                 ind.id = idx
         
         else:
             print('[%d] Performing generation: %d' % (run, gen))
             
             #generate offspring (by mutation)
-            offspring = [mutation(parent, grammar, config["EVOLUTIONARY"]["MUTATIONS"]["add_layer"],
-                                  config["EVOLUTIONARY"]["MUTATIONS"]["reuse_layer"], config["EVOLUTIONARY"]["MUTATIONS"]["remove_layer"], 
-                                  config["EVOLUTIONARY"]["MUTATIONS"]["add_connection"], config["EVOLUTIONARY"]["MUTATIONS"]["remove_connection"],
-                                  config["EVOLUTIONARY"]["MUTATIONS"]["dsge_layer"], config["EVOLUTIONARY"]["MUTATIONS"]["macro_layer"],
-                                  config["EVOLUTIONARY"]["MUTATIONS"]["train_longer"], config["TRAINING"]["default_train_time"]) 
-                                  for _ in range(config["EVOLUTIONARY"]["lambda"])]
+            offspring = [mutation(parent, grammar, ADD_LAYER,
+                                  REUSE_LAYER, REMOVE_LAYER,
+                                  ADD_CONNECTION, REMOVE_CONNECTION,
+                                  DSGE_LAYER, MACRO_LAYER,
+                                  TRAIN_LONGER, DEFAULT_TRAIN_TIME)
+                         for _ in range(LAMBDA)]
 
             population = [parent] + offspring
 
@@ -678,15 +693,15 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
             #evaluate population
             population_fits = []
             for idx, ind in enumerate(population):
-                population_fits.append(ind.evaluate(grammar, cnn_eval, config["TRAINING"]["datagen"], config["TRAINING"]["datagen_test"],
+                population_fits.append(ind.evaluate(grammar, cnn_eval, data_generator, data_generator_test,
                                                     '%s/best_%d_%d.hdf5' % (save_path, gen, idx), '%s/best_%d_%d.hdf5' % (save_path, gen - 1, parent_id)))
                 ind.id = idx
 
         #select parent
         parent = select_fittest(population, population_fits, grammar, cnn_eval,
-                                config["TRAINING"]["datagen"], config["TRAINING"]["datagen_test"], gen,
+                                data_generator, data_generator_test, gen,
                                 save_path,
-                                config["TRAINING"]["default_train_time"])
+                                DEFAULT_TRAIN_TIME)
 
         #remove temporary files to free disk space
         if gen > 1:
@@ -716,7 +731,7 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
         total_epochs += sum([ind.num_epochs for ind in population])
 
     #compute testing performance of the fittest network
-    best_test_acc = cnn_eval.testing_performance(str(Path(save_path, 'best.h5')), config["TRAINING"]["datagen_test"])
+    best_test_acc = cnn_eval.testing_performance(str(Path(save_path, 'best.h5')), data_generator_test)
     print('[%d] Best test accuracy: %f' % (run, best_test_acc))
 
 
@@ -736,7 +751,7 @@ def process_input(argv): #pragma: no cover
     grammar = None
 
     try:
-        opts, args = getopt.getopt(argv, "hd:c:r:g:",["dataset=","config=","run=","grammar="]   )
+        opts, args = getopt.getopt(argv, "hd:c:r:g:",["dataset=","config=","run=","grammar="])
     except getopt.GetoptError:
         print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammra>')
         sys.exit(2)
