@@ -583,7 +583,6 @@ class Evaluator:
             model_path : str
                 Path to the model .h5 file
 
-
             Returns
             -------
             accuracy : float
@@ -604,27 +603,20 @@ class Module:
     """
         Each of the units of the outer-level genotype
 
-
         Attributes
         ----------
         module : str
             non-terminal symbol
-
         min_expansions : int
             minimum expansions of the block
-
         max_expansions : int
             maximum expansions of the block
-
         levels_back : dict
             number of previous layers a given layer can receive as input
-
         layers : list
             list of layers of the module
-
         connections : dict
-            list of connetions of each layer
-
+            list of connections of each layer
 
         Methods
         -------
@@ -638,13 +630,10 @@ class Module:
             ----------
             module : str
                 non-terminal symbol
-
             min_expansions : int
                 minimum expansions of the block
-        
-            max_expansions : int
+                    max_expansions : int
                 maximum expansions of the block
-
             levels_back : dict
                 number of previous layers a given layer can receive as input
         """
@@ -979,8 +968,8 @@ class Individual:
 
         train_time = self.train_time - self.current_time
 
-        gpus = tf.config.experimental.list_physical_devices('GPU')
-        tf.config.experimental.set_memory_growth(gpus[0], True)
+        gpu_devices = tf.config.experimental.list_physical_devices('GPU')
+        tf.config.experimental.set_memory_growth(gpu_devices[0], True)
 
         metrics = None
         try:

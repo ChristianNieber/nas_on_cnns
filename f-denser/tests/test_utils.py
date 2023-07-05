@@ -59,7 +59,7 @@ class Test(unittest.TestCase):
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')
 
-		engine.pickle_evaluator(evaluator, '.', 0)
+		engine.pickle_evaluator(evaluator, './run_0/')
 
 		self.assertTrue(os.path.exists('./run_0/evaluator.pkl'))
 
@@ -81,18 +81,18 @@ class Test(unittest.TestCase):
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')
 
-		engine.save_pop([ind], '.', 0, 0)
+		engine.save_pop([ind], './run_0/', 0)
 
 		self.assertTrue(os.path.exists('./run_0/gen_0.csv'))
 
-		engine.pickle_population([ind], ind, '.', 0)
+		engine.pickle_population([ind], ind, './run_0/')
 
 		self.assertTrue(os.path.exists('./run_0/population.pkl'))
 		self.assertTrue(os.path.exists('./run_0/parent.pkl'))
 		self.assertTrue(os.path.exists('./run_0/random.pkl'))
 		self.assertTrue(os.path.exists('./run_0/numpy.pkl'))
 
-		loaded_data = engine.unpickle_population('.', 0)
+		loaded_data = engine.unpickle_population('./run_0/')
 
 		self.assertTrue(loaded_data)
 
@@ -231,7 +231,6 @@ class Test(unittest.TestCase):
 		non_trainable_count = count_params(model.non_trainable_weights)
 		self.assertEqual(trainable_count, 62158)
 		self.assertEqual(non_trainable_count, 452)
-
 
 if __name__ == '__main__':
     unittest.main()

@@ -11,6 +11,9 @@ __pycache__/
 
 .DS_Store
 
+# test run data
+/f-denser/run_0/
+
 # Distribution / packaging
 .Python
 build/

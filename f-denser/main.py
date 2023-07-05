@@ -1,5 +1,5 @@
 import fast_denser
-fast_denser.search(1, 'mnist', 'config/config.json', 'config/lenet.grammar')
+fast_denser.search(0, 'mnist', 'config/config.json', 'config/lenet.grammar')
 
 from pickle import load
 
@@ -10,15 +10,15 @@ with open('D:/experiments/run_0/evaluator.pkl', 'rb') as f_data:
 
 from keras.models import load_model
 from keras.preprocessing.image import ImageDataGenerator
+import visualkeras
 
 model = load_model('D:/experiments/run_0/best.h5')
 datagen_test = ImageDataGenerator(rescale=1/255.0)
 
 model.summary(line_length=120)
-
+# visualkeras.layered_view(model, legend=True)
 
 # Todo
-# - remove file saving?
 # - check dataset usage
 # - simplify specification?
 # - mutation test code

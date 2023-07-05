@@ -33,7 +33,7 @@ from jsmin import jsmin
 from fast_denser.utilities.data_augmentation import augmentation
 from pathlib import Path
 
-def save_pop(population, save_path, run, gen):
+def save_pop(population, save_path, gen):
     """
         Save the current population statistics in json.
         For each individual:
@@ -46,22 +46,14 @@ def save_pop(population, save_path, run, gen):
             .time: time (sec) the network took to perform num_epochs
             .train_time: maximum time (sec) that the network is allowed to train for
 
-
-
         Parameters
         ----------
         population : list
             list of Individual instances
-
         save_path : str
             path to the json file
-
-        run : int
-            current evolutionary run
-
         gen : int
             current generation
-
     """
 
     json_dump = []
@@ -77,34 +69,29 @@ def save_pop(population, save_path, run, gen):
                           'time': ind.time,
                           'train_time': ind.train_time})
 
-    with open(Path('%s/run_%d/gen_%d.csv' % (save_path, run, gen)), 'w') as f_json:
+    with open(Path('%s/gen_%d.csv' % (save_path, gen)), 'w') as f_json:
         f_json.write(json.dumps(json_dump, indent=4))
 
 
 
-def pickle_evaluator(evaluator, save_path, run):
+def pickle_evaluator(evaluator, save_path):
     """
         Save the Evaluator instance to later enable resuming evolution
 
         Parameters
         ----------
-        evaluator : Evaluator
+        evaluator: Evaluator
             instance of the Evaluator class
-
         save_path: str
             path to the json file
-
-        run : int
-            current evolutionary run
-
     """
 
-    with open(Path('%s/run_%d/evaluator.pkl' % (save_path, run)), 'wb') as handle:
+    with open(Path('%s/evaluator.pkl' % save_path), 'wb') as handle:
         pickle.dump(evaluator, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 
-def pickle_population(population, parent, save_path, run):
+def pickle_population(population, parent, save_path):
     """
         Save the objects (pickle) necessary to later resume evolution:
         Pickled objects:
@@ -124,36 +111,30 @@ def pickle_population(population, parent, save_path, run):
 
         save_path: str
             path to the json file
-
-        run : int
-            current evolutionary run
     """
 
-    with open(Path('%s/run_%d/population.pkl' % (save_path, run)), 'wb') as handle_pop:
+    with open(Path('%s/population.pkl' % save_path), 'wb') as handle_pop:
         pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open(Path('%s/run_%d/parent.pkl' % (save_path, run)), 'wb') as handle_pop:
+    with open(Path('%s/parent.pkl' % save_path), 'wb') as handle_pop:
         pickle.dump(parent, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open(Path('%s/run_%d/random.pkl' % (save_path, run)), 'wb') as handle_random:
+    with open(Path('%s/random.pkl' % save_path), 'wb') as handle_random:
         pickle.dump(random.getstate(), handle_random, protocol=pickle.HIGHEST_PROTOCOL)
 
-    with open(Path('%s/run_%d/numpy.pkl' % (save_path, run)), 'wb') as handle_numpy:
+    with open(Path('%s/numpy.pkl' % save_path), 'wb') as handle_numpy:
         pickle.dump(np.random.get_state(), handle_numpy, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 
-def get_total_epochs(save_path, run, last_gen):
+def get_total_epochs(save_path, last_gen):
     """
         Compute the total number of performed epochs.
 
         Parameters
         ----------
         save_path: str
-            path where the ojects needed to resume evolution are stored.
-
-        run : int
-            current evolutionary run
+            path where the objects needed to resume evolution are stored.
 
         last_gen : int
             count the number of performed epochs until the last_gen generation
@@ -167,7 +148,7 @@ def get_total_epochs(save_path, run, last_gen):
 
     total_epochs = 0
     for gen in range(0, last_gen+1):
-        j = json.load(open(Path('%s/run_%d/gen_%d.csv' % (save_path, run, gen))))
+        j = json.load(open(Path('%s/gen_%d.csv' % (save_path, gen))))
         num_epochs = [elm['num_epochs'] for elm in j]
         total_epochs += sum(num_epochs)
 
@@ -175,7 +156,7 @@ def get_total_epochs(save_path, run, last_gen):
 
 
 
-def unpickle_population(save_path, run):
+def unpickle_population(save_path):
     """
         Save the objects (pickle) necessary to later resume evolution.
         Useful for later conducting more generations.
@@ -187,9 +168,6 @@ def unpickle_population(save_path, run):
         ----------
         save_path: str
             path where the objects needed to resume evolution are stored.
-
-        run : int
-            current evolutionary run
 
 
         Returns
@@ -217,30 +195,30 @@ def unpickle_population(save_path, run):
             Numpy random state
     """
 
-    csvs = glob(str(Path('%s' % save_path, 'run_%d' % run, '*.csv' )))
+    csvs = glob(str(Path(save_path, '*.csv' )))
     
     if csvs:
         csvs = [int(csv.split(os.sep)[-1].replace('gen_','').replace('.csv','')) for csv in csvs]
         last_generation = max(csvs)
 
-        with open(Path('%s' % save_path, 'run_%d' % run, 'evaluator.pkl'), 'rb') as handle_eval:
+        with open(Path(save_path, 'evaluator.pkl'), 'rb') as handle_eval:
             pickle_evaluator = pickle.load(handle_eval)
 
-        with open(Path('%s' % save_path, 'run_%d' % run, 'population.pkl'), 'rb') as handle_pop:
+        with open(Path(save_path, 'population.pkl'), 'rb') as handle_pop:
             pickle_population = pickle.load(handle_pop)
 
-        with open(Path('%s' % save_path, 'run_%d' % run, 'parent.pkl'), 'rb') as handle_parent:
+        with open(Path(save_path, 'parent.pkl'), 'rb') as handle_parent:
             pickle_parent = pickle.load(handle_parent)
 
         pickle_population_fitness = [ind.fitness for ind in pickle_population]
 
-        with open(Path('%s' % save_path, 'run_%d' % run, 'random.pkl'), 'rb') as handle_random:
+        with open(Path(save_path, 'random.pkl'), 'rb') as handle_random:
             pickle_random = pickle.load(handle_random)
 
-        with open(Path('%s' % save_path, 'run_%d' % run, 'numpy.pkl'), 'rb') as handle_numpy:
+        with open(Path(save_path, 'numpy.pkl'), 'rb') as handle_numpy:
             pickle_numpy = pickle.load(handle_numpy)
 
-        total_epochs = get_total_epochs(save_path, run, last_generation)
+        total_epochs = get_total_epochs(save_path, last_generation)
 
         return last_generation, pickle_evaluator, pickle_population, pickle_parent, \
                pickle_population_fitness, pickle_random, pickle_numpy, total_epochs
@@ -614,6 +592,8 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
     config = load_config(config_file)
 
     SAVE_PATH = config["EVOLUTIONARY"]["save_path"]
+    save_path = '%s/run_%d/' % (SAVE_PATH, run)
+    RESUME = config["EVOLUTIONARY"]["resume"]
 
     #load grammar
     grammar = Grammar(grammar_path)
@@ -622,12 +602,17 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
     best_fitness = None
 
     #load previous population content (if any)
-    unpickle = unpickle_population(SAVE_PATH, run)
+    unpickle = unpickle_population(save_path) if RESUME else None
 
     #if there is not a previous population
     if unpickle is None:
         #create directories
-        makedirs('%s/run_%d/' % (SAVE_PATH, run), exist_ok=True)
+        makedirs(save_path, exist_ok=True)
+
+        # delete old files
+        if not RESUME:
+            for f in glob(str(Path(save_path, '*' ))):
+                os.remove(f)
 
         #set random seeds
         random.seed(config["EVOLUTIONARY"]["random_seeds"][run])
@@ -637,7 +622,7 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
         cnn_eval = Evaluator(dataset, config["TRAINING"]["fitness_metric"])
 
         #save evaluator
-        pickle_evaluator(cnn_eval, SAVE_PATH, run)
+        pickle_evaluator(cnn_eval, save_path)
 
         #status variables
         last_gen = -1
@@ -649,13 +634,10 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
         random.setstate(pkl_random)
         np.random.set_state(pkl_numpy)
 
-
     for gen in range(last_gen+1, config["EVOLUTIONARY"]["num_generations"]):
-
         #check the total number of epochs (stop criteria)
         if total_epochs is not None and total_epochs >= config["EVOLUTIONARY"]["max_epochs"]:
             break
-
         if gen == 0:
             print('[%d] Creating the initial population' % (run))
             print('[%d] Performing generation: %d' % (run, gen))
@@ -672,7 +654,7 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
                 ind.current_time = 0
                 ind.num_epochs = 0
                 ind.train_time = config["TRAINING"]["default_train_time"]
-                population_fits.append(ind.evaluate(grammar, cnn_eval, config["TRAINING"]["datagen"], config["TRAINING"]["datagen_test"], '%s/run_%d/best_%d_%d.hdf5' % (SAVE_PATH, run, gen, idx)))
+                population_fits.append(ind.evaluate(grammar, cnn_eval, config["TRAINING"]["datagen"], config["TRAINING"]["datagen_test"], '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
                 ind.id = idx
         
         else:
@@ -697,47 +679,45 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
             population_fits = []
             for idx, ind in enumerate(population):
                 population_fits.append(ind.evaluate(grammar, cnn_eval, config["TRAINING"]["datagen"], config["TRAINING"]["datagen_test"],
-                                                    '%s/run_%d/best_%d_%d.hdf5' % (SAVE_PATH, run, gen, idx), '%s/run_%d/best_%d_%d.hdf5' % (SAVE_PATH, run, gen - 1, parent_id)))
+                                                    '%s/best_%d_%d.hdf5' % (save_path, gen, idx), '%s/best_%d_%d.hdf5' % (save_path, gen - 1, parent_id)))
                 ind.id = idx
 
         #select parent
         parent = select_fittest(population, population_fits, grammar, cnn_eval,
                                 config["TRAINING"]["datagen"], config["TRAINING"]["datagen_test"], gen,
-                                SAVE_PATH + '/run_' + str(run),
+                                save_path,
                                 config["TRAINING"]["default_train_time"])
 
         #remove temporary files to free disk space
         if gen > 1:
             for x in range(len(population)):
-                if os.path.isfile(Path('%s' % SAVE_PATH, 'run_%d' % run, 'best_%d_%d.hdf5' % (gen - 2, x))):
-                    os.remove(Path('%s' % SAVE_PATH, 'run_%d' % run, 'best_%d_%d.hdf5' % (gen - 2, x)))
-                    os.remove(Path('%s' % SAVE_PATH, 'run_%d' % run, 'best_%d_%d.h5' % (gen - 2, x)))
+                if os.path.isfile(Path(save_path, 'best_%d_%d.hdf5' % (gen - 2, x))):
+                    os.remove(Path(save_path, 'best_%d_%d.hdf5' % (gen - 2, x)))
+                    os.remove(Path(save_path, 'best_%d_%d.h5' % (gen - 2, x)))
 
         #update best individual
         if best_fitness is None or parent.fitness > best_fitness:
             best_fitness = parent.fitness
 
-            if os.path.isfile(Path('%s' % SAVE_PATH, 'run_%d' % run, 'best_%d_%d.hdf5' % (gen, parent.id))):
-                copyfile(Path('%s' % SAVE_PATH, 'run_%d' % run, 'best_%d_%d.hdf5' % (gen, parent.id)), Path('%s' % SAVE_PATH, 'run_%d' % run, 'best.hdf5'))
-                copyfile(Path('%s' % SAVE_PATH, 'run_%d' % run, 'best_%d_%d.h5' % (gen, parent.id)), Path('%s' % SAVE_PATH, 'run_%d' % run, 'best.h5'))
-            
-            with open('%s/run_%d/best_parent.pkl' % (SAVE_PATH, run), 'wb') as handle:
+            if os.path.isfile(Path(save_path, 'best_%d_%d.hdf5' % (gen, parent.id))):
+               copyfile(Path(save_path, 'best_%d_%d.hdf5' % (gen, parent.id)), Path(save_path, 'best.hdf5'))
+               copyfile(Path(save_path, 'best_%d_%d.h5' % (gen, parent.id)), Path(save_path, 'best.h5'))
+
+            with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
                 pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
         print('[%d] Best fitness of generation %d: %f' % (run, gen, max(population_fits)))
         print('[%d] Best overall fitness: %f' % (run, best_fitness))
 
         #save population
-        save_pop(population, SAVE_PATH, run, gen)
-        pickle_population(population, parent, SAVE_PATH, run)
+        save_pop(population, save_path, gen)
+        pickle_population(population, parent, save_path)
 
         total_epochs += sum([ind.num_epochs for ind in population])
 
-
     #compute testing performance of the fittest network
-    best_test_acc = cnn_eval.testing_performance(str(Path('%s' % SAVE_PATH, 'run_%d' % run, 'best.h5')), config["TRAINING"]["datagen_test"])
+    best_test_acc = cnn_eval.testing_performance(str(Path(save_path, 'best.h5')), config["TRAINING"]["datagen_test"])
     print('[%d] Best test accuracy: %f' % (run, best_test_acc))
-
 
 
 def process_input(argv): #pragma: no cover
