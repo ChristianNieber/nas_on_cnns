@@ -122,8 +122,8 @@ class Evaluator:
             maps the layers phenotype into a keras model
         assemble_optimiser(learning)
             maps the learning into a keras optimiser
-        evaluate(phenotype, load_prev_weights, weights_save_path, parent_weights_path,
-                 train_time, num_epochs, datagen=None, input_size=(32, 32, 3))
+        evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path,
+                            train_time, num_epochs, datagen=None, input_size=(32, 32, 3))
             evaluates the keras model using the keras optimiser
         testing_performance(self, model_path)
             compute testing performance of the model
@@ -175,7 +175,7 @@ class Evaluator:
                 layer_type = node_val
                 node_properties = {}
             else:
-                node_properties[node_type] = node_val.split(',')
+                node_properties[node_type] = node_val
 
             idx += 1
             if idx < len(raw_phenotype):
@@ -207,15 +207,15 @@ class Evaluator:
         learning_params = {}
         while idx < len(raw_learning):
             param_name, param_value = raw_learning[idx].split(':')
-            learning_params[param_name] = param_value.split(',')
+            learning_params[param_name] = param_value
             idx += 1
 
         for _key_ in sorted(list(learning_params.keys())):
             if len(learning_params[_key_]) == 1:
                 try:
-                    learning_params[_key_] = eval(learning_params[_key_][0])
+                    learning_params[_key_] = eval(learning_params[_key_])
                 except NameError:
-                    learning_params[_key_] = learning_params[_key_][0]
+                    learning_params[_key_] = learning_params[_key_]
 
         return learning_params
 
@@ -244,12 +244,12 @@ class Evaluator:
         for layer_type, layer_params in keras_layers:
             # convolutional layer
             if layer_type == 'conv':
-                conv_layer = tf.keras.layers.Conv2D(filters=int(layer_params['num-filters'][0]),
-                                                    kernel_size=(int(layer_params['filter-shape'][0]), int(layer_params['filter-shape'][0])),
-                                                    strides=(int(layer_params['stride'][0]), int(layer_params['stride'][0])),
-                                                    padding=layer_params['padding'][0],
-                                                    use_bias=eval(layer_params['bias'][0]),
-#                                                    activation=layer_params['act'][0],
+                conv_layer = tf.keras.layers.Conv2D(filters=int(layer_params['num-filters']),
+                                                    kernel_size=(int(layer_params['filter-shape']), int(layer_params['filter-shape'])),
+                                                    strides=(int(layer_params['stride']), int(layer_params['stride'])),
+                                                    padding=layer_params['padding'],
+                                                    use_bias=eval(layer_params['bias']),
+#                                                    activation=layer_params['act'],
                                                     kernel_initializer='he_normal',
                                                     kernel_regularizer=tf.keras.regularizers.l2(0.0005))
                 layers.append(conv_layer)
@@ -262,77 +262,77 @@ class Evaluator:
 
             # average pooling layer
             elif layer_type == 'pool-avg':
-                pool_avg = tf.keras.layers.AveragePooling2D(pool_size=(int(layer_params['kernel-size'][0]), int(layer_params['kernel-size'][0])),
-                                                            strides=int(layer_params['stride'][0]),
-                                                            padding=layer_params['padding'][0])
+                pool_avg = tf.keras.layers.AveragePooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
+                                                            strides=int(layer_params['stride']),
+                                                            padding=layer_params['padding'])
                 layers.append(pool_avg)
 
             # max pooling layer
             elif layer_type == 'pool-max':
-                pool_max = tf.keras.layers.MaxPooling2D(pool_size=(int(layer_params['kernel-size'][0]), int(layer_params['kernel-size'][0])),
-                                                        strides=int(layer_params['stride'][0]),
-                                                        padding=layer_params['padding'][0])
+                pool_max = tf.keras.layers.MaxPooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
+                                                        strides=int(layer_params['stride']),
+                                                        padding=layer_params['padding'])
                 layers.append(pool_max)
 
             # fully-connected layer
             elif layer_type == 'fc':
-                fc = tf.keras.layers.Dense(int(layer_params['num-units'][0]),
-                                           use_bias=eval(layer_params['bias'][0]),
-#                                           activation=layer_params['act'][0],
+                fc = tf.keras.layers.Dense(int(layer_params['num-units']),
+                                           use_bias=eval(layer_params['bias']),
+#                                           activation=layer_params['act'],
                                            kernel_initializer='he_normal',
                                            kernel_regularizer=tf.keras.regularizers.l2(0.0005))
                 layers.append(fc)
 
             elif layer_type == 'output':
-                output_layer = tf.keras.layers.Dense(int(layer_params['num-units'][0]),
-                                                        use_bias=eval(layer_params['bias'][0]),
-                                                        activation=layer_params['act'][0],
+                output_layer = tf.keras.layers.Dense(int(layer_params['num-units']),
+                                                        use_bias=eval(layer_params['bias']),
+                                                        activation=layer_params['act'],
                                                         kernel_initializer='he_normal',
                                                         kernel_regularizer=tf.keras.regularizers.l2(0.0005))
                 layers.append(output_layer)
 
             # dropout layer
             elif layer_type == 'dropout':
-                dropout = tf.keras.layers.Dropout(rate=min(0.5, float(layer_params['rate'][0])))
+                dropout = tf.keras.layers.Dropout(rate=min(0.5, float(layer_params['rate'])))
                 layers.append(dropout)
 
             # gru layer #TODO: initializers, recurrent dropout, dropout, unroll, reset_after
             elif layer_type == 'gru':
-                gru = tf.keras.layers.GRU(units=int(layer_params['units'][0]),
-                                          activation=layer_params['act'][0],
-                                          recurrent_activation=layer_params['rec_act'][0],
-                                          use_bias=eval(layer_params['bias'][0]))
+                gru = tf.keras.layers.GRU(units=int(layer_params['units']),
+                                          activation=layer_params['act'],
+                                          recurrent_activation=layer_params['rec_act'],
+                                          use_bias=eval(layer_params['bias']))
                 layers.append(gru)
 
             # lstm layer #TODO: initializers, recurrent dropout, dropout, unroll, reset_after
             elif layer_type == 'lstm':
-                lstm = tf.keras.layers.LSTM(units=int(layer_params['units'][0]),
-                                            activation=layer_params['act'][0],
-                                            recurrent_activation=layer_params['rec_act'][0],
-                                            use_bias=eval(layer_params['bias'][0]))
+                lstm = tf.keras.layers.LSTM(units=int(layer_params['units']),
+                                            activation=layer_params['act'],
+                                            recurrent_activation=layer_params['rec_act'],
+                                            use_bias=eval(layer_params['bias']))
                 layers.append(lstm)
 
             # rnn #TODO: initializers, recurrent dropout, dropout, unroll, reset_after
             elif layer_type == 'rnn':
-                rnn = tf.keras.layers.SimpleRNN(units=int(layer_params['units'][0]),
-                                                activation=layer_params['act'][0],
-                                                use_bias=eval(layer_params['bias'][0]))
+                rnn = tf.keras.layers.SimpleRNN(units=int(layer_params['units']),
+                                                activation=layer_params['act'],
+                                                use_bias=eval(layer_params['bias']))
                 layers.append(rnn)
 
             elif layer_type == 'conv1d':  # todo initializer
-                conv1d = tf.keras.layers.Conv1D(filters=int(layer_params['num-filters'][0]),
-                                                kernel_size=int(layer_params['kernel-size'][0]),
-                                                strides=int(layer_params['stride'][0]),
-                                                padding=layer_params['padding'][0],
-                                                activation=layer_params['activation'][0],
-                                                use_bias=eval(layer_params['bias'][0]))
+                conv1d = tf.keras.layers.Conv1D(filters=int(layer_params['num-filters']),
+                                                kernel_size=int(layer_params['kernel-size']),
+                                                strides=int(layer_params['stride']),
+                                                padding=layer_params['padding'],
+                                                activation=layer_params['activation'],
+                                                use_bias=eval(layer_params['bias']))
                 layers.append(conv1d)
 
             # END ADD NEW LAYERS
 
         # Connection between layers
         for layer in keras_layers:
-            layer[1]['input'] = list(map(int, layer[1]['input']))
+            layer[1]['input'] = list(map(int, layer[1]['input'].split(',')))
 
         first_fc = True
         data_layers = []
@@ -359,9 +359,9 @@ class Evaluator:
 
                 # conv and fc layers can have an optional batch normalisation layer, that should be inserted before the activation layer
                 if (layer_type == 'conv' or layer_type == 'fc'):
-                    if ('batch-normalization' in layer_params) and layer_params['batch-normalization'][0]:
+                    if ('batch-normalization' in layer_params) and layer_params['batch-normalization']:
                         new_data_layer = tf.keras.layers.BatchNormalization()(new_data_layer)
-                    activation_function = layer_params['act'][0]
+                    activation_function = layer_params['act']
                     new_data_layer = tf.keras.layers.ReLU()(new_data_layer)
 
                 data_layers.append(new_data_layer)
@@ -444,7 +444,7 @@ class Evaluator:
                                          beta_1=float(learning['beta1']),
                                          beta_2=float(learning['beta2']))
 
-    def evaluate(self, phenotype, load_prev_weights, weights_save_path, parent_weights_path, \
+    def evaluate_cnn(self, phenotype, load_prev_weights, weights_save_path, parent_weights_path, \
                  train_time, num_epochs, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
         """
             Evaluates the keras model using the keras optimiser
@@ -681,20 +681,18 @@ class Module:
                 grammar instance that stores the expansion rules
         """
 
-        # feature_layers_lenet = [('convolution', {'num_filters':6, 'kernel_size':5, 'strides':1, 'padding':'same'}),]
-
         feature_layers_lenet = [
-            {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 2.0, 64.0, [6]), 'filter-shape': ('int', 2.0, 5.0, [5]), 'stride': ('int', 1.0, 3.0, [1])}}],
+            {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int',2.0,64.0,6), 'filter-shape': ('int',2.0,5.0,5), 'stride': ('int',1.0,3.0,1)}}],
              'activation-function': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 0, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-            {'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int', 2.0, 5.0, [2]), 'stride': ('int', 1.0, 3.0, [2])}, 'ge': 0}]},
-            {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 2.0, 64.0, [16]), 'filter-shape': ('int', 2.0, 5.0, [5]), 'stride': ('int', 1.0, 3.0, [1])}}],
+            {'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int',2.0,5.0,2), 'stride': ('int',1.0,3.0,2)}, 'ge': 0}]},
+            {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int',2.0,64.0,16), 'filter-shape': ('int',2.0,5.0,5), 'stride': ('int',1.0,3.0,1)}}],
              'activation-function': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-            {'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int', 2.0, 5.0, [2]), 'stride': ('int', 1.0, 3.0, [2])}, 'ge': 0}]},
+            {'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int',2.0,5.0,2), 'stride': ('int',1.0,3.0,2)}, 'ge': 0}]},
         ]
 
         classification_layers_lenet = [
-            {'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0, [120])}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-            {'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0,  [84])}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
+            {'classification': [{'ga': {'num-units': ('int',64.0,2048.0,120)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
+            {'classification': [{'ga': {'num-units': ('int',64.0, 2048.0,84)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
         ]
 
         if self.module == 'features':
@@ -774,7 +772,7 @@ class Individual:
             decode(grammar)
                 Maps the genotype to the phenotype
 
-            evaluate(grammar, cnn_eval, weights_save_path, parent_weights_path='')
+            evaluate_individual(grammar, cnn_eval, weights_save_path, parent_weights_path='')
                 Performs the evaluation of a candidate solution
     """
 
@@ -819,7 +817,7 @@ class Individual:
             Parameters
             ----------
             grammar : Grammar
-                grammar instaces that stores the expansion rules
+                grammar instances that stores the expansion rules
 
             levels_back : dict
                 number of previous layers a given layer can receive as input
@@ -881,8 +879,9 @@ class Individual:
 
         # Initialise the macro structure: learning, data augmentation, etc.
         self.macro = [
-            {'learning': [{'ge': 0, 'ga': {'batch_size': ('int', 50.0, 2048.0, [1024])}}], 'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, [0.0005]), 'beta1': ('float', 0.5, 1.0, [0.9]), 'beta2': ('float', 0.5, 1.0, [0.999])}}],
-             'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, [8])}}]}]
+            {'learning': [{'ge': 0, 'ga': {'batch_size': ('int',50.0,2048.0,1024)}}],
+             'adam': [{'ge': 0, 'ga': {'lr': ('float',0.0001,0.1,0.0005), 'beta1': ('float',0.5,1.0,0.9), 'beta2': ('float',0.5,1.0,0.999)}}],
+             'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int',5.0,20.0,8)}}]}]
 
         return self
 
@@ -918,7 +917,7 @@ class Individual:
         self.phenotype = phenotype.rstrip().lstrip()
         return self.phenotype
 
-    def evaluate(self, grammar, cnn_eval, datagen, datagen_test, weights_save_path, parent_weights_path=''):  # pragma: no cover
+    def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, weights_save_path, parent_weights_path=''):  # pragma: no cover
         """
             Performs the evaluation of a candidate solution
 
@@ -960,7 +959,7 @@ class Individual:
 
         metrics = None
         try:
-            metrics = cnn_eval.evaluate(phenotype, load_prev_weights, weights_save_path, parent_weights_path, train_time, self.num_epochs, datagen, datagen_test)
+            metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path, train_time, self.num_epochs, datagen, datagen_test)
         except tf.errors.ResourceExhaustedError as e:
             keras.backend.clear_session()
             return None

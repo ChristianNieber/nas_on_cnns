@@ -37,7 +37,7 @@ class Test(unittest.TestCase):
 		random.seed(0)
 		np.random.seed(0)
 
-		output = {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 32.0, 256.0, [42]), 'filter-shape': ('int', 2.0, 5.0, [4]), 'stride': ('int', 1.0, 3.0, [3])}}], 'padding': [{'ge': 1, 'ga': {}}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 1, 'ga': {}}]}
+		output = {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 32.0, 256.0, 42), 'filter-shape': ('int', 2.0, 5.0, 4), 'stride': ('int', 1.0, 3.0, 3)}}], 'padding': [{'ge': 1, 'ga': {}}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 1, 'ga': {}}]}
 
 		grammar = fast_denser.grammar.Grammar('tests/utilities/example.grammar')
 		
@@ -51,7 +51,7 @@ class Test(unittest.TestCase):
 		grammar = fast_denser.grammar.Grammar('tests/utilities/example.grammar')
 
 		start_symbol = 'features'
-		genotype = {'padding': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'features': [{'ge': 0, 'ga': {}}], 'activation-function': [{'ge': 2, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 32.0, 256.0, [242]), 'filter-shape': ('int', 2.0, 5.0, [5]), 'stride': ('int', 1.0, 3.0, [2])}}]}
+		genotype = {'padding': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'features': [{'ge': 0, 'ga': {}}], 'activation-function': [{'ge': 2, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 32.0, 256.0, 242), 'filter-shape': ('int', 2.0, 5.0, 5), 'stride': ('int', 1.0, 3.0, 2)}}]}
 		output = "layer:conv num-filters:242 filter-shape:5 stride:2 padding:valid act:sigmoid bias:True"
 
 		phenotype = grammar.decode(start_symbol, genotype)

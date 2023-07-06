@@ -255,11 +255,11 @@ class Grammar:
                 min_val, max_val = float(min_val), float(max_val)
 
                 if var_type == 'int':
-                    values = [randint(min_val, max_val) for _ in range(num_values)]
+                    value = randint(min_val, max_val)
                 elif var_type == 'float':
-                    values = [uniform(min_val, max_val) for _ in range(num_values)]
+                    value = uniform(min_val, max_val)
 
-                genotype[genotype_key][genotype_idx]['ga'][var_name] = (var_type, min_val, max_val, values)
+                genotype[genotype_key][genotype_idx]['ga'][var_name] = (var_type, min_val, max_val, value)
 
 
     def decode(self, start_symbol, genotype):
@@ -337,23 +337,25 @@ class Grammar:
                             var_min, var_max = float(var_min), float(var_max)
 
                             if var_type == 'int':
-                                values = [randint(var_min, var_max) for _ in range(var_num_values)]
+                                value = randint(var_min, var_max)
                             elif var_type == 'float':
-                                values = [uniform(var_min, var_max) for _ in range(var_num_values)]
+                                value = uniform(var_min, var_max)
 
-                            genotype[symbol][current_nt]['ga'][var_name] = (var_type, var_min,
-                                                                            var_max, values)
+                            print(f"*** Assigning random value {value} to new variable {var_name} ***")
 
-                        values = genotype[symbol][current_nt]['ga'][var_name][-1]
+                            genotype[symbol][current_nt]['ga'][var_name] = (var_type, var_min, var_max, value)
 
-                        phenotype += ' %s:%s' % (var_name, ','.join(map(str, values)))
+                        value = genotype[symbol][current_nt]['ga'][var_name]
+                        if type(value) is tuple:
+                            value = value[-1]
+
+                        phenotype += ' %s:%s' % (var_name, value)
 
                         used_terminals.append(var_name)
                     else:
                         phenotype += ' '+sym[0]
 
-            unused_terminals = list(set(list(genotype[symbol][current_nt]['ga'].keys()))\
-                                    -set(used_terminals))
+            unused_terminals = list(set(list(genotype[symbol][current_nt]['ga'].keys()))-set(used_terminals))
             if unused_terminals:
                 for name in used_terminals:
                     del genotype[symbol][current_nt]['ga'][name]

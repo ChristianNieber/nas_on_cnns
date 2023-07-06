@@ -283,7 +283,7 @@ def select_fittest(population, population_fits, grammar, cnn_eval, datagen, data
             retrain_elite = True
             elite = population[0]
             elite.train_time = parent.train_time
-            elite.evaluate(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id), '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id))
+            elite.evaluate_cnn(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id), '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id))
             population_fits[0] = elite.fitness
 
         min_train_time = min([ind.current_time for ind in population])
@@ -302,7 +302,7 @@ def select_fittest(population, population_fits, grammar, cnn_eval, datagen, data
 
                 parent_10min.train_time = parent.train_time
 
-                parent_10min.evaluate(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id), '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id))
+                parent_10min.evaluate_cnn(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id), '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id))
 
                 population_fits[population.index(parent_10min)] = parent_10min.fitness
 
@@ -366,16 +366,15 @@ def mutation_dsge(layer, grammar):
 
         if mt_type == 'ga':
             var_name = random.choice(sorted(list(layer[nt_key][nt_idx]['ga'].keys())))
-            var_type, min_val, max_val, values = layer[nt_key][nt_idx]['ga'][var_name]
-            value_idx = random.randint(0, len(values)-1)
+            var_type, min_val, max_val, value = layer[nt_key][nt_idx]['ga'][var_name]
 
             if var_type == 'int':
                 new_val = random.randint(min_val, max_val)
             elif var_type == 'float':
-                new_val = values[value_idx]+random.gauss(0, 0.15)
+                new_val = value+random.gauss(0, 0.15)
                 new_val = np.clip(new_val, min_val, max_val)
 
-            layer[nt_key][nt_idx]['ga'][var_name][-1][value_idx] = new_val
+            layer[nt_key][nt_idx]['ga'][var_name] = new_val
 
         elif mt_type == 'ge':
             layer[nt_key][nt_idx]['ge'] = random.choice(sge_possibilities)
@@ -669,7 +668,7 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
                 ind.current_time = 0
                 ind.num_epochs = 0
                 ind.train_time = DEFAULT_TRAIN_TIME
-                population_fits.append(ind.evaluate(grammar, cnn_eval, data_generator, data_generator_test, '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
+                population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
                 ind.id = idx
         
         else:
@@ -693,7 +692,7 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
             #evaluate population
             population_fits = []
             for idx, ind in enumerate(population):
-                population_fits.append(ind.evaluate(grammar, cnn_eval, data_generator, data_generator_test,
+                population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test,
                                                     '%s/best_%d_%d.hdf5' % (save_path, gen, idx), '%s/best_%d_%d.hdf5' % (save_path, gen - 1, parent_id)))
                 ind.id = idx
 

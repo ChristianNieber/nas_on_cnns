@@ -20,10 +20,10 @@ model.summary(line_length=120)
 
 # Todo
 # - check dataset usage
+# - activation functions
 # - simplify specification?
 # - mutation test code
 # - crossover test code
-# - better configuration variables
 # - penalty function for large networks
 # --> optimizer test run
 
@@ -45,3 +45,4 @@ model.summary(line_length=120)
 # ----
 # - Input 28*28*3 instead of 32*32*3
 # - lenet test code
+# - better configuration variables
