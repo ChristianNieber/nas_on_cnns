@@ -249,9 +249,8 @@ class Grammar:
             if '[' in symbol and ']' in symbol:
                 genotype_key, genotype_idx = prev_nt
 
-                [var_name, var_type, num_values, min_val, max_val] = symbol.replace('[', '').replace(']', '').split(',')
+                [var_name, var_type, min_val, max_val] = symbol.replace('[', '').replace(']', '').split(',')
 
-                num_values = int(num_values)
                 min_val, max_val = float(min_val), float(max_val)
 
                 if var_type == 'int':
@@ -331,9 +330,8 @@ class Grammar:
                     phenotype = self.decode_recursive(sym, read_integers, genotype, phenotype)
                 else:
                     if '[' in sym[0] and ']' in sym[0]:
-                        [var_name, var_type, var_num_values, var_min, var_max] = sym[0].replace('[', '').replace(']', '').split(',')
+                        [var_name, var_type, var_min, var_max] = sym[0].replace('[', '').replace(']', '').split(',')
                         if var_name not in genotype[symbol][current_nt]['ga']:
-                            var_num_values = int(var_num_values)
                             var_min, var_max = float(var_min), float(var_max)
 
                             if var_type == 'int':

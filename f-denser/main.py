@@ -19,6 +19,8 @@ model.summary(line_length=120)
 # visualkeras.layered_view(model, legend=True)
 
 # Todo
+# - mutations output
+# - test keras error
 # - check dataset usage
 # - activation functions
 # - simplify specification?
@@ -46,3 +48,4 @@ model.summary(line_length=120)
 # - Input 28*28*3 instead of 32*32*3
 # - lenet test code
 # - better configuration variables
+# - reduced numeric parameters from list to single value for simplicity

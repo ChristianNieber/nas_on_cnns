@@ -128,7 +128,6 @@ def load_dataset(dataset, shape=(32,32)):
         ----------
         dataset : str
             dataset to load
-
         shape : tuple(int, int)
             shape of the instances
 

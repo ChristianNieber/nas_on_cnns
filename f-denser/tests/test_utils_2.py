@@ -6,7 +6,6 @@ class Test(unittest.TestCase):
 	def setUp(self):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
 
-
 	def test_learning_mapping(self):
 		from fast_denser.utils import Evaluator
 		from fast_denser.utilities.fitness_metrics import accuracy

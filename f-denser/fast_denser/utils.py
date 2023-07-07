@@ -17,6 +17,7 @@ import tensorflow as tf
 import keras
 from keras import backend
 from keras.callbacks import Callback, ModelCheckpoint
+from keras.utils.layer_utils import count_params
 from time import time
 import numpy as np
 import os
@@ -28,7 +29,15 @@ import warnings
 # TODO: future -- impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
 
+# Tuning parameters
+PREDICT_BATCH_SIZE = 1024           # batch size used for model.predict()
+
 DEBUG = True
+LOG_MODEL_SUMMARY = False           # keras summary of each evaluated model
+LOG_MODEL_TRAINING = False          # training progress
+LOG_MODEL_SAVE = True               # log saving after each epoch
+LOG_MUTATION = True                 # log mutations
+SAVE_MODEL_AFTER_EACH_EPOCH = False  # monitor and save model after each epoch
 
 class TimedStopping(keras.callbacks.Callback):
     """
@@ -408,7 +417,7 @@ class Evaluator:
 
         model = tf.keras.models.Model(inputs=inputs, outputs=data_layers[-1])
 
-        if DEBUG:
+        if LOG_MODEL_SUMMARY:
             model.summary(line_length=120)
 
         return model
@@ -445,7 +454,7 @@ class Evaluator:
                                          beta_2=float(learning['beta2']))
 
     def evaluate_cnn(self, phenotype, load_prev_weights, weights_save_path, parent_weights_path, \
-                 train_time, num_epochs, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
+                     train_time, num_epochs, gen, idx, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
         """
             Evaluates the keras model using the keras optimiser
 
@@ -453,28 +462,24 @@ class Evaluator:
             ----------
             phenotype : str
                 individual phenotype
-
             load_prev_weights : bool
                 resume training from a previous train or not
-
             weights_save_path : str
                 path where to save the model weights after training
-
             parent_weights_path : str
                 path to the weights of the previous training
-
             train_time : float
                 maximum training time
-
             num_epochs : int
                 maximum number of epochs
-
+            gen : int
+                Generation count
+            idx : int
+                count of individual in generation
             datagen : keras.preprocessing.image.ImageDataGenerator
                 Data augmentation method image data generator
-
             input_size : tuple
                 dataset input shape
-                
 
             Returns
             -------
@@ -482,6 +487,10 @@ class Evaluator:
                 training data: loss and accuracy
         """
 
+        gpu_devices = tf.config.experimental.list_physical_devices('GPU')
+        tf.config.experimental.set_memory_growth(gpu_devices[0], True)
+
+        model_build_start_time = time()
         model_phenotype, learning_phenotype = phenotype.split('learning:')
         learning_phenotype = 'learning:' + learning_phenotype.rstrip().lstrip()
         model_phenotype = model_phenotype.rstrip().lstrip().replace('  ', ' ')
@@ -503,20 +512,30 @@ class Evaluator:
             model.compile(optimizer=opt,
                           loss='sparse_categorical_crossentropy',
                           metrics=['accuracy'])
+        model_build_time = time() - model_build_start_time
+
+        model_layers = len(model.get_config()['layers'])
+        trainable_params_count = count_params(model.trainable_weights)
+        non_trainable_params_count = count_params(model.non_trainable_weights)
+        params_count = trainable_params_count + non_trainable_params_count
+
+        print(f"Gen{gen:3d}#{idx} layers: {len(keras_layers):2d}/{model_layers:2d} params: {params_count}/{non_trainable_params_count}", end="")
+
+        model_train_start_time = time()
 
         # early stopping
-        early_stop = keras.callbacks.EarlyStopping(monitor='val_loss',
-                                                   patience=int(keras_learning['early_stop']),
-                                                   restore_best_weights=True)
+        early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=int(keras_learning['early_stop']), restore_best_weights=True)
 
         # time based stopping
         time_stop = TimedStopping(seconds=train_time, verbose=DEBUG)
 
+        callbacks_list = [early_stop, time_stop]
+
         # save individual with the lowest validation loss
         # useful for when training is halted because of time
-        monitor = ModelCheckpoint(weights_save_path, monitor='val_loss', verbose=DEBUG, save_best_only=True)
-
-        trainable_count = model.count_params()
+        if SAVE_MODEL_AFTER_EACH_EPOCH:
+            monitor = ModelCheckpoint(weights_save_path, monitor='val_loss', verbose=LOG_MODEL_SAVE, save_best_only=True)
+            callbacks_list.append(monitor)
 
         if datagen is not None:
             score = model.fit_generator(datagen.flow(self.dataset['evo_x_train'],
@@ -526,9 +545,9 @@ class Evaluator:
                                         epochs=int(keras_learning['epochs']),
                                         validation_data=(datagen_test.flow(self.dataset['evo_x_val'], self.dataset['evo_y_val'], batch_size=batch_size)),
                                         validation_steps=(self.dataset['evo_x_val'].shape[0] // batch_size),
-                                        callbacks=[early_stop, time_stop, monitor],
+                                        callbacks=callbacks_list,
                                         initial_epoch=num_epochs,
-                                        verbose=DEBUG)
+                                        verbose=LOG_MODEL_TRAINING)
         else:
             score = model.fit(x=self.dataset['evo_x_train'],
                               y=self.dataset['evo_y_train'],
@@ -536,25 +555,32 @@ class Evaluator:
                               epochs=int(keras_learning['epochs']),
                               steps_per_epoch=(self.dataset['evo_x_train'].shape[0] // batch_size),
                               validation_data=(self.dataset['evo_x_val'], self.dataset['evo_y_val']),
-                              callbacks=[early_stop, time_stop, monitor],
+                              callbacks=callbacks_list,
                               initial_epoch=num_epochs,
-                              verbose=DEBUG)
+                              verbose=LOG_MODEL_TRAINING)
+
+        model_train_time = time() - model_train_start_time
 
         # save final model to file
+        model_save_start_time = time()
         model.save(weights_save_path.replace('.hdf5', '.h5'))
+        model_save_time = time() - model_save_start_time
 
         # measure test performance
+        model_test_start_time = time()
         if datagen_test is None:
-            y_pred_test = model.predict(self.dataset['evo_x_test'], batch_size=batch_size, verbose=0)
+            y_pred_test = model.predict(self.dataset['evo_x_test'], batch_size=PREDICT_BATCH_SIZE, verbose=0)
         else:
-            y_pred_test = model.predict_generator(datagen_test.flow(self.dataset['evo_x_test'], batch_size=100, shuffle=False), steps=self.dataset['evo_x_test'].shape[0] // 100, verbose=DEBUG)
-
+            y_pred_test = model.predict_generator(datagen_test.flow(self.dataset['evo_x_test'], batch_size=PREDICT_BATCH_SIZE, shuffle=False), steps=self.dataset['evo_x_test'].shape[0] // 100, verbose=LOG_MODEL_TRAINING)
         accuracy_test = self.fitness_metric(self.dataset['evo_y_test'], y_pred_test)
+        model_test_time = time() - model_test_start_time
 
-        if DEBUG:
-            print(accuracy_test, phenotype)
+        accuracy = score.history['accuracy'][-1]
+        val_accuracy = score.history['val_accuracy'][-1]
+        loss = score.history['loss'][-1]
+        print(f" test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {model_train_time:0.2f}s ({model_build_time:0.2f}s, {model_test_time:0.2f})")
 
-        score.history['trainable_parameters'] = trainable_count
+        score.history['trainable_parameters'] = params_count
         score.history['accuracy_test'] = accuracy_test
 
         keras.backend.clear_session()
@@ -714,64 +740,46 @@ class Individual:
     """
         Candidate solution.
 
-
         Attributes
         ----------
         network_structure : list
             ordered list of tuples formated as follows 
             [(non-terminal, min_expansions, max_expansions), ...]
-
         output_rule : str
             output non-terminal symbol
-
         macro_rules : list
             list of non-terminals (str) with the marco rules (e.g., learning)
-
         modules : list
             list of Modules (genotype) of the layers
-
         output : dict
             output rule genotype
-
         macro : list
             list of Modules (genotype) for the macro rules
-
         phenotype : str
             phenotype of the candidate solution
-
         fitness : float
             fitness value of the candidate solution
-
         metrics : dict
             training metrics
-
         num_epochs : int
             number of performed epochs during training
-
         trainable_parameters : int
             number of trainable parameters of the network
-
         time : float
             network training time
-
         current_time : float
             performed network training time
-
         train_time : float
             maximum training time
-
         id : int
             individual unique identifier
-
 
         Methods
         -------
             initialise(grammar, levels_back, reuse)
                 Randomly creates a candidate solution
-
             decode(grammar)
                 Maps the genotype to the phenotype
-
             evaluate_individual(grammar, cnn_eval, weights_save_path, parent_weights_path='')
                 Performs the evaluation of a candidate solution
     """
@@ -781,15 +789,12 @@ class Individual:
             Parameters
             ----------
             network_structure : list
-                ordered list of tuples formated as follows 
+                ordered list of tuples formatted as follows
                 [(non-terminal, min_expansions, max_expansions), ...]
-
             macro_rules : list
                 list of non-terminals (str) with the marco rules (e.g., learning)
-
-            output_rule : str
+           output_rule : str
                 output non-terminal symbol
-
             ind_id : int
                 individual unique identifier
         """
@@ -818,10 +823,8 @@ class Individual:
             ----------
             grammar : Grammar
                 grammar instances that stores the expansion rules
-
             levels_back : dict
                 number of previous layers a given layer can receive as input
-
             reuse : float
                 likelihood of reusing an existing layer
 
@@ -852,11 +855,9 @@ class Individual:
             Parameters
             ----------
             grammar : Grammar
-                grammar instaces that stores the expansion rules
-
+                grammar instance that stores the expansion rules
             levels_back : dict
                 number of previous layers a given layer can receive as input
-
             reuse : float
                 likelihood of reusing an existing layer
 
@@ -917,7 +918,7 @@ class Individual:
         self.phenotype = phenotype.rstrip().lstrip()
         return self.phenotype
 
-    def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, weights_save_path, parent_weights_path=''):  # pragma: no cover
+    def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, gen, idx, weights_save_path, parent_weights_path=''):  # pragma: no cover
         """
             Performs the evaluation of a candidate solution
 
@@ -925,19 +926,18 @@ class Individual:
             ----------
             grammar : Grammar
                 grammar instance that stores the expansion rules
-
             cnn_eval : Evaluator
                 Evaluator instance used to train the networks
-
             datagen : keras.preprocessing.image.ImageDataGenerator
                 Data augmentation method image data generator
-        
+            gen : int
+                Generation count
+            idx : int
+                count of individual in generation
             weights_save_path : str
                 path where to save the model weights after training
-
             parent_weights_path : str
                 path to the weights of the previous training
-
 
             Returns
             -------
@@ -954,12 +954,9 @@ class Individual:
 
         train_time = self.train_time - self.current_time
 
-        gpu_devices = tf.config.experimental.list_physical_devices('GPU')
-        tf.config.experimental.set_memory_growth(gpu_devices[0], True)
-
         metrics = None
         try:
-            metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path, train_time, self.num_epochs, datagen, datagen_test)
+            metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path, train_time, self.num_epochs, gen, idx, datagen, datagen_test)
         except tf.errors.ResourceExhaustedError as e:
             keras.backend.clear_session()
             return None
@@ -968,27 +965,24 @@ class Individual:
             return None
 
         if metrics is not None:
-            if 'val_accuracy' in metrics:
-                if type(metrics['val_accuracy']) is list:
-                    metrics['val_accuracy'] = [i for i in metrics['val_accuracy']]
-                else:
-                    metrics['val_accuracy'] = [i.item() for i in metrics['val_accuracy']]
-            if 'loss' in metrics:
-                if type(metrics['loss']) is list:
-                    metrics['loss'] = [i for i in metrics['loss']]
-                else:
-                    metrics['loss'] = [i.item() for i in metrics['loss']]
-            if 'accuracy' in metrics:
-                if type(metrics['accuracy']) is list:
-                    metrics['accuracy'] = [i for i in metrics['accuracy']]
-                else:
-                    metrics['accuracy'] = [i.item() for i in metrics['accuracy']]
+           #if 'val_accuracy' in metrics:
+           #    if type(metrics['val_accuracy']) is list:
+           #        metrics['val_accuracy'] = [i for i in metrics['val_accuracy']]
+           #    else:
+           #        metrics['val_accuracy'] = [i.item() for i in metrics['val_accuracy']]
+           #if 'loss' in metrics:
+           #    if type(metrics['loss']) is list:
+           #        metrics['loss'] = [i for i in metrics['loss']]
+           #    else:
+           #        metrics['loss'] = [i.item() for i in metrics['loss']]
+           #if 'accuracy' in metrics:
+           #    if type(metrics['accuracy']) is list:
+           #        metrics['accuracy'] = [i for i in metrics['accuracy']]
+           #    else:
+           #        metrics['accuracy'] = [i.item() for i in metrics['accuracy']]
             self.metrics = metrics
             if 'accuracy_test' in metrics:
-                if type(self.metrics['accuracy_test']) is float:
-                    self.fitness = self.metrics['accuracy_test']
-                else:
-                    self.fitness = self.metrics['accuracy_test'].item()
+                self.fitness = self.metrics['accuracy_test']
             if 'val_accuracy' in metrics:
                 self.num_epochs += len(self.metrics['val_accuracy'])
             else:

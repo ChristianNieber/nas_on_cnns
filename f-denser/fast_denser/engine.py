@@ -33,6 +33,8 @@ from jsmin import jsmin
 from fast_denser.utilities.data_augmentation import augmentation
 from pathlib import Path
 
+MUTABLE_TRAINING_TIME = False
+
 def save_pop(population, save_path, gen):
     """
         Save the current population statistics in json.
@@ -148,9 +150,10 @@ def get_total_epochs(save_path, last_gen):
 
     total_epochs = 0
     for gen in range(0, last_gen+1):
-        j = json.load(open(Path('%s/gen_%d.csv' % (save_path, gen))))
-        num_epochs = [elm['num_epochs'] for elm in j]
-        total_epochs += sum(num_epochs)
+        with open(Path('%s/gen_%d.csv' % (save_path, gen))) as json_file:
+            j = json.load(json_file)
+            num_epochs = [elm['num_epochs'] for elm in j]
+            total_epochs += sum(num_epochs)
 
     return total_epochs
 
@@ -277,57 +280,59 @@ def select_fittest(population, population_fits, grammar, cnn_eval, datagen, data
 
     #however if the parent is not the elite, and the parent is trained for longer, the elite
     #is granted the same evaluation time.
-    if parent.train_time > default_train_time:
-        retrain_elite = False
-        if idx_max != 0 and population[0].train_time > default_train_time and population[0].train_time < parent.train_time:
-            retrain_elite = True
-            elite = population[0]
-            elite.train_time = parent.train_time
-            elite.evaluate_cnn(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id), '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id))
-            population_fits[0] = elite.fitness
+    # CN: part of Fast-DENSER+ algorithm that is disabled
+    if MUTABLE_TRAINING_TIME:
+        if parent.train_time > default_train_time:
+            retrain_elite = False
+            if idx_max != 0 and population[0].train_time > default_train_time and population[0].train_time < parent.train_time:
+                retrain_elite = True
+                elite = population[0]
+                elite.train_time = parent.train_time
+                elite.evaluate_cnn(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id), '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id))
+                population_fits[0] = elite.fitness
 
-        min_train_time = min([ind.current_time for ind in population])
+            min_train_time = min([ind.current_time for ind in population])
 
-        #also retrain the best individual that is trained just for the default time
-        retrain_10min = False
-        if min_train_time < parent.train_time:
-            ids_10min = [ind.current_time == min_train_time for ind in population]
-    
-            if sum(ids_10min) > 0:
-                retrain_10min = True
-                indvs_10min = np.array(population)[ids_10min]
-                max_fitness_10min = max([ind.fitness for ind in indvs_10min])
-                idx_max_10min = np.argmax(max_fitness_10min)
-                parent_10min = indvs_10min[idx_max_10min]
+            #also retrain the best individual that is trained just for the default time
+            retrain_10min = False
+            if min_train_time < parent.train_time:
+                ids_10min = [ind.current_time == min_train_time for ind in population]
 
-                parent_10min.train_time = parent.train_time
+                if sum(ids_10min) > 0:
+                    retrain_10min = True
+                    indvs_10min = np.array(population)[ids_10min]
+                    max_fitness_10min = max([ind.fitness for ind in indvs_10min])
+                    idx_max_10min = np.argmax(max_fitness_10min)
+                    parent_10min = indvs_10min[idx_max_10min]
 
-                parent_10min.evaluate_cnn(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id), '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id))
+                    parent_10min.train_time = parent.train_time
 
-                population_fits[population.index(parent_10min)] = parent_10min.fitness
+                    parent_10min.evaluate_cnn(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id), '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id))
+
+                    population_fits[population.index(parent_10min)] = parent_10min.fitness
 
 
-        #select the fittest amont all retrains and the initial parent
-        if retrain_elite:
-            if retrain_10min:
-                if parent_10min.fitness > elite.fitness and parent_10min.fitness > parent.fitness:
+            #select the fittest amont all retrains and the initial parent
+            if retrain_elite:
+                if retrain_10min:
+                    if parent_10min.fitness > elite.fitness and parent_10min.fitness > parent.fitness:
+                        return deepcopy(parent_10min)
+                    elif elite.fitness > parent_10min.fitness and elite.fitness > parent.fitness:
+                        return deepcopy(elite)
+                    else:
+                        return deepcopy(parent)
+                else:
+                    if elite.fitness > parent.fitness:
+                        return deepcopy(elite)
+                    else:
+                        return deepcopy(parent)
+            elif retrain_10min:
+                if parent_10min.fitness > parent.fitness:
                     return deepcopy(parent_10min)
-                elif elite.fitness > parent_10min.fitness and elite.fitness > parent.fitness:
-                    return deepcopy(elite)
                 else:
                     return deepcopy(parent)
-            else:
-                if elite.fitness > parent.fitness:
-                    return deepcopy(elite)
-                else:
-                    return deepcopy(parent)
-        elif retrain_10min:
-            if parent_10min.fitness > parent.fitness:
-                return deepcopy(parent_10min)
             else:
                 return deepcopy(parent)
-        else:
-            return deepcopy(parent)
 
     return deepcopy(parent)
 
@@ -654,9 +659,8 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
         if total_epochs is not None and total_epochs >= MAX_EPOCHS:
             break
         if gen == 0:
-            print('[%d] Creating the initial population' % run)
-            print('[%d] Performing generation: %d' % (run, gen))
-            
+            print('[Run %d] Creating the initial population' % run)
+
             #create initial population
 
             population = [Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, _id_).initialise_as_lenet(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
@@ -668,12 +672,10 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
                 ind.current_time = 0
                 ind.num_epochs = 0
                 ind.train_time = DEFAULT_TRAIN_TIME
-                population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
+                population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, gen, idx, '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
                 ind.id = idx
         
         else:
-            print('[%d] Performing generation: %d' % (run, gen))
-            
             #generate offspring (by mutation)
             offspring = [mutation(parent, grammar, ADD_LAYER,
                                   REUSE_LAYER, REMOVE_LAYER,
@@ -692,15 +694,11 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
             #evaluate population
             population_fits = []
             for idx, ind in enumerate(population):
-                population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test,
-                                                    '%s/best_%d_%d.hdf5' % (save_path, gen, idx), '%s/best_%d_%d.hdf5' % (save_path, gen - 1, parent_id)))
+                population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, gen, idx, '%s/best_%d_%d.hdf5' % (save_path, gen, idx), '%s/best_%d_%d.hdf5' % (save_path, gen - 1, parent_id)))
                 ind.id = idx
 
         #select parent
-        parent = select_fittest(population, population_fits, grammar, cnn_eval,
-                                data_generator, data_generator_test, gen,
-                                save_path,
-                                DEFAULT_TRAIN_TIME)
+        parent = select_fittest(population, population_fits, grammar, cnn_eval, data_generator, data_generator_test, gen, save_path, DEFAULT_TRAIN_TIME)
 
         #remove temporary files to free disk space
         if gen > 1:
@@ -714,8 +712,9 @@ def main(run, dataset, config_file, grammar_path): #pragma: no cover
             best_fitness = parent.fitness
 
             if os.path.isfile(Path(save_path, 'best_%d_%d.hdf5' % (gen, parent.id))):
-               copyfile(Path(save_path, 'best_%d_%d.hdf5' % (gen, parent.id)), Path(save_path, 'best.hdf5'))
-               copyfile(Path(save_path, 'best_%d_%d.h5' % (gen, parent.id)), Path(save_path, 'best.h5'))
+                copyfile(Path(save_path, 'best_%d_%d.hdf5' % (gen, parent.id)), Path(save_path, 'best.hdf5'))
+            if os.path.isfile(Path(save_path, 'best_%d_%d.h5' % (gen, parent.id))):
+                copyfile(Path(save_path, 'best_%d_%d.h5' % (gen, parent.id)), Path(save_path, 'best.h5'))
 
             with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
                 pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -755,7 +754,6 @@ def process_input(argv): #pragma: no cover
         print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammra>')
         sys.exit(2)
 
-
     for opt, arg in opts:
         if opt == '-h':
             print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammra>')
@@ -772,7 +770,6 @@ def process_input(argv): #pragma: no cover
 
         elif opt in ("-g", "--grammar"):
             grammar = arg
-
 
     error = False
 
@@ -807,7 +804,6 @@ def process_input(argv): #pragma: no cover
         main(run, dataset, config_file, grammar)
     else:
         print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammar>')
-
 
 
 if __name__ == '__main__': #pragma: no cover
