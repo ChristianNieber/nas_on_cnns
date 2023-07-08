@@ -2,9 +2,11 @@ import unittest
 import warnings
 import time
 
+
 class Model:
 	def __init__(self):
 		self.stop_training = False
+
 
 class Test(unittest.TestCase):
 	def setUp(self):
@@ -30,4 +32,4 @@ class Test(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+	unittest.main()

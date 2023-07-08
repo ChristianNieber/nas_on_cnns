@@ -2,6 +2,7 @@ import unittest
 import warnings
 import random
 
+
 class Test(unittest.TestCase):
 	def setUp(self):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
@@ -27,4 +28,4 @@ class Test(unittest.TestCase):
 
 
 if __name__ == '__main__':
-    unittest.main()
+	unittest.main()

@@ -1,10 +1,10 @@
 import unittest
 import warnings
 
+
 class Test(unittest.TestCase):
 	def setUp(self):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
-
 
 	def test_load_datasets(self):
 		import fast_denser.utilities.data as data
@@ -29,7 +29,6 @@ class Test(unittest.TestCase):
 			other = data.load_dataset(dataset='not valid')
 			self.assertEqual(cm.exception.code, -1, "Error: read invalid grammar")
 
-
 	def test_augmentation(self):
 		import fast_denser.utilities.data as data
 		import fast_denser.utilities.data_augmentation as data_augmentation
@@ -42,16 +41,14 @@ class Test(unittest.TestCase):
 
 		self.assertTrue(diff.sum() != 0, "Error augmenting an image")
 
-
 	def test_resize_data(self):
 		import fast_denser.utilities.data as data
 		import numpy as np
 
-		data_resized = data.resize_data((np.zeros(shape=(10,28,28,1)), (28, 28)))
+		data_resized = data.resize_data((np.zeros(shape=(10, 28, 28, 1)), (28, 28)))
 
 		self.assertEqual(data_resized.shape[1:], (28, 28, 3), "Error resizing data")
 
 
-
 if __name__ == '__main__':
-    unittest.main()
+	unittest.main()
