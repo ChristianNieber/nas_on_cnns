@@ -113,7 +113,7 @@ class Test(unittest.TestCase):
 		
 		num_layers_before_mutation = len(ind.modules[0].layers)
 
-		new_ind = mutation(ind, grammar, 1, 0, 0, 0, 0, 0, 0, 0, 60)
+		new_ind = mutation(ind, grammar, 1, 0, 0, 0, 0, 0, 0)
 
 		self.assertEqual(self.count_unique_layers(ind.modules)+1, self.count_unique_layers(new_ind.modules), "Error: add layer wrong size")
 		self.assertEqual(self.count_layers(ind.modules)+1, self.count_layers(new_ind.modules), "Error: add layer wrong size")
@@ -127,7 +127,7 @@ class Test(unittest.TestCase):
 		
 		num_layers_before_mutation = len(ind.modules[0].layers)
 
-		new_ind = mutation(ind, grammar, 1, 1, 0, 0, 0, 0, 0, 0, 60)
+		new_ind = mutation(ind, grammar, 1, 1, 0, 0, 0, 0, 0)
 
 		self.assertEqual(self.count_unique_layers(ind.modules), self.count_unique_layers(new_ind.modules), "Error: duplicate layer wrong size")
 		self.assertEqual(self.count_layers(ind.modules)+1, self.count_layers(new_ind.modules), "Error: duplicate layer wrong size")
@@ -141,7 +141,7 @@ class Test(unittest.TestCase):
 		
 		num_layers_before_mutation = len(ind.modules[0].layers)
 
-		new_ind = mutation(ind, grammar, 0, 0, 1, 0, 0, 0, 0, 0, 60)
+		new_ind = mutation(ind, grammar, 0, 0, 1, 0, 0, 0, 0)
 
 		self.assertEqual(self.count_layers(ind.modules)-1, self.count_layers(new_ind.modules), "Error: remove layer wrong size")
 
@@ -154,7 +154,7 @@ class Test(unittest.TestCase):
 		
 		num_layers_before_mutation = len(ind.modules[0].layers)
 
-		new_ind = mutation(ind, grammar, 0, 0, 0, 0, 0, 1, 0, 0, 60)
+		new_ind = mutation(ind, grammar, 0, 0, 0, 0, 0, 1, 0)
 
 		self.assertEqual(self.count_layers(ind.modules), self.count_layers(new_ind.modules), "Error: change ge parameter")
 

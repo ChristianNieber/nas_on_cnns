@@ -30,11 +30,13 @@ from fast_denser.utilities.data import load_dataset
 PREDICT_BATCH_SIZE = 1024  # batch size used for model.predict()
 
 DEBUG = True
-LOG_MODEL_SUMMARY = False  # keras summary of each evaluated model
-LOG_MODEL_TRAINING = False  # training progress
-LOG_MODEL_SAVE = True  # log saving after each epoch
-LOG_MUTATION = True  # log mutations
-SAVE_MODEL_AFTER_EACH_EPOCH = False  # monitor and save model after each epoch
+LOG_MODEL_SUMMARY = False				# keras summary of each evaluated model
+LOG_MODEL_TRAINING = 0	 				# training progress: 1 for progress bar, 2 for one line per epoch
+LOG_MODEL_SAVE = True					# log saving after each epoch
+LOG_TIMED_STOPPING = False				# log stopping by timer
+LOG_EARLY_STOPPING = True				# log early stopping
+LOG_MUTATION = True						# log mutations
+SAVE_MODEL_AFTER_EACH_EPOCH = False		# monitor and save model after each epoch
 
 
 class TimedStopping(keras.callbacks.Callback):
@@ -457,7 +459,7 @@ class Evaluator:
 											beta_2=float(learning['beta2']))
 
 	def evaluate_cnn(self, phenotype, load_prev_weights, weights_save_path, parent_weights_path,
-					 train_time, num_epochs, gen, idx, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
+					 gen, idx, max_training_time, max_training_epochs, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -471,14 +473,14 @@ class Evaluator:
 				path where to save the model weights after training
 			parent_weights_path : str
 				path to the weights of the previous training
-			train_time : float
-				maximum training time
-			num_epochs : int
-				maximum number of epochs
 			gen : int
 				Generation count
 			idx : int
 				count of individual in generation
+			max_training_time : float
+				maximum training time
+			max_training_epochs : int
+				maximum number of epochs
 			datagen : keras.preprocessing.image.ImageDataGenerator
 				Data augmentation method image data generator
 			datagen_test : keras.preprocessing.image.ImageDataGenerator
@@ -506,11 +508,9 @@ class Evaluator:
 
 		if load_prev_weights and os.path.exists(parent_weights_path.replace('.hdf5', '.h5')):
 			model = keras.models.load_model(parent_weights_path.replace('.hdf5', '.h5'))
-
+			initial_epoch = 10  #TODO
 		else:
-			if load_prev_weights:
-				num_epochs = 0
-
+			initial_epoch = 0
 			model = self.assemble_network(keras_layers, input_size)
 			opt = self.assemble_optimiser(keras_learning)
 
@@ -529,10 +529,10 @@ class Evaluator:
 		model_train_start_time = time()
 
 		# early stopping
-		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=int(keras_learning['early_stop']), restore_best_weights=True)
+		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=int(keras_learning['early_stop']), restore_best_weights=True, verbose=LOG_EARLY_STOPPING)
 
 		# time based stopping
-		time_stop = TimedStopping(seconds=train_time, verbose=DEBUG)
+		time_stop = TimedStopping(seconds=max_training_time, verbose=LOG_TIMED_STOPPING)
 
 		callbacks_list = [early_stop, time_stop]
 
@@ -547,29 +547,27 @@ class Evaluator:
 													 self.dataset['evo_y_train'],
 													 batch_size=batch_size),
 										steps_per_epoch=(self.dataset['evo_x_train'].shape[0] // batch_size),
-										epochs=int(keras_learning['epochs']),
+										epochs=max_training_epochs,
 										validation_data=(datagen_test.flow(self.dataset['evo_x_val'], self.dataset['evo_y_val'], batch_size=batch_size)),
 										validation_steps=(self.dataset['evo_x_val'].shape[0] // batch_size),
 										callbacks=callbacks_list,
-										initial_epoch=num_epochs,
+										initial_epoch=initial_epoch,
 										verbose=LOG_MODEL_TRAINING)
 		else:
 			score = model.fit(x=self.dataset['evo_x_train'],
 							  y=self.dataset['evo_y_train'],
 							  batch_size=batch_size,
-							  epochs=int(keras_learning['epochs']),
+							  epochs=max_training_epochs,
 							  steps_per_epoch=(self.dataset['evo_x_train'].shape[0] // batch_size),
 							  validation_data=(self.dataset['evo_x_val'], self.dataset['evo_y_val']),
 							  callbacks=callbacks_list,
-							  initial_epoch=num_epochs,
+							  initial_epoch=initial_epoch,
 							  verbose=LOG_MODEL_TRAINING)
 
 		model_train_time = time() - model_train_start_time
 
 		# save final model to file
-		model_save_start_time = time()
 		model.save(weights_save_path.replace('.hdf5', '.h5'))
-		model_save_time = time() - model_save_start_time
 
 		# measure test performance
 		model_test_start_time = time()
@@ -579,13 +577,20 @@ class Evaluator:
 			y_pred_test = model.predict_generator(datagen_test.flow(self.dataset['evo_x_test'], batch_size=PREDICT_BATCH_SIZE, shuffle=False), steps=self.dataset['evo_x_test'].shape[0] // 100, verbose=LOG_MODEL_TRAINING)
 		accuracy_test = self.fitness_metric(self.dataset['evo_y_test'], y_pred_test)
 		model_test_time = time() - model_test_start_time
+		inference_time = 1000000.0 * model_test_time / len(y_pred_test)
 
-		training_epochs = score.params['epochs']
-		accuracy = score.history['accuracy'][-1]
-		val_accuracy = score.history['val_accuracy'][-1]
-		loss = score.history['loss'][-1]
-		print(f" epochs: {training_epochs} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {model_train_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f},s{model_save_time:0.2f})")
+		training_epochs = len(score.epoch)
+		if training_epochs:
+			accuracy = score.history['accuracy'][-1]
+			val_accuracy = score.history['val_accuracy'][-1]
+			loss = score.history['loss'][-1]
+			print(f" ep:{training_epochs:2d} inf: {inference_time:0.2f} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {model_train_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f})")
+		else:
+			print(f" *** no training epoch completed ***")
 
+		score.history['training_epochs'] = training_epochs
+		score.history['training_time'] = model_train_time
+		score.history['inference_time'] = inference_time
 		score.history['trainable_parameters'] = params_count
 		score.history['accuracy_test'] = accuracy_test
 
@@ -816,6 +821,9 @@ class Individual:
 		self.metrics = None
 		self.num_epochs = 0
 		self.trainable_parameters = None
+		self.training_epochs = 0
+		self.training_time = 0
+		self.inference_time = 0
 		self.time = None
 		self.current_time = 0
 		self.train_time = 0
@@ -924,7 +932,7 @@ class Individual:
 		self.phenotype = phenotype.rstrip().lstrip()
 		return self.phenotype
 
-	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, gen, idx, weights_save_path, parent_weights_path=''):  # pragma: no cover
+	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, max_training_time, max_training_epochs, gen, idx, weights_save_path, parent_weights_path=''):  # pragma: no cover
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -959,11 +967,11 @@ class Individual:
 		if self.current_time == 0:
 			load_prev_weights = False
 
-		train_time = self.train_time - self.current_time
+		# train_time = self.train_time - self.current_time
 
 		metrics = None
 		try:
-			metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path, train_time, self.num_epochs, gen, idx, datagen, datagen_test)
+			metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path, max_training_time, max_training_epochs, gen, idx, datagen, datagen_test)
 		except tf.errors.ResourceExhaustedError as e:
 			keras.backend.clear_session()
 			return None
@@ -989,12 +997,17 @@ class Individual:
 			#        metrics['accuracy'] = [i.item() for i in metrics['accuracy']]
 			self.metrics = metrics
 			if 'accuracy_test' in metrics:
-				self.fitness = self.metrics['accuracy_test']
+				self.fitness = metrics['accuracy_test']
+				self.accuracy_test = metrics['accuracy_test']
 			if 'val_accuracy' in metrics:
-				self.num_epochs += len(self.metrics['val_accuracy'])
+				self.num_epochs += len(metrics['val_accuracy'])
 			else:
 				self.num_epochs += 1
-			self.trainable_parameters = self.metrics['trainable_parameters']
+			self.trainable_parameters = metrics['trainable_parameters']
+			self.training_epochs = metrics['training_epochs']
+			self.training_time = metrics['training_time']
+			self.inference_time = metrics['inference_time']
+
 			self.current_time += (self.train_time - self.current_time)
 		else:
 			self.metrics = None

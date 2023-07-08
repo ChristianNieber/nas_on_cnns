@@ -30,8 +30,7 @@
       "add_connection": 0,
       "remove_connection": 0,
       "dsge_layer": 0.15,
-      "macro_layer": 0.3,
-      "train_longer": 0
+      "macro_layer": 0.3
     }
   },
 
@@ -67,7 +66,9 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "default_train_time": 60,
+    "max_training_time": 20,
+    //maximum training epochs for each network
+    "max_training_epochs": 30,
 
     //fitness assignment metric
     "fitness_metric": "accuracy"

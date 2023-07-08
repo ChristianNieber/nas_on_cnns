@@ -18,12 +18,14 @@ model.summary(line_length=120)
 # visualkeras.layered_view(model, legend=True)
 
 # TODO
+# - test retraining after load
+# - new random values?
 # - check dataset usage
 # - mutations output
 # - activation functions
-# - simplify specification?
 # - mutation test code
 # - crossover test code
+# - simplify ga/ge?
 # - penalty function for large networks
 # - test keras error
 # --> optimizer test run
@@ -34,7 +36,6 @@ model.summary(line_length=120)
 # -----
 # - learning code
 # - elu etc.
-# - single numeric values
 # - Comparison with GE
 # - numeric default values
 # - ES integers
@@ -47,4 +48,4 @@ model.summary(line_length=120)
 # - Input 28*28*3 instead of 32*32*3
 # - lenet test code
 # - better configuration variables
-# - reduced numeric parameters from list to single value for simplicity
+# - reduced numeric parameters groups to single value for simplicity

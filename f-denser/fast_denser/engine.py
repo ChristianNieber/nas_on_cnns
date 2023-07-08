@@ -12,7 +12,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
 import random
 from fast_denser.grammar import Grammar
 from fast_denser.utils import Evaluator, Individual
@@ -30,9 +29,6 @@ from keras.preprocessing.image import ImageDataGenerator
 from fast_denser.utilities.data_augmentation import augmentation
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
-MUTABLE_TRAINING_TIME = False
-
 
 def save_pop(population, save_path, gen):
 	"""
@@ -210,9 +206,9 @@ def unpickle_population(save_path):
 		with open(Path(save_path, 'numpy.pkl'), 'rb') as handle_numpy:
 			pickle_numpy = pickle.load(handle_numpy)
 
-		total_epochs = get_total_epochs(save_path, last_generation)
+		# total_epochs = get_total_epochs(save_path, last_generation)
 
-		return last_generation, pickled_evaluator, pickled_population, pickle_parent, pickle_population_fitness, pickle_random, pickle_numpy, total_epochs
+		return last_generation, pickled_evaluator, pickled_population, pickle_parent, pickle_population_fitness, pickle_random, pickle_numpy
 
 	else:
 		return None
@@ -253,62 +249,6 @@ def select_fittest(population, population_fits, grammar, cnn_eval, datagen, data
 	# Get best individual just according to fitness
 	idx_max = np.argmax(population_fits)
 	parent = population[idx_max]
-
-	# however if the parent is not the elite, and the parent is trained for longer, the elite
-	# is granted the same evaluation time.
-	# CN: part of Fast-DENSER+ algorithm that is disabled
-	if MUTABLE_TRAINING_TIME:
-		if parent.train_time > default_train_time:
-			retrain_elite = False
-			if idx_max != 0 and population[0].train_time > default_train_time and population[0].train_time < parent.train_time:
-				retrain_elite = True
-				elite = population[0]
-				elite.train_time = parent.train_time
-				elite.evaluate_cnn(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id), '%s/best_%d_%d.hdf5' % (save_path, gen, elite.id))
-				population_fits[0] = elite.fitness
-
-			min_train_time = min([ind.current_time for ind in population])
-
-			# also retrain the best individual that is trained just for the default time
-			retrain_10min = False
-			if min_train_time < parent.train_time:
-				ids_10min = [ind.current_time == min_train_time for ind in population]
-
-				if sum(ids_10min) > 0:
-					retrain_10min = True
-					indvs_10min = np.array(population)[ids_10min]
-					max_fitness_10min = max([ind.fitness for ind in indvs_10min])
-					idx_max_10min = np.argmax(max_fitness_10min)
-					parent_10min = indvs_10min[idx_max_10min]
-
-					parent_10min.train_time = parent.train_time
-
-					parent_10min.evaluate_cnn(grammar, cnn_eval, datagen, datagen_test, '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id), '%s/best_%d_%d.hdf5' % (save_path, gen, parent_10min.id))
-
-					population_fits[population.index(parent_10min)] = parent_10min.fitness
-
-			# select the fittest amont all retrains and the initial parent
-			if retrain_elite:
-				if retrain_10min:
-					if parent_10min.fitness > elite.fitness and parent_10min.fitness > parent.fitness:
-						return deepcopy(parent_10min)
-					elif elite.fitness > parent_10min.fitness and elite.fitness > parent.fitness:
-						return deepcopy(elite)
-					else:
-						return deepcopy(parent)
-				else:
-					if elite.fitness > parent.fitness:
-						return deepcopy(elite)
-					else:
-						return deepcopy(parent)
-			elif retrain_10min:
-				if parent_10min.fitness > parent.fitness:
-					return deepcopy(parent_10min)
-				else:
-					return deepcopy(parent)
-			else:
-				return deepcopy(parent)
-
 	return deepcopy(parent)
 
 
@@ -362,8 +302,7 @@ def mutation_dsge(layer, grammar):
 			return NotImplementedError
 
 
-def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_connection,
-             remove_connection, dsge_layer, macro_layer, train_longer, default_train_time):
+def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer):
 	"""
 		Network mutations: add and remove layer, add and remove connections, macro structure
 
@@ -376,34 +315,21 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
 		grammar : Grammar
 			Grammar instance, used to perform the initialisation and the genotype
 			to phenotype mapping
-
 		add_layer : float
 			add layer mutation rate
-
 		re_use_layer : float
 			when adding a new layer, defines the mutation rate of using an already
 			existing layer, i.e., copy by reference
-
 		remove_layer : float
 			remove layer mutation rate
-
 		add_connection : float
 			add connection mutation rate
-
 		remove_connection : float
 			remove connection mutation rate
-
 		dsge_layer : float
 			inner lever genotype mutation rate
-
 		macro_layer : float
 			inner level of the macro layers (i.e., learning, data-augmentation) mutation rate
-
-		train_longer : float
-			increase the training time mutation rate
-
-		default_train_time : int
-			default training time
 
 		Returns
 		-------
@@ -414,16 +340,10 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
 	# copy so that elite is preserved
 	ind = deepcopy(individual)
 
-	# Train individual for longer - no other mutation is applied
-	if random.random() <= train_longer:
-		ind.train_time += default_train_time
-		return ind
-
 	# in case the individual is mutated in any of the structural parameters
 	# the training time is reset
 	ind.current_time = 0
 	ind.num_epochs = 0
-	ind.train_time = default_train_time
 
 	for module in ind.modules:
 
@@ -564,8 +484,6 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 	REMOVE_CONNECTION = config["EVOLUTIONARY"]["MUTATIONS"]["remove_connection"]
 	DSGE_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["dsge_layer"]
 	MACRO_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["macro_layer"]
-	TRAIN_LONGER = config["EVOLUTIONARY"]["MUTATIONS"]["train_longer"]
-	MAX_EPOCHS = config["EVOLUTIONARY"]["max_epochs"]
 
 	NETWORK_STRUCTURE = config["NETWORK"]["network_structure"]
 	MACRO_STRUCTURE = config["NETWORK"]["macro_structure"]
@@ -573,8 +491,8 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 	LEVELS_BACK = config["NETWORK"]["levels_back"]
 	NETWORK_STRUCTURE_INIT = config["NETWORK"]["network_structure_init"]
 
-	DEFAULT_TRAIN_TIME = config["TRAINING"]["default_train_time"]
-
+	MAX_TRAINING_TIME = config["TRAINING"]["max_training_time"]
+	MAX_TRAINING_EPOCHS = config["TRAINING"]["max_training_epochs"]
 	data_generator = eval(config["TRAINING"]["datagen"])
 	data_generator_test = eval(config["TRAINING"]["datagen_test"])
 	fitness_metric = eval(config["TRAINING"]["fitness_metric"])
@@ -612,42 +530,36 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 
 		# status variables
 		last_gen = -1
-		total_epochs = 0
+		# total_epochs = 0
 
 	# in case there is a previous population, load it
 	else:
-		last_gen, cnn_eval, population, parent, population_fits, pkl_random, pkl_numpy, total_epochs = unpickle
+		last_gen, cnn_eval, population, parent, population_fits, pkl_random, pkl_numpy = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# check the total number of epochs (stop criteria)
-		if total_epochs is not None and total_epochs >= MAX_EPOCHS:
-			break
+		# if total_epochs is not None and total_epochs >= MAX_EPOCHS:
+		# 	break
 		if gen == 0:
 			print('[Run %d] Creating the initial population' % run)
 
 			# create initial population
 
 			population = [Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, _id_).initialise_as_lenet(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
-			              for _id_ in range(LAMBDA)]
+						  for _id_ in range(LAMBDA)]
 
 			# set initial population variables and evaluate population
 			population_fits = []
 			for idx, ind in enumerate(population):
 				ind.current_time = 0
-				ind.num_epochs = 0
-				ind.train_time = DEFAULT_TRAIN_TIME
-				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, gen, idx, '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
+				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, gen, idx, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
 				ind.id = idx
 
 		else:
 			# generate offspring (by mutation)
-			offspring = [mutation(parent, grammar, ADD_LAYER,
-			                      REUSE_LAYER, REMOVE_LAYER,
-			                      ADD_CONNECTION, REMOVE_CONNECTION,
-			                      DSGE_LAYER, MACRO_LAYER,
-			                      TRAIN_LONGER, DEFAULT_TRAIN_TIME)
+			offspring = [mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER)
 			             for _ in range(LAMBDA)]
 
 			population = [parent] + offspring
@@ -660,11 +572,12 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 			# evaluate population
 			population_fits = []
 			for idx, ind in enumerate(population):
-				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, gen, idx, '%s/best_%d_%d.hdf5' % (save_path, gen, idx), '%s/best_%d_%d.hdf5' % (save_path, gen - 1, parent_id)))
+				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, gen, idx, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, '%s/best_%d_%d.hdf5' % (save_path, gen, idx), '%s/best_%d_%d.hdf5' % (save_path, gen - 1, parent_id)))
 				ind.id = idx
 
 		# select parent
-		parent = select_fittest(population, population_fits, grammar, cnn_eval, data_generator, data_generator_test, gen, save_path, DEFAULT_TRAIN_TIME)
+		# TODO output, parameters
+		parent = select_fittest(population, population_fits, grammar, cnn_eval, data_generator, data_generator_test, gen, save_path, 60)
 
 		# remove temporary files to free disk space
 		if gen > 1:
@@ -691,8 +604,6 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		# save population
 		save_pop(population, save_path, gen)
 		pickle_population(population, parent, save_path)
-
-		total_epochs += sum([ind.num_epochs for ind in population])
 
 	# compute testing performance of the fittest network
 	best_test_acc = cnn_eval.testing_performance(str(Path(save_path, 'best.h5')), data_generator_test)

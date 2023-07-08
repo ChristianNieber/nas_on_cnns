@@ -319,7 +319,7 @@ class Grammar:
 								value = randint(var_min, var_max)
 							elif var_type == 'float':
 								value = uniform(var_min, var_max)
-
+							# TODO new value
 							print(f"*** Assigning random value {value} to new variable {var_name} ***")
 
 							genotype[symbol][current_nt]['ga'][var_name] = (var_type, var_min, var_max, value)
