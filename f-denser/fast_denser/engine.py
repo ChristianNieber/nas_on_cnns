@@ -13,11 +13,7 @@
 # limitations under the License.
 
 
-import os 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-from sys import argv
 import random
-import numpy as np
 from fast_denser.grammar import Grammar
 from fast_denser.utils import Evaluator, Individual
 from copy import deepcopy
@@ -27,13 +23,16 @@ import os
 from shutil import copyfile
 from glob import glob
 import json
-from keras.preprocessing.image import ImageDataGenerator
-from fast_denser.utilities.fitness_metrics import * 
+from fast_denser.utilities.fitness_metrics import *
 from jsmin import jsmin
-from fast_denser.utilities.data_augmentation import augmentation
 from pathlib import Path
+from keras.preprocessing.image import ImageDataGenerator
+from fast_denser.utilities.data_augmentation import augmentation
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 MUTABLE_TRAINING_TIME = False
+
 
 def save_pop(population, save_path, gen):
     """
@@ -75,7 +74,6 @@ def save_pop(population, save_path, gen):
         f_json.write(json.dumps(json_dump, indent=4))
 
 
-
 def pickle_evaluator(evaluator, save_path):
     """
         Save the Evaluator instance to later enable resuming evolution
@@ -90,7 +88,6 @@ def pickle_evaluator(evaluator, save_path):
 
     with open(Path('%s/evaluator.pkl' % save_path), 'wb') as handle:
         pickle.dump(evaluator, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
 
 
 def pickle_population(population, parent, save_path):
@@ -128,7 +125,6 @@ def pickle_population(population, parent, save_path):
         pickle.dump(np.random.get_state(), handle_numpy, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-
 def get_total_epochs(save_path, last_gen):
     """
         Compute the total number of performed epochs.
@@ -158,7 +154,6 @@ def get_total_epochs(save_path, last_gen):
     return total_epochs
 
 
-
 def unpickle_population(save_path):
     """
         Save the objects (pickle) necessary to later resume evolution.
@@ -177,43 +172,37 @@ def unpickle_population(save_path):
         -------
         last_generation : int
             idx of the last performed generation
-
         pickle_evaluator : Evaluator
             instance of the Evaluator class used for evaluating the individuals.
             Loaded because it has the data used for training.
-
         pickle_population : list
             population of the last performed generation
-
         pickle_parent : Individual
             fittest individual of the last performed generation
-
         pickle_population_fitness : list
             ordered list of fitnesses of the last population of individuals
-
         pickle_random : tuple
             Random random state
-
         pickle_numpy : tuple
             Numpy random state
     """
 
-    csvs = glob(str(Path(save_path, '*.csv' )))
+    csvs = glob(str(Path(save_path, '*.csv')))
     
     if csvs:
-        csvs = [int(csv.split(os.sep)[-1].replace('gen_','').replace('.csv','')) for csv in csvs]
+        csvs = [int(csv.split(os.sep)[-1].replace('gen_', '').replace('.csv', '')) for csv in csvs]
         last_generation = max(csvs)
 
         with open(Path(save_path, 'evaluator.pkl'), 'rb') as handle_eval:
-            pickle_evaluator = pickle.load(handle_eval)
+            pickled_evaluator = pickle.load(handle_eval)
 
         with open(Path(save_path, 'population.pkl'), 'rb') as handle_pop:
-            pickle_population = pickle.load(handle_pop)
+            pickled_population = pickle.load(handle_pop)
 
         with open(Path(save_path, 'parent.pkl'), 'rb') as handle_parent:
             pickle_parent = pickle.load(handle_parent)
 
-        pickle_population_fitness = [ind.fitness for ind in pickle_population]
+        pickle_population_fitness = [ind.fitness for ind in pickled_population]
 
         with open(Path(save_path, 'random.pkl'), 'rb') as handle_random:
             pickle_random = pickle.load(handle_random)
@@ -223,56 +212,43 @@ def unpickle_population(save_path):
 
         total_epochs = get_total_epochs(save_path, last_generation)
 
-        return last_generation, pickle_evaluator, pickle_population, pickle_parent, \
-               pickle_population_fitness, pickle_random, pickle_numpy, total_epochs
+        return last_generation, pickled_evaluator, pickled_population, pickle_parent, pickle_population_fitness, pickle_random, pickle_numpy, total_epochs
 
     else:
         return None
 
 
-
-def select_fittest(population, population_fits, grammar, cnn_eval, datagen, datagen_test, gen, save_path, default_train_time): #pragma: no cover
+def select_fittest(population, population_fits, grammar, cnn_eval, datagen, datagen_test, gen, save_path, default_train_time):      #pragma: no cover
     """
         Select the parent to seed the next generation.
-
 
         Parameters
         ----------
         population : list
             list of instances of Individual
-
         population_fits : list
             ordered list of fitnesses of the population of individuals
-
         grammar : Grammar
             Grammar instance, used to perform the initialisation and the genotype
             to phenotype mapping
-
         cnn_eval : Evaluator
             Evaluator instance used to train the networks
-
         datagen : keras.preprocessing.image.ImageDataGenerator
             Data augmentation method image data generator for the training data
-
         datagen_test : keras.preprocessing.image.ImageDataGenerator
             Data augmentation method image data generator for the validation and test data
-
         gen : int
             current generation of the ES
-
         save_path: str
             path where the ojects needed to resume evolution are stored.
-
         default_train_time : int
             default training time
-
 
         Returns
         -------
         parent : Individual
             individual that seeds the next generation
     """
-
 
     #Get best individual just according to fitness
     idx_max = np.argmax(population_fits)
@@ -389,7 +365,7 @@ def mutation_dsge(layer, grammar):
 
 
 
-def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_connection,\
+def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_connection,
              remove_connection, dsge_layer, macro_layer, train_longer, default_train_time):
     """
         Network mutations: add and remove layer, add and remove connections, macro structure
@@ -490,7 +466,6 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
                     if sample_size > 0:
                         module.connections[insert_pos] += random.sample(connection_possibilities, sample_size)
 
-
         #remove-layer
         for _ in range(random.randint(1,2)):
             if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
@@ -510,7 +485,6 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
 
                 if remove_idx == 0:
                     module.connections[0] = [-1]
-
 
         for layer_idx, layer in enumerate(module.layers):
             #dsge mutation
@@ -532,15 +506,12 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
                     r_connection = random.choice(connection_possibilities)
                     module.connections[layer_idx].remove(r_connection)
 
-
     #macro level mutation
     for macro_idx, macro in enumerate(ind.macro): 
         if random.random() <= macro_layer:
             mutation_dsge(macro, grammar)
-                    
 
     return ind
-
 
 
 def load_config(config_file):
@@ -564,7 +535,6 @@ def load_config(config_file):
 
     config = json.loads(minified)
     return config
-
 
 
 def main(run, dataset, config_file, grammar_path): #pragma: no cover
@@ -799,12 +769,10 @@ def process_input(argv): #pragma: no cover
         print('Configuration file does not exist.')
         error = True
 
-
     if not error:
         main(run, dataset, config_file, grammar)
     else:
         print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammar>')
-
 
 if __name__ == '__main__': #pragma: no cover
     import sys, getopt

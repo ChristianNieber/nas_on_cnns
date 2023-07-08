@@ -14,6 +14,7 @@
 
 from random import randint, uniform
 
+
 class Grammar:
     """
         Dynamic Structured Grammatical Evolution (DSGE) code. F-DENSER++ uses a BNF 
@@ -32,26 +33,19 @@ class Grammar:
         -------
         get_grammar(path)
             Reads the grammar from a file
-
         read_grammar(path)
             Auxiliary function of the get_grammar method; loads the grammar from a file
-
         parse_grammar(path)
             Auxiliary fuction of the get_grammar method; parses the grammar to a dictionary
-
         _str_()
             Prints the grammar in the BNF form
-
         initialise(start_symbol)
             Creates a genotype, at random, starting from the input non-terminal symbol
-
         initialise_recursive(symbol, prev_nt, genotype)
             Auxiliary function of the initialise method; recursively expands the
             non-terminal symbol
-
         decode(start_symbol, genotype)
             Genotype to phenotype mapping.
-
         decode_recursive(symbol, read_integers, genotype, phenotype)
             Auxiliary function of the decode method; recursively applies the expansions
             that are encoded in the genotype
@@ -66,7 +60,6 @@ class Grammar:
         """
         
         self.grammar = self.get_grammar(path)
-
 
     def get_grammar(self, path):
         """
@@ -92,7 +85,6 @@ class Grammar:
 
         return self.parse_grammar(raw_grammar)
 
-
     def read_grammar(self, path):
         """
             Auxiliary function of the get_grammar method; loads the grammar from a file
@@ -115,7 +107,6 @@ class Grammar:
                 return raw_grammar
         except IOError:
             return None
-
 
     def parse_grammar(self, raw_grammar):
         """
@@ -141,7 +132,7 @@ class Grammar:
 
             rule_expansions = []
             for production_rule in raw_rule_expansions.split('|'):
-                rule_expansions.append([(symbol.rstrip().lstrip().replace('<', '').replace('>', ''), \
+                rule_expansions.append([(symbol.rstrip().lstrip().replace('<', '').replace('>', ''),
                                         '<' in symbol) for symbol in
                                         production_rule.rstrip().lstrip().split(' ')])
             grammar[non_terminal.rstrip().lstrip().replace('<', '').replace('>', '')] = rule_expansions
@@ -150,7 +141,6 @@ class Grammar:
                 start_symbol = non_terminal.rstrip().lstrip().replace('<', '').replace('>', '')
 
         return grammar
-
 
     def _str_(self):
         """
@@ -167,7 +157,6 @@ class Grammar:
                         productions += ' '+symbol
                 productions += ' | '
             print('<'+_key_+'> ::='+productions[:-3])
-
 
     def __str__(self):
         """
@@ -187,7 +176,6 @@ class Grammar:
             print_str += '<'+_key_+'> ::='+productions[:-3]+'\n'
 
         return print_str
-
 
     def initialise(self, start_symbol):
         """
@@ -209,7 +197,6 @@ class Grammar:
         self.initialise_recursive((start_symbol, True), None, genotype)
 
         return genotype
-
 
     def initialise_recursive(self, symbol, prev_nt, genotype):
         """
@@ -260,7 +247,6 @@ class Grammar:
 
                 genotype[genotype_key][genotype_idx]['ga'][var_name] = (var_type, min_val, max_val, value)
 
-
     def decode(self, start_symbol, genotype):
         """
             Genotype to phenotype mapping.
@@ -269,7 +255,6 @@ class Grammar:
             ----------
             start_symbol : str
                 non-terminal symbol used as starting symbol for the grammatical expansion
-            
             genotype : dict
                 DSGE genotype used for the inner-level of F-DENSER++ 
 
@@ -284,7 +269,6 @@ class Grammar:
 
         return phenotype.lstrip().rstrip()
 
-
     def decode_recursive(self, symbol, read_integers, genotype, phenotype):
         """
             Auxiliary function of the decode method; recursively applies the expansions
@@ -297,13 +281,10 @@ class Grammar:
                 Non-terminal is True in case the non-terminal symbol is a 
                 non-terminal, and False if the non-terminal symbol str is
                 a terminal
-
             read_integers : dict
                 index of the next codon of the non-terminal genotype to be read
-
             genotype : dict
                 DSGE genotype used for the inner-level of F-DENSER++ 
-
             phenotype : str
                 phenotype corresponding to the input genotype
         """
@@ -359,6 +340,3 @@ class Grammar:
                     del genotype[symbol][current_nt]['ga'][name]
 
         return phenotype
-
-
-

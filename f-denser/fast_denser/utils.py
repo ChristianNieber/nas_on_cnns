@@ -584,7 +584,7 @@ class Evaluator:
         accuracy = score.history['accuracy'][-1]
         val_accuracy = score.history['val_accuracy'][-1]
         loss = score.history['loss'][-1]
-        print(f" epochs: {training_epochs} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {model_train_time:0.2f}s ({model_build_time:0.2f}s, {model_test_time:0.2f})")
+        print(f" epochs: {training_epochs} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {model_train_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f},s{model_save_time:0.2f})")
 
         score.history['trainable_parameters'] = params_count
         score.history['accuracy_test'] = accuracy_test
