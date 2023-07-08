@@ -1,16 +1,15 @@
 import fast_denser
-fast_denser.search(0, 'mnist', 'config/config.json', 'config/lenet.grammar')
-
+from keras.models import load_model
+from keras.preprocessing.image import ImageDataGenerator
+# import visualkeras
 from pickle import load
+
+fast_denser.search(0, 'mnist', 'config/config.json', 'config/lenet.grammar')
 
 with open('D:/experiments/run_0/evaluator.pkl', 'rb') as f_data:
     evaluator = load(f_data)
     x_test = evaluator.dataset['x_test']
     y_test = evaluator.dataset['y_test']
-
-from keras.models import load_model
-from keras.preprocessing.image import ImageDataGenerator
-import visualkeras
 
 model = load_model('D:/experiments/run_0/best.h5')
 datagen_test = ImageDataGenerator(rescale=1/255.0)
@@ -18,15 +17,15 @@ datagen_test = ImageDataGenerator(rescale=1/255.0)
 model.summary(line_length=120)
 # visualkeras.layered_view(model, legend=True)
 
-# Todo
-# - mutations output
-# - test keras error
+# TODO
 # - check dataset usage
+# - mutations output
 # - activation functions
 # - simplify specification?
 # - mutation test code
 # - crossover test code
 # - penalty function for large networks
+# - test keras error
 # --> optimizer test run
 
 # - real time plots & visualisation

@@ -37,7 +37,8 @@ def augmentation(x):
 
     pad_size = 4
 
-    h, w, c = 32, 32, 3
+    # h, w, c = 32, 32, 3
+    (h, w, c) = x.shape
     pad_h = h + 2 * pad_size
     pad_w = w + 2 * pad_size
 

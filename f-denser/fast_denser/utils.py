@@ -22,22 +22,20 @@ from time import time
 import numpy as np
 import os
 from fast_denser.utilities.data import load_dataset
-from multiprocessing import Pool
-import contextlib
-import warnings
 
 # TODO: future -- impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
 
 # Tuning parameters
-PREDICT_BATCH_SIZE = 1024           # batch size used for model.predict()
+PREDICT_BATCH_SIZE = 1024  # batch size used for model.predict()
 
 DEBUG = True
-LOG_MODEL_SUMMARY = False           # keras summary of each evaluated model
-LOG_MODEL_TRAINING = False          # training progress
-LOG_MODEL_SAVE = True               # log saving after each epoch
-LOG_MUTATION = True                 # log mutations
+LOG_MODEL_SUMMARY = False  # keras summary of each evaluated model
+LOG_MODEL_TRAINING = False  # training progress
+LOG_MODEL_SAVE = True  # log saving after each epoch
+LOG_MUTATION = True  # log mutations
 SAVE_MODEL_AFTER_EACH_EPOCH = False  # monitor and save model after each epoch
+
 
 class TimedStopping(keras.callbacks.Callback):
     """
@@ -61,14 +59,14 @@ class TimedStopping(keras.callbacks.Callback):
         on_epoch_end(epoch, logs={})
             method called after the end of each training epoch
     """
+
     def __init__(self, seconds=None, verbose=0):
         """
         Parameters
         ----------
         seconds : float
             maximum time before stopping.
-
-        vebose : bool
+        verbose : bool
             verbosity mode
         """
         super(keras.callbacks.Callback, self).__init__()
@@ -148,11 +146,12 @@ class Evaluator:
                 dataset to be loaded
         """
 
-#        def setUp(self):
+        #        def setUp(self):
         self.dataset = load_dataset(dataset)
         self.fitness_metric = fitness_metric
 
-    def get_layers(self, phenotype):
+    @staticmethod
+    def get_layers(phenotype):
         """
             Parses the phenotype corresponding to the layers.
             Auxiliary function of the assemble_network function.
@@ -174,6 +173,8 @@ class Evaluator:
         first = True
         node_type, node_val = raw_phenotype[idx].split(':')
         layers = []
+        layer_type = None
+        node_properties = None
 
         while idx < len(raw_phenotype):
             if node_type == 'layer':
@@ -194,7 +195,8 @@ class Evaluator:
 
         return layers
 
-    def get_learning(self, learning):
+    @staticmethod
+    def get_learning(learning):
         """
             Parses the phenotype corresponding to the learning
             Auxiliary function of the assemble_optimiser function
@@ -228,7 +230,8 @@ class Evaluator:
 
         return learning_params
 
-    def assemble_network(self, keras_layers, input_size):
+    @staticmethod
+    def assemble_network(keras_layers, input_size):
         """
             Maps the layers phenotype into a keras model
 
@@ -258,7 +261,7 @@ class Evaluator:
                                                     strides=(int(layer_params['stride']), int(layer_params['stride'])),
                                                     padding=layer_params['padding'],
                                                     use_bias=eval(layer_params['bias']),
-#                                                    activation=layer_params['act'],
+                                                    #                                                   activation=layer_params['act'],
                                                     kernel_initializer='he_normal',
                                                     kernel_regularizer=tf.keras.regularizers.l2(0.0005))
                 layers.append(conv_layer)
@@ -287,17 +290,17 @@ class Evaluator:
             elif layer_type == 'fc':
                 fc = tf.keras.layers.Dense(int(layer_params['num-units']),
                                            use_bias=eval(layer_params['bias']),
-#                                           activation=layer_params['act'],
+                                           # activation=layer_params['act'],
                                            kernel_initializer='he_normal',
                                            kernel_regularizer=tf.keras.regularizers.l2(0.0005))
                 layers.append(fc)
 
             elif layer_type == 'output':
                 output_layer = tf.keras.layers.Dense(int(layer_params['num-units']),
-                                                        use_bias=eval(layer_params['bias']),
-                                                        activation=layer_params['act'],
-                                                        kernel_initializer='he_normal',
-                                                        kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+                                                     use_bias=eval(layer_params['bias']),
+                                                     activation=layer_params['act'],
+                                                     kernel_initializer='he_normal',
+                                                     kernel_regularizer=tf.keras.regularizers.l2(0.0005))
                 layers.append(output_layer)
 
             # dropout layer
@@ -367,7 +370,7 @@ class Evaluator:
                     new_data_layer = layer(data_layers[input_idx])
 
                 # conv and fc layers can have an optional batch normalisation layer, that should be inserted before the activation layer
-                if (layer_type == 'conv' or layer_type == 'fc'):
+                if layer_type == 'conv' or layer_type == 'fc':
                     if ('batch-normalization' in layer_params) and layer_params['batch-normalization']:
                         new_data_layer = tf.keras.layers.BatchNormalization()(new_data_layer)
                     activation_function = layer_params['act']
@@ -403,12 +406,12 @@ class Evaluator:
                 if len(merge_signals) == 1:
                     merged_signal = merge_signals[0]
                 elif len(merge_signals) > 1:
-                    merged_signal = keras.layers.concatenate(merge_signals)
+                    merged_signal = tf.keras.layers.concatenate(merge_signals)
                 else:
                     merged_signal = data_layers[-1]
 
                 data_layers.append(layer(merged_signal))
-            #except ValueError as e:
+            # except ValueError as e:
             #    data_layers.append(data_layers[-1])
             #    invalid_layers.append(layer_idx)
             #    if DEBUG:
@@ -439,21 +442,21 @@ class Evaluator:
 
         if learning['learning'] == 'rmsprop':
             return tf.keras.optimizers.RMSprop(learning_rate=float(learning['lr']),
-                                            rho=float(learning['rho']),
-                                            decay=float(learning['decay']))
+                                               rho=float(learning['rho']),
+                                               decay=float(learning['decay']))
 
         elif learning['learning'] == 'gradient-descent':
             return tf.keras.optimizers.SGD(learning_rate=float(learning['lr']),
-                                        momentum=float(learning['momentum']),
-                                        decay=float(learning['decay']),
-                                        nesterov=bool(learning['nesterov']))
+                                           momentum=float(learning['momentum']),
+                                           decay=float(learning['decay']),
+                                           nesterov=bool(learning['nesterov']))
 
         elif learning['learning'] == 'adam':
             return tf.keras.optimizers.Adam(learning_rate=float(learning['lr']),
-                                         beta_1=float(learning['beta1']),
-                                         beta_2=float(learning['beta2']))
+                                            beta_1=float(learning['beta1']),
+                                            beta_2=float(learning['beta2']))
 
-    def evaluate_cnn(self, phenotype, load_prev_weights, weights_save_path, parent_weights_path, \
+    def evaluate_cnn(self, phenotype, load_prev_weights, weights_save_path, parent_weights_path,
                      train_time, num_epochs, gen, idx, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
         """
             Evaluates the keras model using the keras optimiser
@@ -478,6 +481,8 @@ class Evaluator:
                 count of individual in generation
             datagen : keras.preprocessing.image.ImageDataGenerator
                 Data augmentation method image data generator
+            datagen_test : keras.preprocessing.image.ImageDataGenerator
+                Image data generator without augmentation
             input_size : tuple
                 dataset input shape
 
@@ -575,10 +580,11 @@ class Evaluator:
         accuracy_test = self.fitness_metric(self.dataset['evo_y_test'], y_pred_test)
         model_test_time = time() - model_test_start_time
 
+        training_epochs = score.params['epochs']
         accuracy = score.history['accuracy'][-1]
         val_accuracy = score.history['val_accuracy'][-1]
         loss = score.history['loss'][-1]
-        print(f" test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {model_train_time:0.2f}s ({model_build_time:0.2f}s, {model_test_time:0.2f})")
+        print(f" epochs: {training_epochs} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {model_train_time:0.2f}s ({model_build_time:0.2f}s, {model_test_time:0.2f})")
 
         score.history['trainable_parameters'] = params_count
         score.history['accuracy_test'] = accuracy_test
@@ -647,7 +653,7 @@ class Module:
                 minimum expansions of the block
                     max_expansions : int
                 maximum expansions of the block
-            levels_back : dict
+            levels_back : int
                 number of previous layers a given layer can receive as input
         """
 
@@ -708,17 +714,17 @@ class Module:
         """
 
         feature_layers_lenet = [
-            {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int',2.0,64.0,6), 'filter-shape': ('int',2.0,5.0,5), 'stride': ('int',1.0,3.0,1)}}],
+            {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 2.0, 64.0, 6), 'filter-shape': ('int', 2.0, 5.0, 5), 'stride': ('int', 1.0, 3.0, 1)}}],
              'activation-function': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 0, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-            {'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int',2.0,5.0,2), 'stride': ('int',1.0,3.0,2)}, 'ge': 0}]},
-            {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int',2.0,64.0,16), 'filter-shape': ('int',2.0,5.0,5), 'stride': ('int',1.0,3.0,1)}}],
+            {'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int', 2.0, 5.0, 2), 'stride': ('int', 1.0, 3.0, 2)}, 'ge': 0}]},
+            {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 2.0, 64.0, 16), 'filter-shape': ('int', 2.0, 5.0, 5), 'stride': ('int', 1.0, 3.0, 1)}}],
              'activation-function': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-            {'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int',2.0,5.0,2), 'stride': ('int',1.0,3.0,2)}, 'ge': 0}]},
+            {'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int', 2.0, 5.0, 2), 'stride': ('int', 1.0, 3.0, 2)}, 'ge': 0}]},
         ]
 
         classification_layers_lenet = [
-            {'classification': [{'ga': {'num-units': ('int',64.0,2048.0,120)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-            {'classification': [{'ga': {'num-units': ('int',64.0, 2048.0,84)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
+            {'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0, 120)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
+            {'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0, 84)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
         ]
 
         if self.module == 'features':
@@ -880,9 +886,9 @@ class Individual:
 
         # Initialise the macro structure: learning, data augmentation, etc.
         self.macro = [
-            {'learning': [{'ge': 0, 'ga': {'batch_size': ('int',50.0,2048.0,1024)}}],
-             'adam': [{'ge': 0, 'ga': {'lr': ('float',0.0001,0.1,0.0005), 'beta1': ('float',0.5,1.0,0.9), 'beta2': ('float',0.5,1.0,0.999)}}],
-             'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int',5.0,20.0,8)}}]}]
+            {'learning': [{'ge': 0, 'ga': {'batch_size': ('int', 50.0, 2048.0, 1024)}}],
+             'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
+             'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
 
         return self
 
@@ -930,6 +936,8 @@ class Individual:
                 Evaluator instance used to train the networks
             datagen : keras.preprocessing.image.ImageDataGenerator
                 Data augmentation method image data generator
+            datagen_test : keras.preprocessing.image.ImageDataGenerator
+                Image data generator without augmentation
             gen : int
                 Generation count
             idx : int
@@ -942,7 +950,6 @@ class Individual:
             Returns
             -------
             fitness : float
-                quality of the candidate solutions
         """
 
         phenotype = self.decode(grammar)
@@ -965,21 +972,21 @@ class Individual:
             return None
 
         if metrics is not None:
-           #if 'val_accuracy' in metrics:
-           #    if type(metrics['val_accuracy']) is list:
-           #        metrics['val_accuracy'] = [i for i in metrics['val_accuracy']]
-           #    else:
-           #        metrics['val_accuracy'] = [i.item() for i in metrics['val_accuracy']]
-           #if 'loss' in metrics:
-           #    if type(metrics['loss']) is list:
-           #        metrics['loss'] = [i for i in metrics['loss']]
-           #    else:
-           #        metrics['loss'] = [i.item() for i in metrics['loss']]
-           #if 'accuracy' in metrics:
-           #    if type(metrics['accuracy']) is list:
-           #        metrics['accuracy'] = [i for i in metrics['accuracy']]
-           #    else:
-           #        metrics['accuracy'] = [i.item() for i in metrics['accuracy']]
+            # if 'val_accuracy' in metrics:
+            #    if type(metrics['val_accuracy']) is list:
+            #        metrics['val_accuracy'] = [i for i in metrics['val_accuracy']]
+            #    else:
+            #        metrics['val_accuracy'] = [i.item() for i in metrics['val_accuracy']]
+            # if 'loss' in metrics:
+            #    if type(metrics['loss']) is list:
+            #        metrics['loss'] = [i for i in metrics['loss']]
+            #    else:
+            #        metrics['loss'] = [i.item() for i in metrics['loss']]
+            # if 'accuracy' in metrics:
+            #    if type(metrics['accuracy']) is list:
+            #        metrics['accuracy'] = [i for i in metrics['accuracy']]
+            #    else:
+            #        metrics['accuracy'] = [i.item() for i in metrics['accuracy']]
             self.metrics = metrics
             if 'accuracy_test' in metrics:
                 self.fitness = self.metrics['accuracy_test']

@@ -58,13 +58,13 @@
     //data augmentation generator for the training data - keras interpretable
     //set to "None" if no data augmentation is to be used
     "datagen": "None",
-    // "datagen":"ImageDataGenerator(rescale=1/255.0, preprocessing_function=augmentation)"
+    // "datagen":"ImageDataGenerator(preprocessing_function=augmentation)",
 
     //data augmentation generator for the validation and testing data - keras interpretable
     //Has to be similar to datagen but without data augmentation
     //set to "None" if no data augmentation is to be used
     "datagen_test": "None",
-    // "datagen_test": "ImageDataGenerator(rescale=1/255.0)"
+    // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
     "default_train_time": 60,
