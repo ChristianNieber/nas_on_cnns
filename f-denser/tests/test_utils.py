@@ -27,7 +27,7 @@ class Test(unittest.TestCase):
 		levels_back = {"features": 1, "classification": 1}
 		network_structure_init = {"features":[2]}
 
-		ind = Individual(network_structure, [], 'softmax', 0).initialise(grammar, levels_back, 0, network_structure_init)
+		ind = Individual(network_structure, [], 'softmax', 0, 0).initialise(grammar, levels_back, 0, network_structure_init)
 
 		print(ind.decode(grammar))
 
@@ -42,7 +42,7 @@ class Test(unittest.TestCase):
 		levels_back = {"features": 1, "classification": 1}
 		network_structure_init = {"features":[2]}
 
-		ind = Individual(network_structure, [], 'output', 0).initialise_as_lenet(grammar, levels_back, 0, network_structure_init)
+		ind = Individual(network_structure, [], 'output', 1, 0).initialise_as_lenet(grammar, levels_back, 0, network_structure_init)
 
 		return ind, grammar
 
@@ -76,7 +76,7 @@ class Test(unittest.TestCase):
 		levels_back = {"features": 1, "classification": 1}
 		network_structure_init = {"features":[2]}
 
-		ind = Individual(network_structure, [], 'softmax', 0)
+		ind = Individual(network_structure, [], 'softmax', 0, 0)
 
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')

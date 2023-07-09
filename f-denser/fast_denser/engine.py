@@ -36,7 +36,7 @@ def save_population_statistics(population, save_path, gen):
 	"""
 		Save the current population statistics in json.
 		For each individual:
-			.id: unique generation identifier
+			.name: name as <generation>-<index>
 			.phenotype: phenotype of the individual
 			.fitness: fitness of the individual
 			.metrics: other evaluation metrics (e.g., loss, accuracy)
@@ -59,7 +59,7 @@ def save_population_statistics(population, save_path, gen):
 
 	for ind in population:
 		json_dump.append({
-			'id': ind.id,
+			'name': ind.name,
 			'phenotype': ind.phenotype,
 			'fitness': ind.fitness,
 			'metrics': ind.metrics,
@@ -518,7 +518,7 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 
 	# in case there is a previous population, load it
 	else:
-		last_gen, cnn_eval, population, parent, population_fits, pkl_random, pkl_numpy = unpickle
+		last_gen, cnn_eval, population, parent, population_fitness, pkl_random, pkl_numpy = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
 
@@ -530,16 +530,14 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 			print('[Run %d] Creating the initial population' % run)
 
 			# create initial population
-
-			population = [Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, _id_).initialise_as_lenet(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
-						  for _id_ in range(LAMBDA)]
+			population = [Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, gen, idx).initialise_as_lenet(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
+						  for idx in range(LAMBDA)]
 
 			# set initial population variables and evaluate population
-			population_fits = []
+			population_fitness = []
 			for idx, ind in enumerate(population):
 				ind.training_time = 0
-				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, gen, idx, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
-				ind.id = idx
+				population_fitness.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
 
 		else:
 			# generate offspring (by mutation)
@@ -551,16 +549,14 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 			# set elite variables to re-evaluation
 			population[0].training_time = 0
 			population[0].training_epochs = 0
-			parent_id = parent.id
 
 			# evaluate population
-			population_fits = []
+			population_fitness = []
 			for idx, ind in enumerate(population):
-				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, gen, idx, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
-				ind.id = idx
+				population_fitness.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
 
 		# select parent
-		parent = select_fittest(population, population_fits)
+		parent = select_fittest(population, population_fitness)
 
 		# remove temporary files to free disk space
 		if gen > 1:
@@ -572,13 +568,13 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		if best_fitness is None or parent.fitness > best_fitness:
 			best_fitness = parent.fitness
 
-			if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen, parent.id))):
-				copyfile(Path(save_path, 'individual-%d-%d.h5' % (gen, parent.id)), Path(save_path, 'best.h5'))
+			if os.path.isfile(Path(save_path, 'individual-%s.h5' % parent.name)):
+				copyfile(Path(save_path, 'individual-%s.h5' % parent.name), Path(save_path, 'best.h5'))
 
 			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-		print('[%d] Best fitness of generation %d: %f' % (run, gen, max(population_fits)))
+		print('[%d] Best fitness of generation %d: %f' % (run, gen, max(population_fitness)))
 		print('[%d] Best overall fitness: %f' % (run, best_fitness))
 
 		# save population
@@ -608,12 +604,12 @@ def process_input(argv):  # pragma: no cover
 	try:
 		opts, args = getopt.getopt(argv, "hd:c:r:g:", ["dataset=", "config=", "run=", "grammar="])
 	except getopt.GetoptError:
-		print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammra>')
+		print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammar>')
 		sys.exit(2)
 
 	for opt, arg in opts:
 		if opt == '-h':
-			print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammra>')
+			print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammar>')
 			sys.exit()
 
 		elif opt in ("-d", "--dataset"):

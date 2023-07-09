@@ -566,7 +566,9 @@ class Evaluator:
 		training_time = time() - training_start_time
 
 		# save final model to file
+		model_save_start_time = time()
 		model.save(weights_save_path)
+		model_save_time = time() - model_save_start_time
 
 		# measure test performance
 		model_test_start_time = time()
@@ -583,7 +585,7 @@ class Evaluator:
 			accuracy = score.history['accuracy'][-1]
 			val_accuracy = score.history['val_accuracy'][-1]
 			loss = score.history['loss'][-1]
-			print(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f})")
+			print(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f},s{model_save_time:0.2f})")
 		else:
 			print(f" *** no training epoch completed ***")
 
@@ -779,8 +781,8 @@ class Individual:
 			network training time
 		train_time : float
 			maximum training time
-		id : int
-			individual unique identifier
+		name : str
+			name as <generation>-<index>
 
 		Methods
 		-------
@@ -792,7 +794,7 @@ class Individual:
 				Performs the evaluation of a candidate solution
 	"""
 
-	def __init__(self, network_structure, macro_rules, output_rule, ind_id):
+	def __init__(self, network_structure, macro_rules, output_rule, gen, idx):
 		"""
 			Parameters
 			----------
@@ -803,8 +805,10 @@ class Individual:
 				list of non-terminals (str) with the marco rules (e.g., learning)
 		   output_rule : str
 				output non-terminal symbol
-			ind_id : int
-				individual unique identifier
+			gen : int
+				generation count
+			idx: int
+				index in generation
 		"""
 
 		self.network_structure = network_structure
@@ -823,7 +827,7 @@ class Individual:
 		self.million_inferences_time = 0
 		self.time = None
 		self.train_time = 0
-		self.id = ind_id
+		self.name = f"{gen}-{idx}"
 
 	def initialise(self, grammar, levels_back, reuse, init_max):
 		"""
@@ -928,7 +932,7 @@ class Individual:
 		self.phenotype = phenotype.rstrip().lstrip()
 		return self.phenotype
 
-	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, save_path, gen, idx, max_training_time, max_training_epochs):  # pragma: no cover
+	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, save_path, max_training_time, max_training_epochs):  # pragma: no cover
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -944,10 +948,6 @@ class Individual:
 				Image data generator without augmentation
 			save_path : str
 				path where statistics and weights are saved
-			gen : int
-				Generation count
-			idx : int
-				count of individual in generation
 
 			Returns
 			-------
@@ -957,8 +957,6 @@ class Individual:
 		phenotype = self.decode(grammar)
 
 		load_prev_weights = False
-
-		self.name = f"{gen}-{idx}"
 
 		metrics = None
 		try:
