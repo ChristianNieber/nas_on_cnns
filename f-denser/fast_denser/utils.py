@@ -35,7 +35,6 @@ LOG_MODEL_TRAINING = 0	 				# training progress: 1 for progress bar, 2 for one l
 LOG_MODEL_SAVE = True					# log saving after each epoch
 LOG_TIMED_STOPPING = False				# log stopping by timer
 LOG_EARLY_STOPPING = True				# log early stopping
-LOG_MUTATION = True						# log mutations
 SAVE_MODEL_AFTER_EACH_EPOCH = False		# monitor and save model after each epoch
 
 
@@ -132,7 +131,7 @@ class Evaluator:
 		assemble_optimiser(learning)
 			maps the learning into a keras optimiser
 		evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path,
-							train_time, num_epochs, datagen=None, input_size=(32, 32, 3))
+							train_time, training_epochs, datagen=None, input_size=(32, 32, 3))
 			evaluates the keras model using the keras optimiser
 		testing_performance(self, model_path)
 			compute testing performance of the model
@@ -458,8 +457,7 @@ class Evaluator:
 											beta_1=float(learning['beta1']),
 											beta_2=float(learning['beta2']))
 
-	def evaluate_cnn(self, phenotype, load_prev_weights, weights_save_path, parent_weights_path,
-					 gen, idx, max_training_time, max_training_epochs, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
+	def evaluate_cnn(self, phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, individual_name, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -473,14 +471,14 @@ class Evaluator:
 				path where to save the model weights after training
 			parent_weights_path : str
 				path to the weights of the previous training
-			gen : int
-				Generation count
-			idx : int
-				count of individual in generation
 			max_training_time : float
 				maximum training time
 			max_training_epochs : int
 				maximum number of epochs
+			save_path : str
+				path where weights are saved
+			individual_name : str
+				name (<generation>-<number>)
 			datagen : keras.preprocessing.image.ImageDataGenerator
 				Data augmentation method image data generator
 			datagen_test : keras.preprocessing.image.ImageDataGenerator
@@ -506,8 +504,9 @@ class Evaluator:
 		keras_learning = self.get_learning(learning_phenotype)
 		batch_size = int(keras_learning['batch_size'])
 
-		if load_prev_weights and os.path.exists(parent_weights_path.replace('.hdf5', '.h5')):
-			model = keras.models.load_model(parent_weights_path.replace('.hdf5', '.h5'))
+		weights_save_path = save_path + 'individual-' + individual_name + '.h5'
+		if load_prev_weights and os.path.exists(weights_save_path):
+			model = keras.models.load_model(weights_save_path)
 			initial_epoch = 10  #TODO
 		else:
 			initial_epoch = 0
@@ -521,12 +520,12 @@ class Evaluator:
 
 		model_layers = len(model.get_config()['layers'])
 		trainable_params_count = count_params(model.trainable_weights)
-		non_trainable_params_count = count_params(model.non_trainable_weights)
-		params_count = trainable_params_count + non_trainable_params_count
+		non_trainable_parameters = count_params(model.non_trainable_weights)
+		trainable_parameters = trainable_params_count + non_trainable_parameters
 
-		print(f"Gen{gen:3d}#{idx} layers: {len(keras_layers):2d}/{model_layers:2d} params: {params_count}/{non_trainable_params_count}", end="")
+		print(f"{individual_name} layers: {len(keras_layers):2d}/{model_layers:2d} params: {trainable_parameters}/{non_trainable_parameters}", end="")
 
-		model_train_start_time = time()
+		training_start_time = time()
 
 		# early stopping
 		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=int(keras_learning['early_stop']), restore_best_weights=True, verbose=LOG_EARLY_STOPPING)
@@ -564,10 +563,10 @@ class Evaluator:
 							  initial_epoch=initial_epoch,
 							  verbose=LOG_MODEL_TRAINING)
 
-		model_train_time = time() - model_train_start_time
+		training_time = time() - training_start_time
 
 		# save final model to file
-		model.save(weights_save_path.replace('.hdf5', '.h5'))
+		model.save(weights_save_path)
 
 		# measure test performance
 		model_test_start_time = time()
@@ -577,21 +576,21 @@ class Evaluator:
 			y_pred_test = model.predict_generator(datagen_test.flow(self.dataset['evo_x_test'], batch_size=PREDICT_BATCH_SIZE, shuffle=False), steps=self.dataset['evo_x_test'].shape[0] // 100, verbose=LOG_MODEL_TRAINING)
 		accuracy_test = self.fitness_metric(self.dataset['evo_y_test'], y_pred_test)
 		model_test_time = time() - model_test_start_time
-		inference_time = 1000000.0 * model_test_time / len(y_pred_test)
+		million_inferences_time = 1000000.0 * model_test_time / len(y_pred_test)
 
 		training_epochs = len(score.epoch)
 		if training_epochs:
 			accuracy = score.history['accuracy'][-1]
 			val_accuracy = score.history['val_accuracy'][-1]
 			loss = score.history['loss'][-1]
-			print(f" ep:{training_epochs:2d} inf: {inference_time:0.2f} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {model_train_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f})")
+			print(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f})")
 		else:
 			print(f" *** no training epoch completed ***")
 
 		score.history['training_epochs'] = training_epochs
-		score.history['training_time'] = model_train_time
-		score.history['inference_time'] = inference_time
-		score.history['trainable_parameters'] = params_count
+		score.history['training_time'] = training_time
+		score.history['million_inferences_time'] = million_inferences_time
+		score.history['trainable_parameters'] = trainable_parameters
 		score.history['accuracy_test'] = accuracy_test
 
 		keras.backend.clear_session()
@@ -615,9 +614,9 @@ class Evaluator:
 
 		model = keras.models.load_model(model_path)
 		if datagen_test is None:
-			y_pred = model.predict(self.dataset['x_test'])
+			y_pred = model.predict(self.dataset['x_test'], verbose=2)
 		else:
-			y_pred = model.predict_generator(datagen_test.flow(self.dataset['x_test'], shuffle=False, batch_size=1))
+			y_pred = model.predict_generator(datagen_test.flow(self.dataset['x_test'], shuffle=False), verbose=2)
 
 		accuracy = self.fitness_metric(self.dataset['y_test'], y_pred)
 		return accuracy
@@ -772,14 +771,12 @@ class Individual:
 			fitness value of the candidate solution
 		metrics : dict
 			training metrics
-		num_epochs : int
+		training_epochs : int
 			number of performed epochs during training
 		trainable_parameters : int
 			number of trainable parameters of the network
 		time : float
 			network training time
-		current_time : float
-			performed network training time
 		train_time : float
 			maximum training time
 		id : int
@@ -819,13 +816,12 @@ class Individual:
 		self.phenotype = None
 		self.fitness = None
 		self.metrics = None
-		self.num_epochs = 0
+		self.training_epochs = 0
 		self.trainable_parameters = None
 		self.training_epochs = 0
 		self.training_time = 0
-		self.inference_time = 0
+		self.million_inferences_time = 0
 		self.time = None
-		self.current_time = 0
 		self.train_time = 0
 		self.id = ind_id
 
@@ -932,7 +928,7 @@ class Individual:
 		self.phenotype = phenotype.rstrip().lstrip()
 		return self.phenotype
 
-	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, max_training_time, max_training_epochs, gen, idx, weights_save_path, parent_weights_path=''):  # pragma: no cover
+	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, save_path, gen, idx, max_training_time, max_training_epochs):  # pragma: no cover
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -946,14 +942,12 @@ class Individual:
 				Data augmentation method image data generator
 			datagen_test : keras.preprocessing.image.ImageDataGenerator
 				Image data generator without augmentation
+			save_path : str
+				path where statistics and weights are saved
 			gen : int
 				Generation count
 			idx : int
 				count of individual in generation
-			weights_save_path : str
-				path where to save the model weights after training
-			parent_weights_path : str
-				path to the weights of the previous training
 
 			Returns
 			-------
@@ -961,17 +955,14 @@ class Individual:
 		"""
 
 		phenotype = self.decode(grammar)
-		start = time()
 
-		load_prev_weights = True
-		if self.current_time == 0:
-			load_prev_weights = False
+		load_prev_weights = False
 
-		# train_time = self.train_time - self.current_time
+		self.name = f"{gen}-{idx}"
 
 		metrics = None
 		try:
-			metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path, max_training_time, max_training_epochs, gen, idx, datagen, datagen_test)
+			metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, self.name, datagen, datagen_test)
 		except tf.errors.ResourceExhaustedError as e:
 			keras.backend.clear_session()
 			return None
@@ -980,42 +971,19 @@ class Individual:
 			return None
 
 		if metrics is not None:
-			# if 'val_accuracy' in metrics:
-			#    if type(metrics['val_accuracy']) is list:
-			#        metrics['val_accuracy'] = [i for i in metrics['val_accuracy']]
-			#    else:
-			#        metrics['val_accuracy'] = [i.item() for i in metrics['val_accuracy']]
-			# if 'loss' in metrics:
-			#    if type(metrics['loss']) is list:
-			#        metrics['loss'] = [i for i in metrics['loss']]
-			#    else:
-			#        metrics['loss'] = [i.item() for i in metrics['loss']]
-			# if 'accuracy' in metrics:
-			#    if type(metrics['accuracy']) is list:
-			#        metrics['accuracy'] = [i for i in metrics['accuracy']]
-			#    else:
-			#        metrics['accuracy'] = [i.item() for i in metrics['accuracy']]
 			self.metrics = metrics
 			if 'accuracy_test' in metrics:
 				self.fitness = metrics['accuracy_test']
 				self.accuracy_test = metrics['accuracy_test']
-			if 'val_accuracy' in metrics:
-				self.num_epochs += len(metrics['val_accuracy'])
-			else:
-				self.num_epochs += 1
 			self.trainable_parameters = metrics['trainable_parameters']
-			self.training_epochs = metrics['training_epochs']
-			self.training_time = metrics['training_time']
-			self.inference_time = metrics['inference_time']
-
-			self.current_time += (self.train_time - self.current_time)
+			self.training_epochs += metrics['training_epochs']
+			self.training_time += metrics['training_time']
+			self.million_inferences_time = metrics['million_inferences_time']
 		else:
 			self.metrics = None
 			self.fitness = -1
-			self.num_epochs = 0
+			self.accuracy_test = -1
 			self.trainable_parameters = -1
-			self.current_time = 0
-
-		self.time = time() - start
+			self.million_inferences_time = -1
 
 		return self.fitness

@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-
+import numpy as np
 from fast_denser.utilities.datasets.svhn import load_svhn
 from fast_denser.utilities.datasets.cifar import load_cifar
 from fast_denser.utilities.datasets.tiny_imagenet import load_tiny_imagenet
@@ -43,7 +43,6 @@ def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10):
 		x_test : np.array
 			testing labels
 
-
 		Returns
 		-------
 		dataset : dict
@@ -55,7 +54,7 @@ def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10):
 					- evo_x_test and evo_y_test : testing x, and y instances
 												  used for fitness assessment
 				After evolution:
-					- x_test and y_test : for measusuring the effectiveness of the model                                          on unseen data
+					- x_test and y_test : for measuring the effectiveness of the model on unseen data
 	"""
 
 	x_train = x_train.astype('float32') / 255.0
@@ -75,8 +74,8 @@ def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10):
 	#     evo_x_val, evo_x_test = x_test[train_index], x_test[test_index]
 	#     evo_y_val, evo_y_test = y_test[train_index], y_test[test_index]
 
-	evo_x_train, x_val, evo_y_train, y_val = train_test_split(x_train, y_train, test_size=7000, stratify=y_train)
-	evo_x_val, evo_x_test, evo_y_val, evo_y_test = train_test_split(x_val, y_val, test_size=3500, stratify=y_val)
+	evo_x_train, x_val, evo_y_train, y_val = train_test_split(x_train, y_train, test_size=7000, shuffle=True, stratify=y_train)
+	evo_x_val, evo_x_test, evo_y_val, evo_y_test = train_test_split(x_val, y_val, test_size=3500, shuffle=True, stratify=y_val)
 
 	# evo_y_train = keras.utils.to_categorical(evo_y_train, n_classes)
 	# evo_y_val = keras.utils.to_categorical(evo_y_val, n_classes

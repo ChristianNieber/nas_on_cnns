@@ -28,9 +28,11 @@ from pathlib import Path
 from keras.preprocessing.image import ImageDataGenerator
 from fast_denser.utilities.data_augmentation import augmentation
 
+LOG_MUTATION = True						# log mutations
+
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-def save_pop(population, save_path, gen):
+def save_population_statistics(population, save_path, gen):
 	"""
 		Save the current population statistics in json.
 		For each individual:
@@ -39,9 +41,9 @@ def save_pop(population, save_path, gen):
 			.fitness: fitness of the individual
 			.metrics: other evaluation metrics (e.g., loss, accuracy)
 			.trainable_parameters: number of network trainable parameters
-			.num_epochs: number of performed training epochs
-			.time: time (sec) the network took to perform num_epochs
-			.train_time: maximum time (sec) that the network is allowed to train for
+			.training_epochs: number of performed training epochs
+			.training_time: time (sec) the network took to perform training_epochs
+			.million_inferences_time: measured time per million inferences
 
 		Parameters
 		----------
@@ -62,9 +64,9 @@ def save_pop(population, save_path, gen):
 			'fitness': ind.fitness,
 			'metrics': ind.metrics,
 			'trainable_parameters': ind.trainable_parameters,
-			'num_epochs': ind.num_epochs,
-			'time': ind.time,
-			'train_time': ind.train_time})
+			'training_epochs' : ind.training_epochs,
+			'training_time' : ind.training_time,
+			'million_inferences_time' : ind.million_inferences_time})
 
 	with open(Path('%s/gen_%d.csv' % (save_path, gen)), 'w') as f_json:
 		f_json.write(json.dumps(json_dump, indent=4))
@@ -100,10 +102,8 @@ def pickle_population(population, parent, save_path):
 		----------
 		population : list
 			list of Individual instances
-
 		parent : Individual
 			fittest individual that will seed the next generation
-
 		save_path: str
 			path to the json file
 	"""
@@ -129,10 +129,8 @@ def get_total_epochs(save_path, last_gen):
 		----------
 		save_path: str
 			path where the objects needed to resume evolution are stored.
-
 		last_gen : int
 			count the number of performed epochs until the last_gen generation
-
 
 		Returns
 		-------
@@ -144,8 +142,8 @@ def get_total_epochs(save_path, last_gen):
 	for gen in range(0, last_gen + 1):
 		with open(Path('%s/gen_%d.csv' % (save_path, gen))) as json_file:
 			j = json.load(json_file)
-			num_epochs = [elm['num_epochs'] for elm in j]
-			total_epochs += sum(num_epochs)
+			training_epochs = [elm['training_epochs'] for elm in j]
+			total_epochs += sum(training_epochs)
 
 	return total_epochs
 
@@ -214,7 +212,7 @@ def unpickle_population(save_path):
 		return None
 
 
-def select_fittest(population, population_fits, grammar, cnn_eval, datagen, datagen_test, gen, save_path, default_train_time):  # pragma: no cover
+def select_fittest(population, population_fits):  # pragma: no cover
 	"""
 		Select the parent to seed the next generation.
 
@@ -224,21 +222,6 @@ def select_fittest(population, population_fits, grammar, cnn_eval, datagen, data
 			list of instances of Individual
 		population_fits : list
 			ordered list of fitnesses of the population of individuals
-		grammar : Grammar
-			Grammar instance, used to perform the initialisation and the genotype
-			to phenotype mapping
-		cnn_eval : Evaluator
-			Evaluator instance used to train the networks
-		datagen : keras.preprocessing.image.ImageDataGenerator
-			Data augmentation method image data generator for the training data
-		datagen_test : keras.preprocessing.image.ImageDataGenerator
-			Data augmentation method image data generator for the validation and test data
-		gen : int
-			current generation of the ES
-		save_path: str
-			path where the ojects needed to resume evolution are stored.
-		default_train_time : int
-			default training time
 
 		Returns
 		-------
@@ -246,6 +229,7 @@ def select_fittest(population, population_fits, grammar, cnn_eval, datagen, data
 			individual that seeds the next generation
 	"""
 
+	# TODO output
 	# Get best individual just according to fitness
 	idx_max = np.argmax(population_fits)
 	parent = population[idx_max]
@@ -254,7 +238,7 @@ def select_fittest(population, population_fits, grammar, cnn_eval, datagen, data
 
 def mutation_dsge(layer, grammar):
 	"""
-		DSGE mutations (check DSGE for futher details)
+		DSGE mutations (check DSGE for further details)
 
 
 		Parameters
@@ -342,8 +326,8 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
 
 	# in case the individual is mutated in any of the structural parameters
 	# the training time is reset
-	ind.current_time = 0
-	ind.num_epochs = 0
+	ind.training_time = 0
+	ind.training_epochs = 0
 
 	for module in ind.modules:
 
@@ -553,8 +537,8 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 			# set initial population variables and evaluate population
 			population_fits = []
 			for idx, ind in enumerate(population):
-				ind.current_time = 0
-				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, gen, idx, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, '%s/best_%d_%d.hdf5' % (save_path, gen, idx)))
+				ind.training_time = 0
+				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, gen, idx, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
 				ind.id = idx
 
 		else:
@@ -565,35 +549,31 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 			population = [parent] + offspring
 
 			# set elite variables to re-evaluation
-			population[0].current_time = 0
-			population[0].num_epochs = 0
+			population[0].training_time = 0
+			population[0].training_epochs = 0
 			parent_id = parent.id
 
 			# evaluate population
 			population_fits = []
 			for idx, ind in enumerate(population):
-				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, gen, idx, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, '%s/best_%d_%d.hdf5' % (save_path, gen, idx), '%s/best_%d_%d.hdf5' % (save_path, gen - 1, parent_id)))
+				population_fits.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, gen, idx, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
 				ind.id = idx
 
 		# select parent
-		# TODO output, parameters
-		parent = select_fittest(population, population_fits, grammar, cnn_eval, data_generator, data_generator_test, gen, save_path, 60)
+		parent = select_fittest(population, population_fits)
 
 		# remove temporary files to free disk space
 		if gen > 1:
 			for x in range(len(population)):
-				if os.path.isfile(Path(save_path, 'best_%d_%d.hdf5' % (gen - 2, x))):
-					os.remove(Path(save_path, 'best_%d_%d.hdf5' % (gen - 2, x)))
-					os.remove(Path(save_path, 'best_%d_%d.h5' % (gen - 2, x)))
+				if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))):
+						os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
 
 		# update best individual
 		if best_fitness is None or parent.fitness > best_fitness:
 			best_fitness = parent.fitness
 
-			if os.path.isfile(Path(save_path, 'best_%d_%d.hdf5' % (gen, parent.id))):
-				copyfile(Path(save_path, 'best_%d_%d.hdf5' % (gen, parent.id)), Path(save_path, 'best.hdf5'))
-			if os.path.isfile(Path(save_path, 'best_%d_%d.h5' % (gen, parent.id))):
-				copyfile(Path(save_path, 'best_%d_%d.h5' % (gen, parent.id)), Path(save_path, 'best.h5'))
+			if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen, parent.id))):
+				copyfile(Path(save_path, 'individual-%d-%d.h5' % (gen, parent.id)), Path(save_path, 'best.h5'))
 
 			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -602,7 +582,7 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		print('[%d] Best overall fitness: %f' % (run, best_fitness))
 
 		# save population
-		save_pop(population, save_path, gen)
+		save_population_statistics(population, save_path, gen)
 		pickle_population(population, parent, save_path)
 
 	# compute testing performance of the fittest network

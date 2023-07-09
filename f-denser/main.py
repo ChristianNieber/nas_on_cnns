@@ -12,15 +12,12 @@ with open('D:/experiments/run_0/evaluator.pkl', 'rb') as f_data:
     y_test = evaluator.dataset['y_test']
 
 model = load_model('D:/experiments/run_0/best.h5')
-datagen_test = ImageDataGenerator(rescale=1/255.0)
+datagen_test = ImageDataGenerator()
 
-model.summary(line_length=120)
+# model.summary(line_length=120)
 # visualkeras.layered_view(model, legend=True)
 
 # TODO
-# - test retraining after load
-# - new random values?
-# - check dataset usage
 # - mutations output
 # - activation functions
 # - mutation test code
@@ -34,6 +31,8 @@ model.summary(line_length=120)
 
 # Later
 # -----
+# - test variance of accuracy
+# - test retraining after load
 # - learning code
 # - elu etc.
 # - Comparison with GE

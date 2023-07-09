@@ -17,7 +17,7 @@
     "max_epochs": 1000,
 
     //place where the experiment is saved
-    "save_path": "D:/experiments/",
+    "save_path": "D:/experiments",
 
     // save models
     "resume": false,
@@ -66,9 +66,9 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 20,
+    "max_training_time": 10,
     //maximum training epochs for each network
-    "max_training_epochs": 30,
+    "max_training_epochs": 5,
 
     //fitness assignment metric
     "fitness_metric": "accuracy"
