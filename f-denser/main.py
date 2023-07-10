@@ -18,19 +18,23 @@ datagen_test = ImageDataGenerator()
 # visualkeras.layered_view(model, legend=True)
 
 # TODO
-# - mutations output
-# - activation functions
-# - mutation test code
-# - crossover test code
+# - better phenotypes?
+# - layer mutation
+# - learning optimizers
 # - simplify ga/ge?
+# - record mutations
+# - activation functions
+# - final test for new best
 # - penalty function for large networks
 # - test keras error
+# - evaluation K-Fold validation / random number validation
 # --> optimizer test run
 
 # - real time plots & visualisation
 
 # Later
 # -----
+# - crossover?
 # - test variance of accuracy
 # - test retraining after load
 # - learning code
@@ -48,3 +52,4 @@ datagen_test = ImageDataGenerator()
 # - lenet test code
 # - better configuration variables
 # - reduced numeric parameters groups to single value for simplicity
+# - better metrics

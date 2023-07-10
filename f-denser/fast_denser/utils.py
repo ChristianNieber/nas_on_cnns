@@ -1,4 +1,5 @@
 # Copyright 2019 Filipe Assuncao
+# Restructured 2023 Christian Nieber
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -31,8 +32,8 @@ PREDICT_BATCH_SIZE = 1024  # batch size used for model.predict()
 
 DEBUG = True
 LOG_MODEL_SUMMARY = False				# keras summary of each evaluated model
-LOG_MODEL_TRAINING = 0	 				# training progress: 1 for progress bar, 2 for one line per epoch
-LOG_MODEL_SAVE = True					# log saving after each epoch
+LOG_MODEL_TRAINING = 0					# training progress: 1 for progress bar, 2 for one line per epoch
+LOG_MODEL_SAVE = True					# log for saving after each epoch
 LOG_TIMED_STOPPING = False				# log stopping by timer
 LOG_EARLY_STOPPING = True				# log early stopping
 SAVE_MODEL_AFTER_EACH_EPOCH = False		# monitor and save model after each epoch
@@ -492,6 +493,8 @@ class Evaluator:
 				training data: loss and accuracy
 		"""
 
+		# Mixed precision slows down LeNet training by 50%. Is this because it's too small?
+		# tf.keras.mixed_precision.set_global_policy("mixed_float16")
 		gpu_devices = tf.config.experimental.list_physical_devices('GPU')
 		tf.config.experimental.set_memory_growth(gpu_devices[0], True)
 
@@ -512,7 +515,6 @@ class Evaluator:
 			initial_epoch = 0
 			model = self.assemble_network(keras_layers, input_size)
 			opt = self.assemble_optimiser(keras_learning)
-
 			model.compile(optimizer=opt,
 						  loss='sparse_categorical_crossentropy',
 						  metrics=['accuracy'])
@@ -523,7 +525,7 @@ class Evaluator:
 		non_trainable_parameters = count_params(model.non_trainable_weights)
 		trainable_parameters = trainable_params_count + non_trainable_parameters
 
-		print(f"{individual_name} layers: {len(keras_layers):2d}/{model_layers:2d} params: {trainable_parameters}/{non_trainable_parameters}", end="")
+		print(f"{individual_name} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}", end="")
 
 		training_start_time = time()
 
@@ -576,7 +578,7 @@ class Evaluator:
 			y_pred_test = model.predict(self.dataset['evo_x_test'], batch_size=PREDICT_BATCH_SIZE, verbose=0)
 		else:
 			y_pred_test = model.predict_generator(datagen_test.flow(self.dataset['evo_x_test'], batch_size=PREDICT_BATCH_SIZE, shuffle=False), steps=self.dataset['evo_x_test'].shape[0] // 100, verbose=LOG_MODEL_TRAINING)
-		accuracy_test = self.fitness_metric(self.dataset['evo_y_test'], y_pred_test)
+		test_accuracy = self.fitness_metric(self.dataset['evo_y_test'], y_pred_test)
 		model_test_time = time() - model_test_start_time
 		million_inferences_time = 1000000.0 * model_test_time / len(y_pred_test)
 
@@ -585,7 +587,7 @@ class Evaluator:
 			accuracy = score.history['accuracy'][-1]
 			val_accuracy = score.history['val_accuracy'][-1]
 			loss = score.history['loss'][-1]
-			print(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {accuracy_test:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f},s{model_save_time:0.2f})")
+			print(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {test_accuracy:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f},s{model_save_time:0.2f})")
 		else:
 			print(f" *** no training epoch completed ***")
 
@@ -593,13 +595,13 @@ class Evaluator:
 		score.history['training_time'] = training_time
 		score.history['million_inferences_time'] = million_inferences_time
 		score.history['trainable_parameters'] = trainable_parameters
-		score.history['accuracy_test'] = accuracy_test
+		score.history['test_accuracy'] = test_accuracy
 
 		keras.backend.clear_session()
 
 		return score.history
 
-	def testing_performance(self, model_path, datagen_test):  # pragma: no cover
+	def test_with_final_test_dataset(self, model_path, datagen_test):  # pragma: no cover
 		"""
 			Compute testing performance of the model
 
@@ -615,12 +617,14 @@ class Evaluator:
 		"""
 
 		model = keras.models.load_model(model_path)
+		model_test_start_time = time()
 		if datagen_test is None:
-			y_pred = model.predict(self.dataset['x_test'], verbose=2)
+			y_pred = model.predict(self.dataset['x_test'], verbose=LOG_MODEL_TRAINING)
 		else:
-			y_pred = model.predict_generator(datagen_test.flow(self.dataset['x_test'], shuffle=False), verbose=2)
-
+			y_pred = model.predict_generator(datagen_test.flow(self.dataset['x_test'], shuffle=False), verbose=LOG_MODEL_TRAINING)
 		accuracy = self.fitness_metric(self.dataset['y_test'], y_pred)
+		final_test_time = time() - model_test_start_time
+		final_million_inferences_time = 1000000.0 * final_test_time / len(y_pred)
 		return accuracy
 
 
@@ -709,7 +713,7 @@ class Module:
 				if sample_size > 0:
 					self.connections[layer_idx] += random.sample(connection_possibilities, sample_size)
 
-	def initialise_module_as_lenet(self, grammar, reuse, init_max):
+	def initialise_module_as_lenet(self, grammar):
 		"""
 			Creates a pre-defined LeNet module
 
@@ -755,11 +759,11 @@ class Individual:
 		Attributes
 		----------
 		network_structure : list
-			ordered list of tuples formated as follows
+			ordered list of tuples formatted as follows
 			[(non-terminal, min_expansions, max_expansions), ...]
 		output_rule : str
 			output non-terminal symbol
-		macro_rules : list
+		learning_rule : list
 			list of non-terminals (str) with the marco rules (e.g., learning)
 		modules : list
 			list of Modules (genotype) of the layers
@@ -771,14 +775,10 @@ class Individual:
 			phenotype of the candidate solution
 		fitness : float
 			fitness value of the candidate solution
-		metrics : dict
-			training metrics
 		training_epochs : int
 			number of performed epochs during training
 		trainable_parameters : int
 			number of trainable parameters of the network
-		time : float
-			network training time
 		train_time : float
 			maximum training time
 		name : str
@@ -790,20 +790,20 @@ class Individual:
 				Randomly creates a candidate solution
 			decode(grammar)
 				Maps the genotype to the phenotype
-			evaluate_individual(grammar, cnn_eval, weights_save_path, parent_weights_path='')
+			evaluate_individual()
 				Performs the evaluation of a candidate solution
 	"""
 
-	def __init__(self, network_structure, macro_rules, output_rule, gen, idx):
+	def __init__(self, network_structure, learning_rule, output_rule, gen, idx):
 		"""
 			Parameters
 			----------
 			network_structure : list
 				ordered list of tuples formatted as follows
 				[(non-terminal, min_expansions, max_expansions), ...]
-			macro_rules : list
-				list of non-terminals (str) with the marco rules (e.g., learning)
-		   output_rule : str
+			learning_rule : list
+				list of non-terminals (str) with the learning_rule
+			output_rule : str
 				output non-terminal symbol
 			gen : int
 				generation count
@@ -813,25 +813,51 @@ class Individual:
 
 		self.network_structure = network_structure
 		self.output_rule = output_rule
-		self.macro_rules = macro_rules
+		self.learning_rule = learning_rule
 		self.modules = []
 		self.output = None
 		self.macro = []
 		self.phenotype = None
-		self.fitness = None
-		self.metrics = None
-		self.training_epochs = 0
-		self.trainable_parameters = None
-		self.training_epochs = 0
-		self.training_time = 0
-		self.million_inferences_time = 0
-		self.time = None
-		self.train_time = 0
 		self.name = f"{gen}-{idx}"
+		self.parent = None
+		self.reset_training()
+
+	def reset_training(self):
+		"""reset all values computed during training"""
+		self.test_accuracy = None
+		self.trainable_parameters = None
+		self.training_time = 0
+		self.training_epochs = 0
+		self.final_test_accuracy = None
+		self.million_inferences_time = None
+		self.fitness = None
+		self.training_complete = False
+		self.metrics_accuracy = None
+		self.metrics_loss = None
+		self.metrics_val_accuracy = None
+		self.metrics_val_loss = None
+		self.weights_save_path = None
+
+	def json_statistics(self):
+		""" return dictionary of statistics for individual to write to json file"""
+		return {
+			'name': self.name,
+			'test_accuracy': self.test_accuracy,
+			'fitness': self.fitness,
+			'trainable_parameters': self.trainable_parameters,
+			'training_epochs': self.training_epochs,
+			'training_time': self.training_time,
+			'million_inferences_time': self.million_inferences_time,
+			'training_complete': self.training_complete,
+			'phenotype': self.phenotype,
+			'metrics_accuracy': self.metrics_accuracy,
+			'metrics_loss': self.metrics_loss,
+			'metrics_val_accuracy': self.metrics_val_accuracy,
+			'metrics_val_loss': self.metrics_val_loss,
+		}
 
 	def initialise(self, grammar, levels_back, reuse, init_max):
-		"""
-			Randomly creates a candidate solution
+		"""Randomly creates a candidate solution
 
 			Parameters
 			----------
@@ -858,11 +884,11 @@ class Individual:
 		self.output = grammar.initialise(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		for rule in self.macro_rules:
+		for rule in self.learning_rule:
 			self.macro.append(grammar.initialise(rule))
 		return self
 
-	def initialise_as_lenet(self, grammar, levels_back, reuse, init_max):
+	def initialise_as_lenet(self, grammar):
 		"""
 			Create a pre-set Lenet Individual
 
@@ -870,8 +896,6 @@ class Individual:
 			----------
 			grammar : Grammar
 				grammar instance that stores the expansion rules
-			levels_back : dict
-				number of previous layers a given layer can receive as input
 			reuse : float
 				likelihood of reusing an existing layer
 
@@ -882,23 +906,25 @@ class Individual:
 		"""
 
 		new_module = Module('features', 1, 1, 1)
-		new_module.initialise_module_as_lenet(grammar, reuse, init_max)
+		new_module.initialise_module_as_lenet(grammar)
 		self.modules.append(new_module)
 
 		new_module = Module('classification', 1, 1, 1)
-		new_module.initialise_module_as_lenet(grammar, reuse, init_max)
+		new_module.initialise_module_as_lenet(grammar)
 		self.modules.append(new_module)
 
 		# Initialise output
 		self.output = grammar.initialise(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro = [
-			{'learning': [{'ge': 0, 'ga': {'batch_size': ('int', 50.0, 2048.0, 1024)}}],
-			 'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
-			 'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
-
+		self.macro = [{'learning': [{'ge': 0, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
+						'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
+						'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
 		return self
+
+	def log_mutation(self, str):
+		"""log a mutation"""
+		print(f"mutate {self.name}({self.parent}): {str}")
 
 	def decode(self, grammar):
 		"""
@@ -926,7 +952,7 @@ class Individual:
 
 		phenotype += ' ' + grammar.decode(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
 
-		for rule_idx, macro_rule in enumerate(self.macro_rules):
+		for rule_idx, macro_rule in enumerate(self.learning_rule):
 			phenotype += ' ' + grammar.decode(macro_rule, self.macro[rule_idx])
 
 		self.phenotype = phenotype.rstrip().lstrip()
@@ -954,34 +980,38 @@ class Individual:
 			fitness : float
 		"""
 
-		phenotype = self.decode(grammar)
+		if not self.training_complete:
+			phenotype = self.decode(grammar)
 
-		load_prev_weights = False
+			load_prev_weights = False
 
-		metrics = None
-		try:
-			metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, self.name, datagen, datagen_test)
-		except tf.errors.ResourceExhaustedError as e:
-			keras.backend.clear_session()
-			return None
-		except TypeError as e2:
-			keras.backend.clear_session()
-			return None
+			metrics = None
+			try:
+				metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, self.name, datagen, datagen_test)
+			except tf.errors.ResourceExhaustedError as e:
+				keras.backend.clear_session()
+				return None
+			except TypeError as e2:
+				keras.backend.clear_session()
+				return None
 
-		if metrics is not None:
-			self.metrics = metrics
-			if 'accuracy_test' in metrics:
-				self.fitness = metrics['accuracy_test']
-				self.accuracy_test = metrics['accuracy_test']
-			self.trainable_parameters = metrics['trainable_parameters']
-			self.training_epochs += metrics['training_epochs']
-			self.training_time += metrics['training_time']
-			self.million_inferences_time = metrics['million_inferences_time']
-		else:
-			self.metrics = None
-			self.fitness = -1
-			self.accuracy_test = -1
-			self.trainable_parameters = -1
-			self.million_inferences_time = -1
+			if metrics is not None:
+				self.metrics_accuracy = metrics['accuracy']
+				self.metrics_loss = metrics['loss']
+				self.metrics_val_accuracy = metrics['val_accuracy']
+				self.metrics_val_loss = metrics['val_loss']
+				if 'test_accuracy' in metrics:
+					self.fitness = metrics['test_accuracy']
+					self.test_accuracy = metrics['test_accuracy']
+				self.trainable_parameters = metrics['trainable_parameters']
+				self.training_epochs += metrics['training_epochs']
+				self.training_time += metrics['training_time']
+				self.million_inferences_time = metrics['million_inferences_time']
+			else:
+				self.fitness = -1
+				self.test_accuracy = -1
+				self.trainable_parameters = -1
+				self.million_inferences_time = -1
 
+			self.training_complete = True
 		return self.fitness

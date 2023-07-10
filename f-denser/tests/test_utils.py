@@ -39,10 +39,8 @@ class Test(unittest.TestCase):
 
 		network_structure = [["features", 1, 30], ["classification", 1, 10]],
 		grammar = Grammar('tests/utilities/lenet.grammar')
-		levels_back = {"features": 1, "classification": 1}
-		network_structure_init = {"features":[2]}
 
-		ind = Individual(network_structure, [], 'output', 1, 0).initialise_as_lenet(grammar, levels_back, 0, network_structure_init)
+		ind = Individual(network_structure, [], 'output', 1, 0).initialise_as_lenet(grammar)
 
 		return ind, grammar
 
@@ -152,24 +150,24 @@ class Test(unittest.TestCase):
 		random.seed(0)
 		ind, grammar = self.create_individual()
 		
-		num_layers_before_mutation = len(ind.modules[0].layers)
+		for test_number in range(0, 3):
+			num_layers_before_mutation = len(ind.modules[0].layers)
+			new_ind = mutation(ind, grammar, 0, 0, 0, 0, 0, 1, 0)
 
-		new_ind = mutation(ind, grammar, 0, 0, 0, 0, 0, 1, 0)
+			self.assertEqual(self.count_layers(ind.modules), self.count_layers(new_ind.modules), "Error: change ge parameter")
 
-		self.assertEqual(self.count_layers(ind.modules), self.count_layers(new_ind.modules), "Error: change ge parameter")
-
-		count_ref = list()
-		count_differences = 0
-		total_dif = 0
-		for module_idx in range(len(ind.modules)):
-			for layer_idx in range(len(ind.modules[module_idx].layers)):
-				total_dif += 1
-				if ind.modules[module_idx].layers[layer_idx] != new_ind.modules[module_idx].layers[layer_idx]:
-					if id(ind.modules[module_idx].layers[layer_idx]) not in count_ref:
-						count_ref.append(id(ind.modules[module_idx].layers[layer_idx]))
-						count_differences += 1
-
-		self.assertEqual(total_dif, count_differences, "Error: change ge parameter")
+			count_ref = list()
+			count_differences = 0
+			total_dif = 0
+			for module_idx in range(len(ind.modules)):
+				for layer_idx in range(len(ind.modules[module_idx].layers)):
+					total_dif += 1
+					if ind.modules[module_idx].layers[layer_idx] != new_ind.modules[module_idx].layers[layer_idx]:
+						if id(ind.modules[module_idx].layers[layer_idx]) not in count_ref:
+							count_ref.append(id(ind.modules[module_idx].layers[layer_idx]))
+							count_differences += 1
+			self.assertEqual(total_dif, count_differences, f"Error: change ge parameter {test_number=}")
+			ind = new_ind
 
 	def test_keras_mapping(self):
 		from fast_denser.utils import Evaluator

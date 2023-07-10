@@ -1,4 +1,5 @@
 # Copyright 2019 Filipe Assuncao
+# Restructured 2023 Christian Nieber
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -28,8 +29,6 @@ from pathlib import Path
 from keras.preprocessing.image import ImageDataGenerator
 from fast_denser.utilities.data_augmentation import augmentation
 
-LOG_MUTATION = True						# log mutations
-
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def save_population_statistics(population, save_path, gen):
@@ -58,15 +57,7 @@ def save_population_statistics(population, save_path, gen):
 	json_dump = []
 
 	for ind in population:
-		json_dump.append({
-			'name': ind.name,
-			'phenotype': ind.phenotype,
-			'fitness': ind.fitness,
-			'metrics': ind.metrics,
-			'trainable_parameters': ind.trainable_parameters,
-			'training_epochs' : ind.training_epochs,
-			'training_time' : ind.training_time,
-			'million_inferences_time' : ind.million_inferences_time})
+		json_dump.append(ind.json_statistics())
 
 	with open(Path('%s/gen_%d.csv' % (save_path, gen)), 'w') as f_json:
 		f_json.write(json.dumps(json_dump, indent=4))
@@ -236,16 +227,17 @@ def select_fittest(population, population_fits):  # pragma: no cover
 	return deepcopy(parent)
 
 
-def mutation_dsge(layer, grammar):
+def mutation_dsge(ind, layer, grammar):
 	"""
 		DSGE mutations (check DSGE for further details)
 
 
 		Parameters
 		----------
+		ind : Individual
+			Individual to mutate
 		layer : dict
 			layer to be mutated (DSGE genotype)
-
 		grammar : Grammar
 			Grammar instance, used to perform the initialisation and the genotype
 			to phenotype mapping
@@ -254,6 +246,7 @@ def mutation_dsge(layer, grammar):
 	nt_keys = sorted(list(layer.keys()))
 	nt_key = random.choice(nt_keys)
 	nt_idx = random.randint(0, len(layer[nt_key]) - 1)
+	assert nt_idx == 0
 
 	sge_possibilities = []
 	random_possibilities = []
@@ -272,33 +265,44 @@ def mutation_dsge(layer, grammar):
 			var_type, min_val, max_val, value = layer[nt_key][nt_idx]['ga'][var_name]
 
 			if var_type == 'int':
-				new_val = random.randint(min_val, max_val)
+				while True:
+					new_val = random.randint(min_val, max_val)
+					if new_val != value or min_val == max_val:
+						break
+				ind.log_mutation(f"int '{nt_key}'/'{var_name}' {value} -> {new_val}")
 			elif var_type == 'float':
 				new_val = value + random.gauss(0, 0.15)
 				new_val = np.clip(new_val, min_val, max_val)
+				ind.log_mutation(f"float '{nt_key}'/'{var_name}' {value} -> {new_val}")
 
-			layer[nt_key][nt_idx]['ga'][var_name] = new_val
+			layer[nt_key][nt_idx]['ga'][var_name] = (var_type, min_val, max_val, new_val)
 
 		elif mt_type == 'ge':
-			layer[nt_key][nt_idx]['ge'] = random.choice(sge_possibilities)
+			new_val = random.choice(sge_possibilities)
+			ind.log_mutation(f"ge '{nt_key}' {layer[nt_key][nt_idx]['ge']} -> {new_val}")
+			layer[nt_key][nt_idx]['ge'] = new_val
 
 		else:
 			return NotImplementedError
 
 
-def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer):
+def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer, gen = 0, idx = 0):
 	"""
 		Network mutations: add and remove layer, add and remove connections, macro structure
 
 
 		Parameters
 		----------
-		individual : Individual
+		parent : Individual
 			individual to be mutated
 
 		grammar : Grammar
 			Grammar instance, used to perform the initialisation and the genotype
-			to phenotype mapping
+			to phenotype
+		gen : int
+			Generation count
+		idx : int
+			index in generation
 		add_layer : float
 			add layer mutation rate
 		re_use_layer : float
@@ -321,25 +325,30 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
 			mutated individual
 	"""
 
-	# copy so that elite is preserved
-	ind = deepcopy(individual)
+	#deep copy parent
+	ind = deepcopy(parent)
+	ind.parent = parent.name
 
-	# in case the individual is mutated in any of the structural parameters
-	# the training time is reset
-	ind.training_time = 0
-	ind.training_epochs = 0
+	# name for new individual
+	ind.name = f"{gen}-{idx}"
+
+	# mutation resets training time
+	ind.reset_training()
 
 	for module in ind.modules:
-
 		# add-layer (duplicate or new)
 		for _ in range(random.randint(1, 2)):
 			if len(module.layers) < module.max_expansions and random.random() <= add_layer:
+				insert_pos = random.randint(0, len(module.layers))
 				if random.random() <= re_use_layer:
-					new_layer = random.choice(module.layers)
+					source_layer_index = random.randint(0, len(module.layers)-1)
+					new_layer = module.layers[source_layer_index]
+					layer_phenotype = grammar.decode(module.module, new_layer)
+					ind.log_mutation(f"copy layer {insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
 				else:
 					new_layer = grammar.initialise(module.module)
-
-				insert_pos = random.randint(0, len(module.layers))
+					layer_phenotype = grammar.decode(module.module, new_layer)
+					ind.log_mutation(f"insert layer {insert_pos}/{len(module.layers)} - {layer_phenotype}")
 
 				# fix connections
 				for _key_ in sorted(module.connections, reverse=True):
@@ -370,6 +379,8 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
 		for _ in range(random.randint(1, 2)):
 			if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
 				remove_idx = random.randint(0, len(module.layers) - 1)
+				layer_phenotype = grammar.decode(module.module, module.layers[remove_idx])
+				ind.log_mutation(f"remove layer {remove_idx}/{len(module.layers)} - {layer_phenotype}")
 				del module.layers[remove_idx]
 
 				# fix connections
@@ -389,7 +400,7 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
 		for layer_idx, layer in enumerate(module.layers):
 			# dsge mutation
 			if random.random() <= dsge_layer:
-				mutation_dsge(layer, grammar)
+				mutation_dsge(ind, layer, grammar)
 
 			# add connection
 			if layer_idx != 0 and random.random() <= add_connection:
@@ -409,7 +420,7 @@ def mutation(individual, grammar, add_layer, re_use_layer, remove_layer, add_con
 	# macro level mutation
 	for macro_idx, macro in enumerate(ind.macro):
 		if random.random() <= macro_layer:
-			mutation_dsge(macro, grammar)
+			mutation_dsge(ind, macro, grammar)
 
 	return ind
 
@@ -455,31 +466,32 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 
 	# load config file
 	config = load_config(config_file)
-	RANDOM_SEEDS = config["EVOLUTIONARY"]["random_seeds"]
-	NUMPY_SEEDS = config["EVOLUTIONARY"]["numpy_seeds"]
-	NUM_GENERATIONS = config["EVOLUTIONARY"]["num_generations"]
-	LAMBDA = config["EVOLUTIONARY"]["lambda"]
-	SAVE_PATH = config["EVOLUTIONARY"]["save_path"]
-	RESUME = config["EVOLUTIONARY"]["resume"]
-	REUSE_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["reuse_layer"]
-	ADD_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["add_layer"]
-	REMOVE_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["remove_layer"]
-	ADD_CONNECTION = config["EVOLUTIONARY"]["MUTATIONS"]["add_connection"]
-	REMOVE_CONNECTION = config["EVOLUTIONARY"]["MUTATIONS"]["remove_connection"]
-	DSGE_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["dsge_layer"]
-	MACRO_LAYER = config["EVOLUTIONARY"]["MUTATIONS"]["macro_layer"]
+	RANDOM_SEEDS = config['EVOLUTIONARY']['random_seeds']
+	NUMPY_SEEDS = config['EVOLUTIONARY']['numpy_seeds']
+	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
+	INITIAL_POUPULATION_SIZE = config['EVOLUTIONARY']['initial_population_size']
+	LAMBDA = config['EVOLUTIONARY']['lambda']
+	SAVE_PATH = config['EVOLUTIONARY']['save_path']
+	RESUME = config['EVOLUTIONARY']['resume']
+	REUSE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['reuse_layer']
+	ADD_LAYER = config['EVOLUTIONARY']['MUTATIONS']['add_layer']
+	REMOVE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['remove_layer']
+	ADD_CONNECTION = config['EVOLUTIONARY']['MUTATIONS']['add_connection']
+	REMOVE_CONNECTION = config['EVOLUTIONARY']['MUTATIONS']['remove_connection']
+	DSGE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['dsge_layer']
+	MACRO_LAYER = config['EVOLUTIONARY']['MUTATIONS']['macro_layer']
 
-	NETWORK_STRUCTURE = config["NETWORK"]["network_structure"]
-	MACRO_STRUCTURE = config["NETWORK"]["macro_structure"]
-	OUTPUT_STRUCTURE = config["NETWORK"]["output"]
-	LEVELS_BACK = config["NETWORK"]["levels_back"]
-	NETWORK_STRUCTURE_INIT = config["NETWORK"]["network_structure_init"]
+	NETWORK_STRUCTURE = config['NETWORK']['network_structure']
+	MACRO_STRUCTURE = config['NETWORK']['macro_structure']
+	OUTPUT_STRUCTURE = config['NETWORK']['output']
+	LEVELS_BACK = config['NETWORK']['levels_back']
+	NETWORK_STRUCTURE_INIT = config['NETWORK']['network_structure_init']
 
-	MAX_TRAINING_TIME = config["TRAINING"]["max_training_time"]
-	MAX_TRAINING_EPOCHS = config["TRAINING"]["max_training_epochs"]
-	data_generator = eval(config["TRAINING"]["datagen"])
-	data_generator_test = eval(config["TRAINING"]["datagen_test"])
-	fitness_metric = eval(config["TRAINING"]["fitness_metric"])
+	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
+	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
+	data_generator = eval(config['TRAINING']['datagen'])
+	data_generator_test = eval(config['TRAINING']['datagen_test'])
+	fitness_metric = eval(config['TRAINING']['fitness_metric'])
 
 	save_path = '%s/run_%d/' % (SAVE_PATH, run)
 
@@ -488,6 +500,7 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 
 	# best fitness so far
 	best_fitness = None
+	best_individual = None
 
 	# load previous population content (if any)
 	unpickle = unpickle_population(save_path) if RESUME else None
@@ -530,8 +543,8 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 			print('[Run %d] Creating the initial population' % run)
 
 			# create initial population
-			population = [Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, gen, idx).initialise_as_lenet(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
-						  for idx in range(LAMBDA)]
+			population = [Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, gen, idx).initialise_as_lenet(grammar)
+						  for idx in range(INITIAL_POUPULATION_SIZE)]
 
 			# set initial population variables and evaluate population
 			population_fitness = []
@@ -541,14 +554,10 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 
 		else:
 			# generate offspring (by mutation)
-			offspring = [mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER)
-			             for _ in range(LAMBDA)]
+			offspring = [mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER, gen, idx)
+			             for idx in range(LAMBDA)]
 
 			population = [parent] + offspring
-
-			# set elite variables to re-evaluation
-			population[0].training_time = 0
-			population[0].training_epochs = 0
 
 			# evaluate population
 			population_fitness = []
@@ -565,24 +574,27 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 						os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
 
 		# update best individual
+		print('[Gen %d] ' % gen, end='')
 		if best_fitness is None or parent.fitness > best_fitness:
+			if best_fitness:
+				print('*** New best individual %s (%f) replaces %s (%f) *** ' % (parent.name, parent.fitness, best_individual, best_fitness), end='')
 			best_fitness = parent.fitness
+			best_individual = parent.name
 
-			if os.path.isfile(Path(save_path, 'individual-%s.h5' % parent.name)):
-				copyfile(Path(save_path, 'individual-%s.h5' % parent.name), Path(save_path, 'best.h5'))
+			if os.path.isfile(Path(save_path, 'individual-%s.h5' % best_individual)):
+				copyfile(Path(save_path, 'individual-%s.h5' % best_individual), Path(save_path, 'best.h5'))
 
 			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-		print('[%d] Best fitness of generation %d: %f' % (run, gen, max(population_fitness)))
-		print('[%d] Best overall fitness: %f' % (run, best_fitness))
+		print('Best fitness: %f, in generation: %f' % (best_fitness, max(population_fitness[1:]) if len(population_fitness) > 1 else max(population_fitness)))
 
 		# save population
 		save_population_statistics(population, save_path, gen)
 		pickle_population(population, parent, save_path)
 
 	# compute testing performance of the fittest network
-	best_test_acc = cnn_eval.testing_performance(str(Path(save_path, 'best.h5')), data_generator_test)
+	best_test_acc = cnn_eval.test_with_final_test_dataset(str(Path(save_path, 'best.h5')), data_generator_test)
 	print('[%d] Best test accuracy: %f' % (run, best_test_acc))
 
 

@@ -8,10 +8,16 @@
     "numpy_seeds": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400],
 
     //Maximum number of generations
-    "num_generations": 3,
+    "num_generations": 10,
 
-    //lambda, i.e., number of offspring
+    //lambda, i.e. number of offspring
     "lambda": 2,
+
+    //lambda, i.e. number of offspring
+    "lambda": 2,
+
+    // popuplation size for generation 0
+    "initial_population_size" : 1,
 
     //maximum of epochs to perform. Evolution is halted when the current number of epochs surpasses this value
     "max_epochs": 1000,
@@ -66,7 +72,7 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 10,
+    "max_training_time": 20,
     //maximum training epochs for each network
     "max_training_epochs": 5,
 
