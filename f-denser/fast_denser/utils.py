@@ -928,7 +928,7 @@ class Individual:
 		"""log a mutation"""
 		print(f"mutate {self.name}({self.parent}): {description}")
 
-	def decode(self, grammar):
+	def get_phenotype(self, grammar):
 		"""
 			Maps the genotype to the phenotype
 
@@ -948,14 +948,14 @@ class Individual:
 		layer_counter = 0
 		for module in self.modules:
 			offset = layer_counter
-			for layer_idx, layer_genotype in enumerate(module.layers):
+			for layer_idx, layer in enumerate(module.layers):
 				layer_counter += 1
-				phenotype += '\n' + grammar.decode(module.module, layer_genotype) + ' input:' + ",".join(map(str, np.array(module.connections[layer_idx]) + offset))
+				phenotype += '\n' + grammar.decode_layer(module.module, layer) + ' input:' + ",".join(map(str, np.array(module.connections[layer_idx]) + offset))
 
-		phenotype += '\n' + grammar.decode(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
+		phenotype += '\n' + grammar.decode_layer(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
 
 		for rule_idx, learning_rule in enumerate(self.learning_rule):
-			phenotype += '\n' + grammar.decode(learning_rule, self.macro[rule_idx])
+			phenotype += '\n' + grammar.decode_layer(learning_rule, self.macro[rule_idx])
 
 		self.phenotype = phenotype.lstrip('\n')
 		return self.phenotype
@@ -983,7 +983,7 @@ class Individual:
 		"""
 
 		if not self.training_complete:
-			phenotype = self.decode(grammar)
+			phenotype = self.get_phenotype(grammar)
 
 			load_prev_weights = False
 

@@ -284,6 +284,8 @@ def mutation_dsge(ind, layer, grammar):
 			new_val = random.choice(sge_possibilities)
 			ind.log_mutation(f"ge '{nt_key}' {layer[nt_key][nt_idx]['ge']} -> {new_val}")
 			layer[nt_key][nt_idx]['ge'] = new_val
+		#			if (nt_key == 'features'):
+		#				grammar.decode_layer(nt_key, layer)
 
 		else:
 			return NotImplementedError
@@ -346,11 +348,11 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 				if random.random() <= re_use_layer:
 					source_layer_index = random.randint(0, len(module.layers)-1)
 					new_layer = module.layers[source_layer_index]
-					layer_phenotype = grammar.decode(module.module, new_layer)
+					layer_phenotype = grammar.decode_layer(module.module, new_layer)
 					ind.log_mutation(f"copy layer {insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
 				else:
 					new_layer = grammar.initialise(module.module)
-					layer_phenotype = grammar.decode(module.module, new_layer)
+					layer_phenotype = grammar.decode_layer(module.module, new_layer)
 					ind.log_mutation(f"insert layer {insert_pos}/{len(module.layers)} - {layer_phenotype}")
 
 				# fix connections
@@ -382,7 +384,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 		for _ in range(random.randint(1, 2)):
 			if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
 				remove_idx = random.randint(0, len(module.layers) - 1)
-				layer_phenotype = grammar.decode(module.module, module.layers[remove_idx])
+				layer_phenotype = grammar.decode_layer(module.module, module.layers[remove_idx])
 				ind.log_mutation(f"remove layer {remove_idx}/{len(module.layers)} - {layer_phenotype}")
 				del module.layers[remove_idx]
 

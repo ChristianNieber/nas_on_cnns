@@ -21,13 +21,11 @@ class Grammar:
 		grammar to define the search space, and DSGE is applied to perform the
 		genotype/phenotype mapping of the inner-level of the genotype.
 
-
 		Attributes
 		----------
 		grammar : dict
 			object where the grammar is stored, and later used for initialisation,
 			and decoding of the individuals.
-
 
 		Methods
 		-------
@@ -247,7 +245,7 @@ class Grammar:
 
 				genotype[genotype_key][genotype_idx]['ga'][var_name] = (var_type, min_val, max_val, value)
 
-	def decode(self, start_symbol, genotype):
+	def decode_layer(self, start_symbol, layer_genotype):
 		"""
 			Genotype to phenotype mapping.
 
@@ -255,8 +253,8 @@ class Grammar:
 			----------
 			start_symbol : str
 				non-terminal symbol used as starting symbol for the grammatical expansion
-			genotype : dict
-				DSGE genotype used for the inner-level of F-DENSER++
+			layer_genotype : dict
+				DSGE layer genotype
 
 			Returns
 			-------
@@ -264,12 +262,12 @@ class Grammar:
 				phenotype corresponding to the input genotype
 		"""
 
-		read_codons = dict.fromkeys(list(genotype.keys()), 0)
-		phenotype = self.decode_recursive((start_symbol, True), read_codons, genotype, '', True)
+		read_integers = dict.fromkeys(list(layer_genotype.keys()), 0)
+		phenotype = self.decode_recursive((start_symbol, True), read_integers, layer_genotype, '')
 
-		return phenotype.lstrip().rstrip()
+		return phenotype.lstrip()
 
-	def decode_recursive(self, symbol, read_integers, genotype, phenotype, is_top_level):
+	def decode_recursive(self, symbol, read_integers, layer_genotype, phenotype):
 		"""
 			Auxiliary function of the decode method; recursively applies the expansions
 			that are encoded in the genotype
@@ -282,9 +280,9 @@ class Grammar:
 				non-terminal, and False if the non-terminal symbol str is
 				a terminal
 			read_integers : dict
-				index of the next codon of the non-terminal genotype to be read
-			genotype : dict
-				DSGE genotype used for the inner-level of F-DENSER++
+				integers read from genotype
+			layer_genotype : dict
+				DSGE layer genotype
 			phenotype : str
 				phenotype corresponding to the input genotype
 		"""
@@ -294,25 +292,25 @@ class Grammar:
 		if non_terminal:
 			if symbol not in read_integers:
 				read_integers[symbol] = 0
-				genotype[symbol] = []
-
-			if len(genotype[symbol]) <= read_integers[symbol]:
-				ge_expansion_integer = randint(0, len(self.grammar[symbol]) - 1)
-				genotype[symbol].append({'ge': ge_expansion_integer, 'ga': {}})
+				layer_genotype[symbol] = []
 
 			current_nt = read_integers[symbol]
-			expansion_integer = genotype[symbol][current_nt]['ge']
+			if len(layer_genotype[symbol]) <= current_nt:
+				ge_expansion_integer = randint(0, len(self.grammar[symbol]) - 1)
+				layer_genotype[symbol].append({'ge': ge_expansion_integer, 'ga': {}})
+
+			expansion_integer = layer_genotype[symbol][current_nt]['ge']
 			read_integers[symbol] += 1
 			expansion = self.grammar[symbol][expansion_integer]
 
 			used_terminals = []
 			for sym in expansion:
 				if sym[1]:
-					phenotype = self.decode_recursive(sym, read_integers, genotype, phenotype, False)
+					phenotype = self.decode_recursive(sym, read_integers, layer_genotype, phenotype)
 				else:
 					if '[' in sym[0] and ']' in sym[0]:
 						[var_name, var_type, var_min, var_max] = sym[0].replace('[', '').replace(']', '').split(',')
-						if var_name not in genotype[symbol][current_nt]['ga']:
+						if var_name not in layer_genotype[symbol][current_nt]['ga']:
 							var_min, var_max = float(var_min), float(var_max)
 
 							if var_type == 'int':
@@ -322,9 +320,9 @@ class Grammar:
 							# TODO new value
 							print(f"*** Assigning random value {value} to new variable {var_name} ***")
 
-							genotype[symbol][current_nt]['ga'][var_name] = (var_type, var_min, var_max, value)
+							layer_genotype[symbol][current_nt]['ga'][var_name] = (var_type, var_min, var_max, value)
 
-						value = genotype[symbol][current_nt]['ga'][var_name]
+						value = layer_genotype[symbol][current_nt]['ga'][var_name]
 						if type(value) is tuple:
 							value = value[-1]
 
@@ -334,9 +332,9 @@ class Grammar:
 					else:
 						phenotype += ' ' + sym[0]
 
-			unused_terminals = list(set(list(genotype[symbol][current_nt]['ga'].keys())) - set(used_terminals))
+			unused_terminals = list(set(list(layer_genotype[symbol][current_nt]['ga'].keys())) - set(used_terminals))
 			if unused_terminals:
 				for name in used_terminals:
-					del genotype[symbol][current_nt]['ga'][name]
+					del layer_genotype[symbol][current_nt]['ga'][name]
 
 		return phenotype
