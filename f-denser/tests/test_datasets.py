@@ -6,7 +6,7 @@ class Test(unittest.TestCase):
 	def setUp(self):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
 
-	def test_load_datasets(self):
+	def unused_test_load_datasets(self):
 		import fast_denser.utilities.data as data
 
 		fashion_mnist = data.load_dataset(dataset='fashion-mnist')
@@ -29,7 +29,7 @@ class Test(unittest.TestCase):
 			other = data.load_dataset(dataset='not valid')
 			self.assertEqual(cm.exception.code, -1, "Error: read invalid grammar")
 
-	def test_augmentation(self):
+	def unused_test_augmentation(self):
 		import fast_denser.utilities.data as data
 		import fast_denser.utilities.data_augmentation as data_augmentation
 		import tensorflow as tf

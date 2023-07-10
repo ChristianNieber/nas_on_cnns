@@ -265,11 +265,11 @@ class Grammar:
 		"""
 
 		read_codons = dict.fromkeys(list(genotype.keys()), 0)
-		phenotype = self.decode_recursive((start_symbol, True), read_codons, genotype, '')
+		phenotype = self.decode_recursive((start_symbol, True), read_codons, genotype, '', True)
 
 		return phenotype.lstrip().rstrip()
 
-	def decode_recursive(self, symbol, read_integers, genotype, phenotype):
+	def decode_recursive(self, symbol, read_integers, genotype, phenotype, is_top_level):
 		"""
 			Auxiliary function of the decode method; recursively applies the expansions
 			that are encoded in the genotype
@@ -308,7 +308,7 @@ class Grammar:
 			used_terminals = []
 			for sym in expansion:
 				if sym[1]:
-					phenotype = self.decode_recursive(sym, read_integers, genotype, phenotype)
+					phenotype = self.decode_recursive(sym, read_integers, genotype, phenotype, False)
 				else:
 					if '[' in sym[0] and ']' in sym[0]:
 						[var_name, var_type, var_min, var_max] = sym[0].replace('[', '').replace(']', '').split(',')

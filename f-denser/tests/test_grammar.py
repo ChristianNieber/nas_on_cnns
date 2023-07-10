@@ -10,15 +10,15 @@ class Test(unittest.TestCase):
 		import fast_denser.grammar
 
 		grammar = fast_denser.grammar.Grammar('tests/utilities/example.grammar')
-		output = """<activation-function> ::= act:linear |  act:relu |  act:sigmoid
+		expected_output = """<activation-function> ::= act:linear |  act:relu |  act:sigmoid
 <bias> ::= bias:True |  bias:False
 <convolution> ::= layer:conv [num-filters,int,32,256] [filter-shape,int,2,5] [stride,int,1,3] <padding> <activation-function> <bias>
 <features> ::= <convolution>
+<output> ::= layer:fc num-units:10 bias:True
 <padding> ::= padding:same |  padding:valid
-<softmax> ::= layer:fc act:softmax num-units:10 bias:True
 """
-		grammar._str_()
-		self.assertEqual(output, grammar.__str__(), "Error: grammars differ")
+		output = grammar.__str__()
+		self.assertEqual(output, expected_output, "Error: grammars differ")
 
 	def test_read_invalid_grammar(self):
 		import fast_denser.grammar

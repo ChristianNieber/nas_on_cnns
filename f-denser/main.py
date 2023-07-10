@@ -18,7 +18,6 @@ datagen_test = ImageDataGenerator()
 # visualkeras.layered_view(model, legend=True)
 
 # TODO
-# - better phenotypes?
 # - layer mutation
 # - learning optimizers
 # - simplify ga/ge?
@@ -54,3 +53,4 @@ datagen_test = ImageDataGenerator()
 # - better configuration variables
 # - reduced numeric parameters groups to single value for simplicity
 # - better metrics
+# - phenotypes with \n

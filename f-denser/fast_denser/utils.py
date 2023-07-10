@@ -169,7 +169,7 @@ class Evaluator:
 				list of tuples (layer_type : str, node properties : dict)
 		"""
 
-		raw_phenotype = phenotype.split(' ')
+		raw_phenotype = phenotype.replace('\n', ' ').split(' ')
 
 		idx = 0
 		first = True
@@ -300,7 +300,7 @@ class Evaluator:
 			elif layer_type == 'output':
 				output_layer = tf.keras.layers.Dense(int(layer_params['num-units']),
 													 use_bias=eval(layer_params['bias']),
-													 activation=layer_params['act'],
+													 activation='softmax',
 													 kernel_initializer='he_normal',
 													 kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(output_layer)
@@ -375,17 +375,18 @@ class Evaluator:
 				if layer_type == 'conv' or layer_type == 'fc':
 					if ('batch-normalization' in layer_params) and layer_params['batch-normalization']:
 						new_data_layer = tf.keras.layers.BatchNormalization()(new_data_layer)
-					activation_function = layer_params['act']
-					if activation_function == 'relu':
-						new_data_layer = tf.keras.layers.ReLU()(new_data_layer)
-					elif activation_function == 'elu':
-						new_data_layer = tf.keras.layers.ELU()(new_data_layer)
-					elif activation_function == 'sigmoid':
-						new_data_layer = tf.keras.layers.Activation(tf.keras.activations.sigmoid)(new_data_layer)
-					elif activation_function == 'linear':
-						pass
-					else:
-						print(f"### Invalid activation value {activation_function}")
+					if ('act' in layer_params):
+						activation_function = layer_params['act']
+						if activation_function == 'relu':
+							new_data_layer = tf.keras.layers.ReLU()(new_data_layer)
+						elif activation_function == 'elu':
+							new_data_layer = tf.keras.layers.ELU()(new_data_layer)
+						elif activation_function == 'sigmoid':
+							new_data_layer = tf.keras.layers.Activation(tf.keras.activations.sigmoid)(new_data_layer)
+						elif activation_function == 'linear':
+							pass
+						else:
+							print(f"### Invalid activation value {activation_function}")
 
 				data_layers.append(new_data_layer)
 
@@ -949,14 +950,14 @@ class Individual:
 			offset = layer_counter
 			for layer_idx, layer_genotype in enumerate(module.layers):
 				layer_counter += 1
-				phenotype += ' ' + grammar.decode(module.module, layer_genotype) + ' input:' + ",".join(map(str, np.array(module.connections[layer_idx]) + offset))
+				phenotype += '\n' + grammar.decode(module.module, layer_genotype) + ' input:' + ",".join(map(str, np.array(module.connections[layer_idx]) + offset))
 
-		phenotype += ' ' + grammar.decode(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
+		phenotype += '\n' + grammar.decode(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
 
-		for rule_idx, macro_rule in enumerate(self.learning_rule):
-			phenotype += ' ' + grammar.decode(macro_rule, self.macro[rule_idx])
+		for rule_idx, learning_rule in enumerate(self.learning_rule):
+			phenotype += '\n' + grammar.decode(learning_rule, self.macro[rule_idx])
 
-		self.phenotype = phenotype.rstrip().lstrip()
+		self.phenotype = phenotype.lstrip('\n')
 		return self.phenotype
 
 	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, save_path, max_training_time, max_training_epochs):  # pragma: no cover

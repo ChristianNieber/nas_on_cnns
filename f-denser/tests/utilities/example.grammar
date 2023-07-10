@@ -3,4 +3,4 @@
 <padding> ::= padding:same | padding:valid
 <activation-function> ::= act:linear | act:relu | act:sigmoid
 <bias> ::= bias:True | bias:False
-<softmax> ::= layer:fc act:softmax num-units:10 bias:True
+<output> ::= layer:fc num-units:10 bias:True
