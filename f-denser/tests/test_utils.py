@@ -188,7 +188,7 @@ class Test(unittest.TestCase):
 
 		model_config =  model.get_config()
 		config = model.get_config()
-		self.assertEqual(len(config['layers']), 8)
+		self.assertEqual(len(config['layers']), 7)
 		self.assertEqual(len(config['input_layers']), 1)
 		self.assertEqual(len(config['output_layers']), 1)
 	def test_lenet(self):

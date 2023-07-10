@@ -5,7 +5,7 @@
 <pool-type> ::= layer:pool-avg | layer:pool-max
 <padding> ::= padding:same | padding:valid
 <classification> ::= layer:fc <activation-function> [num-units,int,64,1024] <bias> <batch-normalization>
-<activation-function> ::= act:linear | act:relu | act:sigmoid
+<activation-function> ::= act:linear | act:relu | act:elu | act:sigmoid
 <bias> ::= bias:True | bias:False
 <output> ::= layer:output act:softmax num-units:10 bias:True
 <learning> ::= <adam> <early-stop> [batch_size,int,50,4096]

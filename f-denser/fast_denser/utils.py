@@ -376,7 +376,16 @@ class Evaluator:
 					if ('batch-normalization' in layer_params) and layer_params['batch-normalization']:
 						new_data_layer = tf.keras.layers.BatchNormalization()(new_data_layer)
 					activation_function = layer_params['act']
-					new_data_layer = tf.keras.layers.ReLU()(new_data_layer)
+					if activation_function == 'relu':
+						new_data_layer = tf.keras.layers.ReLU()(new_data_layer)
+					elif activation_function == 'elu':
+						new_data_layer = tf.keras.layers.ELU()(new_data_layer)
+					elif activation_function == 'sigmoid':
+						new_data_layer = tf.keras.layers.Activation(tf.keras.activations.sigmoid)(new_data_layer)
+					elif activation_function == 'linear':
+						pass
+					else:
+						print(f"### Invalid activation value {activation_function}")
 
 				data_layers.append(new_data_layer)
 
