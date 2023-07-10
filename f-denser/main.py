@@ -28,6 +28,7 @@ datagen_test = ImageDataGenerator()
 # - penalty function for large networks
 # - test keras error
 # - evaluation K-Fold validation / random number validation
+# - test: resume
 # --> optimizer test run
 
 # - real time plots & visualisation

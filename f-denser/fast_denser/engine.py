@@ -13,6 +13,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
+import sys
+import getopt
 import random
 from fast_denser.grammar import Grammar
 from fast_denser.utils import Evaluator, Individual
@@ -30,6 +32,7 @@ from keras.preprocessing.image import ImageDataGenerator
 from fast_denser.utilities.data_augmentation import augmentation
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 
 def save_population_statistics(population, save_path, gen):
 	"""
@@ -59,7 +62,7 @@ def save_population_statistics(population, save_path, gen):
 	for ind in population:
 		json_dump.append(ind.json_statistics())
 
-	with open(Path('%s/gen_%d.csv' % (save_path, gen)), 'w') as f_json:
+	with open(Path('%s/gen_%d.json' % (save_path, gen)), 'w') as f_json:
 		f_json.write(json.dumps(json_dump, indent=4))
 
 
@@ -131,7 +134,7 @@ def get_total_epochs(save_path, last_gen):
 
 	total_epochs = 0
 	for gen in range(0, last_gen + 1):
-		with open(Path('%s/gen_%d.csv' % (save_path, gen))) as json_file:
+		with open(Path('%s/gen_%d.json' % (save_path, gen))) as json_file:
 			j = json.load(json_file)
 			training_epochs = [elm['training_epochs'] for elm in j]
 			total_epochs += sum(training_epochs)
@@ -172,11 +175,11 @@ def unpickle_population(save_path):
 			Numpy random state
 	"""
 
-	csvs = glob(str(Path(save_path, '*.csv')))
+	json_file_paths = glob(str(Path(save_path, '*.json')))
 
-	if csvs:
-		csvs = [int(csv.split(os.sep)[-1].replace('gen_', '').replace('.csv', '')) for csv in csvs]
-		last_generation = max(csvs)
+	if json_file_paths:
+		json_file_paths = [int(path.split(os.sep)[-1].replace('gen_', '').replace('.json', '')) for path in json_file_paths]
+		last_generation = max(json_file_paths)
 
 		with open(Path(save_path, 'evaluator.pkl'), 'rb') as handle_eval:
 			pickled_evaluator = pickle.load(handle_eval)
@@ -286,7 +289,7 @@ def mutation_dsge(ind, layer, grammar):
 			return NotImplementedError
 
 
-def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer, gen = 0, idx = 0):
+def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer, gen=0, idx=0):
 	"""
 		Network mutations: add and remove layer, add and remove connections, macro structure
 
@@ -325,7 +328,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 			mutated individual
 	"""
 
-	#deep copy parent
+	# deep copy parent
 	ind = deepcopy(parent)
 	ind.parent = parent.name
 
@@ -484,8 +487,6 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 	NETWORK_STRUCTURE = config['NETWORK']['network_structure']
 	MACRO_STRUCTURE = config['NETWORK']['macro_structure']
 	OUTPUT_STRUCTURE = config['NETWORK']['output']
-	LEVELS_BACK = config['NETWORK']['levels_back']
-	NETWORK_STRUCTURE_INIT = config['NETWORK']['network_structure_init']
 
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
@@ -555,7 +556,7 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		else:
 			# generate offspring (by mutation)
 			offspring = [mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER, gen, idx)
-			             for idx in range(LAMBDA)]
+						 for idx in range(LAMBDA)]
 
 			population = [parent] + offspring
 
@@ -571,7 +572,7 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		if gen > 1:
 			for x in range(len(population)):
 				if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))):
-						os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
+					os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
 
 		# update best individual
 		print('[Gen %d] ' % gen, end='')
@@ -671,6 +672,5 @@ def process_input(argv):  # pragma: no cover
 
 
 if __name__ == '__main__':  # pragma: no cover
-	import sys, getopt
 
 	process_input(sys.argv[1:])

@@ -81,7 +81,7 @@ class Test(unittest.TestCase):
 
 		engine.save_population_statistics([ind], './run_0/', 0)
 
-		self.assertTrue(os.path.exists('./run_0/gen_0.csv'))
+		self.assertTrue(os.path.exists('./run_0/gen_0.json'))
 
 		engine.pickle_population([ind], ind, './run_0/')
 

@@ -36,7 +36,7 @@ class Grammar:
 		read_grammar(path)
 			Auxiliary function of the get_grammar method; loads the grammar from a file
 		parse_grammar(path)
-			Auxiliary fuction of the get_grammar method; parses the grammar to a dictionary
+			Auxiliary function of the get_grammar method; parses the grammar to a dictionary
 		_str_()
 			Prints the grammar in the BNF form
 		initialise(start_symbol)
@@ -110,7 +110,7 @@ class Grammar:
 
 	def parse_grammar(self, raw_grammar):
 		"""
-			Auxiliary fuction of the get_grammar method; parses the grammar to a dictionary
+			Auxiliary function of the get_grammar method; parses the grammar to a dictionary
 
 			Parameters
 			----------
@@ -208,7 +208,7 @@ class Grammar:
 			symbol : tuple
 				(non terminal symbol to expand : str, non-terminal : bool).
 				Non-terminal is True in case the non-terminal symbol is a
-				non-terminal, and False if the the non-terminal symbol str is
+				non-terminal, and False if the non-terminal symbol str is
 				a terminal
 
 			prev_nt: str

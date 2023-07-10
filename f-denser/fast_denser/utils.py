@@ -468,10 +468,6 @@ class Evaluator:
 				individual phenotype
 			load_prev_weights : bool
 				resume training from a previous train or not
-			weights_save_path : str
-				path where to save the model weights after training
-			parent_weights_path : str
-				path to the weights of the previous training
 			max_training_time : float
 				maximum training time
 			max_training_epochs : int
@@ -779,8 +775,6 @@ class Individual:
 			number of performed epochs during training
 		trainable_parameters : int
 			number of trainable parameters of the network
-		train_time : float
-			maximum training time
 		name : str
 			name as <generation>-<index>
 
@@ -896,8 +890,6 @@ class Individual:
 			----------
 			grammar : Grammar
 				grammar instance that stores the expansion rules
-			reuse : float
-				likelihood of reusing an existing layer
 
 			Returns
 			-------
@@ -922,9 +914,9 @@ class Individual:
 						'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
 		return self
 
-	def log_mutation(self, str):
+	def log_mutation(self, description):
 		"""log a mutation"""
-		print(f"mutate {self.name}({self.parent}): {str}")
+		print(f"mutate {self.name}({self.parent}): {description}")
 
 	def decode(self, grammar):
 		"""
@@ -985,7 +977,6 @@ class Individual:
 
 			load_prev_weights = False
 
-			metrics = None
 			try:
 				metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, self.name, datagen, datagen_test)
 			except tf.errors.ResourceExhaustedError as e:
