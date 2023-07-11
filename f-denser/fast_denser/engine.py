@@ -282,10 +282,13 @@ def mutation_dsge(ind, layer, grammar):
 
 		elif mt_type == 'ge':
 			new_val = random.choice(sge_possibilities)
-			ind.log_mutation(f"ge '{nt_key}' {layer[nt_key][nt_idx]['ge']} -> {new_val}")
+			old_val = layer[nt_key][nt_idx]['ge']
+			ind.log_mutation(f"ge '{nt_key}' {old_val} -> {new_val}")
 			layer[nt_key][nt_idx]['ge'] = new_val
-		#			if (nt_key == 'features'):
-		#				grammar.decode_layer(nt_key, layer)
+			old_layer_value = deepcopy(layer)
+			grammar.fix_layer_after_change(nt_key, layer)
+			if layer != old_layer_value:
+				ind.log_mutation(f"  {old_layer_value}  -->  {layer}")
 
 		else:
 			return NotImplementedError

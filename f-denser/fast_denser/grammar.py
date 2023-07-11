@@ -263,11 +263,11 @@ class Grammar:
 		"""
 
 		read_integers = dict.fromkeys(list(layer_genotype.keys()), 0)
-		phenotype = self.decode_recursive((start_symbol, True), read_integers, layer_genotype, '')
+		phenotype = self.decode_layer_recursive((start_symbol, True), read_integers, layer_genotype, '')
 
 		return phenotype.lstrip()
 
-	def decode_recursive(self, symbol, read_integers, layer_genotype, phenotype):
+	def decode_layer_recursive(self, symbol, read_integers, layer_genotype, phenotype):
 		"""
 			Auxiliary function of the decode method; recursively applies the expansions
 			that are encoded in the genotype
@@ -295,8 +295,77 @@ class Grammar:
 				layer_genotype[symbol] = []
 
 			current_nt = read_integers[symbol]
+			assert len(layer_genotype[symbol]) > current_nt
+
+			expansion_integer = layer_genotype[symbol][current_nt]['ge']
+			read_integers[symbol] += 1
+			expansion = self.grammar[symbol][expansion_integer]
+
+			used_terminals = []
+			for sym in expansion:
+				if sym[1]:
+					phenotype = self.decode_layer_recursive(sym, read_integers, layer_genotype, phenotype)
+				else:
+					if '[' in sym[0] and ']' in sym[0]:
+						[var_name, var_type, var_min, var_max] = sym[0].replace('[', '').replace(']', '').split(',')
+						assert var_name in layer_genotype[symbol][current_nt]['ga']
+						value = layer_genotype[symbol][current_nt]['ga'][var_name]
+						if type(value) is tuple:
+							value = value[-1]
+						phenotype += ' %s:%s' % (var_name, value)
+						used_terminals.append(var_name)
+					else:
+						phenotype += ' ' + sym[0]
+
+			unused_terminals = list(set(list(layer_genotype[symbol][current_nt]['ga'].keys())) - set(used_terminals))
+			assert unused_terminals == []
+
+		return phenotype
+
+	def fix_layer_after_change(self, start_symbol, layer_genotype):
+		"""
+			fix values in layer after change, e.g. generate new properties for changed layer type
+
+			Parameters
+			----------
+			start_symbol : str
+				non-terminal symbol used as starting symbol for the grammatical expansion
+			layer_genotype : dict
+				DSGE layer genotype
+		"""
+
+		read_integers = dict.fromkeys(list(layer_genotype.keys()), 0)
+		self.fix_layer_after_change_recursive((start_symbol, True), read_integers, layer_genotype)
+
+	def fix_layer_after_change_recursive(self, symbol, read_integers, layer_genotype):
+		"""
+			Auxiliary function of the decode method; recursively applies the expansions
+			that are encoded in the genotype
+
+			Parameters
+			----------
+			symbol : tuple
+				(non terminal symbol to expand : str, non-terminal : bool).
+				Non-terminal is True in case the non-terminal symbol is a
+				non-terminal, and False if the non-terminal symbol str is
+				a terminal
+			read_integers : dict
+				integers read from genotype
+			layer_genotype : dict
+				DSGE layer genotype
+		"""
+
+		symbol, non_terminal = symbol
+
+		if non_terminal:
+			if symbol not in read_integers:
+				read_integers[symbol] = 0
+				layer_genotype[symbol] = []
+
+			current_nt = read_integers[symbol]
 			if len(layer_genotype[symbol]) <= current_nt:
 				ge_expansion_integer = randint(0, len(self.grammar[symbol]) - 1)
+				print(f"*** new symbol {symbol} 'ge':'{ge_expansion_integer} ***")
 				layer_genotype[symbol].append({'ge': ge_expansion_integer, 'ga': {}})
 
 			expansion_integer = layer_genotype[symbol][current_nt]['ge']
@@ -306,35 +375,22 @@ class Grammar:
 			used_terminals = []
 			for sym in expansion:
 				if sym[1]:
-					phenotype = self.decode_recursive(sym, read_integers, layer_genotype, phenotype)
+					self.fix_layer_after_change_recursive(sym, read_integers, layer_genotype)
 				else:
 					if '[' in sym[0] and ']' in sym[0]:
 						[var_name, var_type, var_min, var_max] = sym[0].replace('[', '').replace(']', '').split(',')
 						if var_name not in layer_genotype[symbol][current_nt]['ga']:
 							var_min, var_max = float(var_min), float(var_max)
-
 							if var_type == 'int':
 								value = randint(var_min, var_max)
 							elif var_type == 'float':
 								value = uniform(var_min, var_max)
-							# TODO new value
-							print(f"*** Assigning random value {value} to new variable {var_name} ***")
-
+							print(f"*** new number {var_name}:{value} ***")
 							layer_genotype[symbol][current_nt]['ga'][var_name] = (var_type, var_min, var_max, value)
-
-						value = layer_genotype[symbol][current_nt]['ga'][var_name]
-						if type(value) is tuple:
-							value = value[-1]
-
-						phenotype += ' %s:%s' % (var_name, value)
-
 						used_terminals.append(var_name)
-					else:
-						phenotype += ' ' + sym[0]
 
 			unused_terminals = list(set(list(layer_genotype[symbol][current_nt]['ga'].keys())) - set(used_terminals))
 			if unused_terminals:
 				for name in used_terminals:
+					print(f"*** remove {name} from {symbol}/{current_nt} ***")
 					del layer_genotype[symbol][current_nt]['ga'][name]
-
-		return phenotype
