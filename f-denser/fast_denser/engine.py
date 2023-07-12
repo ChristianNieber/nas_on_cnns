@@ -335,10 +335,10 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 
 	# deep copy parent
 	ind = deepcopy(parent)
-	ind.parent = parent.name
+	ind.parent = parent.id
 
 	# name for new individual
-	ind.name = f"{gen}-{idx}"
+	ind.id = f"{gen}-{idx}"
 
 	# mutation resets training time
 	ind.reset_training()
@@ -583,9 +583,9 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		print('[Gen %d] ' % gen, end='')
 		if best_fitness is None or parent.fitness > best_fitness:
 			if best_fitness:
-				print('*** New best individual %s (%f) replaces %s (%f) *** ' % (parent.name, parent.fitness, best_individual, best_fitness), end='')
+				print('*** New best individual %s (%f) replaces %s (%f) *** ' % (parent.id, parent.fitness, best_individual, best_fitness), end='')
 			best_fitness = parent.fitness
-			best_individual = parent.name
+			best_individual = parent.id
 
 			if os.path.isfile(Path(save_path, 'individual-%s.h5' % best_individual)):
 				copyfile(Path(save_path, 'individual-%s.h5' % best_individual), Path(save_path, 'best.h5'))

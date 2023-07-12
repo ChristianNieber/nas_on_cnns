@@ -454,13 +454,11 @@ class Evaluator:
 
 		if learning['learning'] == 'rmsprop':
 			return tf.keras.optimizers.RMSprop(learning_rate=float(learning['lr']),
-											   rho=float(learning['rho']),
-											   decay=float(learning['decay']))
+											   rho=float(learning['rho']))
 
 		elif learning['learning'] == 'gradient-descent':
 			return tf.keras.optimizers.SGD(learning_rate=float(learning['lr']),
 										   momentum=float(learning['momentum']),
-										   decay=float(learning['decay']),
 										   nesterov=bool(learning['nesterov']))
 
 		elif learning['learning'] == 'adam':
@@ -468,7 +466,7 @@ class Evaluator:
 											beta_1=float(learning['beta1']),
 											beta_2=float(learning['beta2']))
 
-	def evaluate_cnn(self, phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, individual_name, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
+	def evaluate_cnn(self, phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, id, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -484,8 +482,8 @@ class Evaluator:
 				maximum number of epochs
 			save_path : str
 				path where weights are saved
-			individual_name : str
-				name (<generation>-<number>)
+			id : str
+				id string (<generation>-<number>)
 			datagen : keras.preprocessing.image.ImageDataGenerator
 				Data augmentation method image data generator
 			datagen_test : keras.preprocessing.image.ImageDataGenerator
@@ -513,7 +511,7 @@ class Evaluator:
 		keras_learning = self.get_learning(learning_phenotype)
 		batch_size = int(keras_learning['batch_size'])
 
-		weights_save_path = save_path + 'individual-' + individual_name + '.h5'
+		weights_save_path = save_path + 'individual-' + id + '.h5'
 		if load_prev_weights and os.path.exists(weights_save_path):
 			model = keras.models.load_model(weights_save_path)
 			initial_epoch = 10  #TODO
@@ -531,7 +529,7 @@ class Evaluator:
 		non_trainable_parameters = count_params(model.non_trainable_weights)
 		trainable_parameters = trainable_params_count + non_trainable_parameters
 
-		print(f"{individual_name} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}", end="")
+		print(f"{id} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}", end="")
 
 		training_start_time = time()
 
@@ -785,8 +783,8 @@ class Individual:
 			number of performed epochs during training
 		trainable_parameters : int
 			number of trainable parameters of the network
-		name : str
-			name as <generation>-<index>
+		id : str
+			string <generation>-<index>
 
 		Methods
 		-------
@@ -822,7 +820,7 @@ class Individual:
 		self.output = None
 		self.macro = []
 		self.phenotype = None
-		self.name = f"{gen}-{idx}"
+		self.id = f"{gen}-{idx}"
 		self.parent = None
 		self.history = ''
 		self.reset_training()
@@ -846,7 +844,7 @@ class Individual:
 	def json_statistics(self):
 		""" return dictionary of statistics for individual to write to json file"""
 		return {
-			'name': self.name,
+			'id': self.id,
 			'test_accuracy': self.test_accuracy,
 			'fitness': self.fitness,
 			'trainable_parameters': self.trainable_parameters,
@@ -921,7 +919,7 @@ class Individual:
 		self.output = grammar.initialise(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro = [{'learning': [{'ge': 0, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
+		self.macro = [{'learning': [{'ge': 2, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
 						'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
 						'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
 		return self
@@ -931,7 +929,7 @@ class Individual:
 		if len(self.history):
 			self.history += '\n'
 		self.history += self.parent + ': ' + description
-		print(f"mutate {self.name}({self.parent}): {description}")
+		print(f"mutate {self.id}({self.parent}): {description}")
 
 	def log_mutation_add_to_line(self, description):
 		"""log a mutation"""
@@ -998,7 +996,7 @@ class Individual:
 			load_prev_weights = False
 
 			try:
-				metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, self.name, datagen, datagen_test)
+				metrics = cnn_eval.evaluate_cnn(phenotype, load_prev_weights, max_training_time, max_training_epochs, save_path, self.id, datagen, datagen_test)
 			except tf.errors.ResourceExhaustedError as e:
 				keras.backend.clear_session()
 				return None

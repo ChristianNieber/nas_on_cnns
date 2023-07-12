@@ -18,12 +18,8 @@ datagen_test = ImageDataGenerator()
 # visualkeras.layered_view(model, legend=True)
 
 # TODO
-# - learning optimizers
-# - activation functions
-# - final test for new best
 # - penalty function for large networks
 # - test keras error
-# - evaluation K-Fold validation / random number validation
 # - test: resume
 # --> optimizer test run
 
@@ -31,13 +27,14 @@ datagen_test = ImageDataGenerator()
 
 # Later
 # -----
+# - test variance of accuracy (K-fold, or just initialization)
 # - simplify layer representation
 # - crossover?
-# - test variance of accuracy
 # - test retraining after load
 # - learning code
-# - elu etc.
-# - Comparison with GE
+# - more activation functions and parameters?
+# - final test for new best
+# - Comparison with GE?
 # - numeric default values
 # - ES integers
 # - ES categorical values
