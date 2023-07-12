@@ -18,10 +18,7 @@ datagen_test = ImageDataGenerator()
 # visualkeras.layered_view(model, legend=True)
 
 # TODO
-# - layer mutation
 # - learning optimizers
-# - simplify ga/ge?
-# - record mutations
 # - activation functions
 # - final test for new best
 # - penalty function for large networks
@@ -34,6 +31,7 @@ datagen_test = ImageDataGenerator()
 
 # Later
 # -----
+# - simplify layer representation
 # - crossover?
 # - test variance of accuracy
 # - test retraining after load
@@ -54,3 +52,4 @@ datagen_test = ImageDataGenerator()
 # - reduced numeric parameters groups to single value for simplicity
 # - better metrics
 # - phenotypes with \n
+# - record mutations

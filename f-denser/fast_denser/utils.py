@@ -824,6 +824,7 @@ class Individual:
 		self.phenotype = None
 		self.name = f"{gen}-{idx}"
 		self.parent = None
+		self.history = ''
 		self.reset_training()
 
 	def reset_training(self):
@@ -858,6 +859,7 @@ class Individual:
 			'metrics_loss': self.metrics_loss,
 			'metrics_val_accuracy': self.metrics_val_accuracy,
 			'metrics_val_loss': self.metrics_val_loss,
+			'history':self.history,
 		}
 
 	def initialise(self, grammar, levels_back, reuse, init_max):
@@ -926,7 +928,15 @@ class Individual:
 
 	def log_mutation(self, description):
 		"""log a mutation"""
+		if len(self.history):
+			self.history += '\n'
+		self.history += self.parent + ': ' + description
 		print(f"mutate {self.name}({self.parent}): {description}")
+
+	def log_mutation_add_to_line(self, description):
+		"""log a mutation"""
+		self.history += description
+		print(f"    {description}")
 
 	def get_phenotype(self, grammar):
 		"""

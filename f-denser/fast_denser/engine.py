@@ -272,23 +272,23 @@ def mutation_dsge(ind, layer, grammar):
 					new_val = random.randint(min_val, max_val)
 					if new_val != value or min_val == max_val:
 						break
-				ind.log_mutation(f"int '{nt_key}'/'{var_name}' {value} -> {new_val}")
+				ind.log_mutation(f"int {nt_key}/{var_name} {value} -> {new_val}")
 			elif var_type == 'float':
 				new_val = value + random.gauss(0, 0.15)
 				new_val = np.clip(new_val, min_val, max_val)
-				ind.log_mutation(f"float '{nt_key}'/'{var_name}' {value} -> {new_val}")
+				ind.log_mutation(f"float {nt_key}/{var_name} {value} -> {new_val}")
 
 			layer[nt_key][nt_idx]['ga'][var_name] = (var_type, min_val, max_val, new_val)
 
 		elif mt_type == 'ge':
 			new_val = random.choice(sge_possibilities)
 			old_val = layer[nt_key][nt_idx]['ge']
-			ind.log_mutation(f"ge '{nt_key}' {old_val} -> {new_val}")
+			ind.log_mutation(f"ge {nt_key} {old_val} -> {new_val}")
 			layer[nt_key][nt_idx]['ge'] = new_val
 			old_layer_value = deepcopy(layer)
 			grammar.fix_layer_after_change(nt_key, layer)
 			if layer != old_layer_value:
-				ind.log_mutation(f"  {old_layer_value}  -->  {layer}")
+				ind.log_mutation_add_to_line(f"{old_layer_value}  -->  {layer}")
 
 		else:
 			return NotImplementedError

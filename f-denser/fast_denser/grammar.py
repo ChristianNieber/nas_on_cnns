@@ -365,7 +365,7 @@ class Grammar:
 			current_nt = read_integers[symbol]
 			if len(layer_genotype[symbol]) <= current_nt:
 				ge_expansion_integer = randint(0, len(self.grammar[symbol]) - 1)
-				print(f"*** new symbol {symbol} 'ge':'{ge_expansion_integer} ***")
+				# print(f"*** new symbol {symbol} 'ge':'{ge_expansion_integer} ***")
 				layer_genotype[symbol].append({'ge': ge_expansion_integer, 'ga': {}})
 
 			expansion_integer = layer_genotype[symbol][current_nt]['ge']
@@ -385,12 +385,12 @@ class Grammar:
 								value = randint(var_min, var_max)
 							elif var_type == 'float':
 								value = uniform(var_min, var_max)
-							print(f"*** new number {var_name}:{value} ***")
+							# print(f"*** new number {var_name}:{value} ***")
 							layer_genotype[symbol][current_nt]['ga'][var_name] = (var_type, var_min, var_max, value)
 						used_terminals.append(var_name)
 
 			unused_terminals = list(set(list(layer_genotype[symbol][current_nt]['ga'].keys())) - set(used_terminals))
 			if unused_terminals:
 				for name in used_terminals:
-					print(f"*** remove {name} from {symbol}/{current_nt} ***")
+					# print(f"*** remove {name} from {symbol}/{current_nt} ***")
 					del layer_genotype[symbol][current_nt]['ga'][name]
