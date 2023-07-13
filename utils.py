@@ -23,6 +23,7 @@ from time import time
 import numpy as np
 import os
 from utilities.data import load_dataset
+from sklearn.metrics import accuracy_score, mean_squared_error
 
 # TODO: future -- impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
@@ -36,6 +37,7 @@ LOG_MODEL_TRAINING = 0					# training progress: 1 for progress bar, 2 for one li
 LOG_MODEL_SAVE = True					# log for saving after each epoch
 LOG_TIMED_STOPPING = False				# log stopping by timer
 LOG_EARLY_STOPPING = True				# log early stopping
+LOG_MUTATIONS = False					# log all mutations
 SAVE_MODEL_AFTER_EACH_EPOCH = False		# monitor and save model after each epoch
 
 
@@ -106,6 +108,28 @@ class TimedStopping(keras.callbacks.Callback):
 				print('Stopping after %s seconds.' % self.seconds)
 
 
+def calculate_accuracy(y_true, y_pred):
+	"""
+	    Computes the accuracy.
+
+	    Parameters
+	    ----------
+	    y_true : np.array
+	        array of right labels
+	    y_pred : np.array
+	        array of class confidences for each instance
+
+
+	    Returns
+	    -------
+	    accuracy : float
+	    	accuracy value
+    """
+
+	y_pred_labels = np.argmax(y_pred, axis=1)
+
+	return accuracy_score(y_true, y_pred_labels)
+
 class Evaluator:
 	"""
 		Stores the dataset, maps the phenotype into a trainable model, and
@@ -115,7 +139,7 @@ class Evaluator:
 		----------
 		dataset : dict
 			dataset instances and partitions
-		fitness_metric : function
+		fitness_function : function
 			fitness_metric (y_true, y_pred)
 			y_pred are the confidences
 
@@ -138,7 +162,7 @@ class Evaluator:
 			compute testing performance of the model
 	"""
 
-	def __init__(self, dataset, fitness_metric):
+	def __init__(self, dataset, fitness_function):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -150,7 +174,7 @@ class Evaluator:
 
 		#        def setUp(self):
 		self.dataset = load_dataset(dataset)
-		self.fitness_metric = fitness_metric
+		self.fitness_function = fitness_function
 
 	@staticmethod
 	def get_layers(phenotype):
@@ -548,9 +572,7 @@ class Evaluator:
 			callbacks_list.append(monitor)
 
 		if datagen is not None:
-			score = model.fit_generator(datagen.flow(self.dataset['evo_x_train'],
-													 self.dataset['evo_y_train'],
-													 batch_size=batch_size),
+			score = model.fit_generator(datagen.flow(self.dataset['evo_x_train'], self.dataset['evo_y_train'], batch_size=batch_size),
 										steps_per_epoch=(self.dataset['evo_x_train'].shape[0] // batch_size),
 										epochs=max_training_epochs,
 										validation_data=(datagen_test.flow(self.dataset['evo_x_val'], self.dataset['evo_y_val'], batch_size=batch_size)),
@@ -582,7 +604,7 @@ class Evaluator:
 			y_pred_test = model.predict(self.dataset['evo_x_test'], batch_size=PREDICT_BATCH_SIZE, verbose=0)
 		else:
 			y_pred_test = model.predict_generator(datagen_test.flow(self.dataset['evo_x_test'], batch_size=PREDICT_BATCH_SIZE, shuffle=False), steps=self.dataset['evo_x_test'].shape[0] // 100, verbose=LOG_MODEL_TRAINING)
-		test_accuracy = self.fitness_metric(self.dataset['evo_y_test'], y_pred_test)
+		test_accuracy = calculate_accuracy(self.dataset['evo_y_test'], y_pred_test)
 		model_test_time = time() - model_test_start_time
 		million_inferences_time = 1000000.0 * model_test_time / len(y_pred_test)
 
@@ -591,7 +613,7 @@ class Evaluator:
 			accuracy = score.history['accuracy'][-1]
 			val_accuracy = score.history['val_accuracy'][-1]
 			loss = score.history['loss'][-1]
-			print(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {test_accuracy:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f},s{model_save_time:0.2f})")
+			print(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {test_accuracy:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f},s{model_save_time:0.2f})", end='')
 		else:
 			print(f" *** no training epoch completed ***")
 
@@ -626,7 +648,7 @@ class Evaluator:
 			y_pred = model.predict(self.dataset['x_test'], verbose=LOG_MODEL_TRAINING)
 		else:
 			y_pred = model.predict_generator(datagen_test.flow(self.dataset['x_test'], shuffle=False), verbose=LOG_MODEL_TRAINING)
-		accuracy = self.fitness_metric(self.dataset['y_test'], y_pred)
+		accuracy = calculate_accuracy(self.dataset['y_test'], y_pred)
 		final_test_time = time() - model_test_start_time
 		final_million_inferences_time = 1000000.0 * final_test_time / len(y_pred)
 		return accuracy
@@ -929,12 +951,14 @@ class Individual:
 		if len(self.history):
 			self.history += '\n'
 		self.history += self.parent + ': ' + description
-		print(f"mutate {self.id}({self.parent}): {description}")
+		if LOG_MUTATIONS:
+			print(f"mutate {self.id}({self.parent}): {description}")
 
 	def log_mutation_add_to_line(self, description):
 		"""log a mutation"""
 		self.history += description
-		print(f"    {description}")
+		if LOG_MUTATIONS:
+			print(f"    {description}")
 
 	def get_phenotype(self, grammar):
 		"""
@@ -1009,15 +1033,19 @@ class Individual:
 				self.metrics_loss = metrics['loss']
 				self.metrics_val_accuracy = metrics['val_accuracy']
 				self.metrics_val_loss = metrics['val_loss']
-				if 'test_accuracy' in metrics:
-					self.fitness = metrics['test_accuracy']
-					self.test_accuracy = metrics['test_accuracy']
 				self.trainable_parameters = metrics['trainable_parameters']
 				self.training_epochs += metrics['training_epochs']
 				self.training_time += metrics['training_time']
 				self.million_inferences_time = metrics['million_inferences_time']
+				if 'test_accuracy' in metrics:
+					self.test_accuracy = metrics['test_accuracy']
+					self.fitness = cnn_eval.fitness_function(self.test_accuracy, self.trainable_parameters)
+					print(f", fitness: {self.fitness}")
+				else:
+					self.test_accuracy = -1
+					self.fitness = -1000000
 			else:
-				self.fitness = -1
+				self.fitness = -1000000
 				self.test_accuracy = -1
 				self.trainable_parameters = -1
 				self.million_inferences_time = -1

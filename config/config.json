@@ -73,7 +73,8 @@
     //maximum training epochs for each network
     "max_training_epochs": 5,
 
-    //fitness assignment metric
-    "fitness_metric": "accuracy"
+    //fitness function parameters
+    "use_network_size_penalty" : true,
+    "penalty_connections_target" : 62000
   }
 }

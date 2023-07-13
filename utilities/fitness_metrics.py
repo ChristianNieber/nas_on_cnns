@@ -21,7 +21,6 @@ def accuracy(y_true, y_pred):
 	"""
 	    Computes the accuracy.
 
-
 	    Parameters
 	    ----------
 	    y_true : np.array
@@ -44,7 +43,6 @@ def accuracy(y_true, y_pred):
 def mse(y_true, y_pred):
 	"""
 	    Computes the mean squared error (MSE).
-
 
 	    Parameters
 	    ----------

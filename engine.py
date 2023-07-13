@@ -33,6 +33,15 @@ from utilities.data_augmentation import augmentation
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+USE_NETWORK_SIZE_PENALTY = 0
+PENALTY_CONNECTIONS_TARGET = 0
+
+def fitness_function(accuracy, connections):
+	if (USE_NETWORK_SIZE_PENALTY):
+		error_measure = (1.0-accuracy)*50
+		return -(error_measure**2 - connections/PENALTY_CONNECTIONS_TARGET)
+	else:
+		return accuracy
 
 def save_population_statistics(population, save_path, gen):
 	"""
@@ -472,6 +481,9 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 			path to the grammar file
 	"""
 
+	global USE_NETWORK_SIZE_PENALTY
+	global PENALTY_CONNECTIONS_TARGET
+
 	# load config file
 	config = load_config(config_file)
 	RANDOM_SEEDS = config['EVOLUTIONARY']['random_seeds']
@@ -495,9 +507,11 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
+	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
+	PENALTY_CONNECTIONS_TARGET = config['TRAINING']['penalty_connections_target']
 	data_generator = eval(config['TRAINING']['datagen'])
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
-	fitness_metric = eval(config['TRAINING']['fitness_metric'])
+	# fitness_metric = eval(config['TRAINING']['fitness_metric'])
 
 	save_path = '%s/run_%d/' % (SAVE_PATH, run)
 
@@ -526,7 +540,7 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		np.random.seed(NUMPY_SEEDS[run])
 
 		# create evaluator
-		cnn_eval = Evaluator(dataset, fitness_metric)
+		cnn_eval = Evaluator(dataset, fitness_function)
 
 		# save evaluator
 		pickle_evaluator(cnn_eval, save_path)
