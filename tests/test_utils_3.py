@@ -8,8 +8,8 @@ class Test(unittest.TestCase):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
 
 	def test_learning_mapping(self):
-		from fast_denser.utils import Evaluator
-		from fast_denser.utilities.fitness_metrics import accuracy
+		from utils import Evaluator
+		from utilities.fitness_metrics import accuracy
 
 		random.seed(0)
 		evaluator = Evaluator('mnist', accuracy)

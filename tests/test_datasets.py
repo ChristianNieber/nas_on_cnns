@@ -7,7 +7,7 @@ class Test(unittest.TestCase):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
 
 	def EXCLUDE_test_load_datasets(self):
-		import fast_denser.utilities.data as data
+		import utilities.data as data
 
 		fashion_mnist = data.load_dataset(dataset='fashion-mnist')
 		mnist = data.load_dataset(dataset='mnist')
@@ -30,8 +30,8 @@ class Test(unittest.TestCase):
 			self.assertEqual(cm.exception.code, -1, "Error: read invalid grammar")
 
 	def EXCLUDE_test_augmentation(self):
-		import fast_denser.utilities.data as data
-		import fast_denser.utilities.data_augmentation as data_augmentation
+		import utilities.data as data
+		import utilities.data_augmentation as data_augmentation
 		import tensorflow as tf
 
 		cifar_10 = data.load_dataset(dataset='cifar10')
@@ -42,7 +42,7 @@ class Test(unittest.TestCase):
 		self.assertTrue(diff.sum() != 0, "Error augmenting an image")
 
 	def test_resize_data(self):
-		import fast_denser.utilities.data as data
+		import utilities.data as data
 		import numpy as np
 
 		data_resized = data.resize_data((np.zeros(shape=(10, 28, 28, 1)), (28, 28)))

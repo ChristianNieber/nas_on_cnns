@@ -8,7 +8,7 @@
     "numpy_seeds": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400],
 
     //Maximum number of generations
-    "num_generations": 20,
+    "num_generations": 5,
 
     //lambda, i.e. number of offspring
     "lambda": 2,
@@ -22,7 +22,7 @@
     //place where the experiment is saved
     "save_path": "D:/experiments",
 
-    // save models
+    // resume from saved state
     "resume": false,
 
     //rates of the different mutations [0, 1]

@@ -19,8 +19,8 @@ class Test(unittest.TestCase):
 		return sum([len(module.layers) for module in modules])
 
 	def create_individual(self):
-		from fast_denser.utils import Individual
-		from fast_denser.grammar import Grammar
+		from utils import Individual
+		from grammar import Grammar
 
 		network_structure = [["features", 1, 3]]
 		grammar = Grammar('tests/utilities/example.grammar')
@@ -34,8 +34,8 @@ class Test(unittest.TestCase):
 		return ind, grammar
 
 	def create_lenet_individual(self):
-		from fast_denser.utils import Individual
-		from fast_denser.grammar import Grammar
+		from utils import Individual
+		from grammar import Grammar
 
 		network_structure = [["features", 1, 30], ["classification", 1, 10]],
 		grammar = Grammar('tests/utilities/lenet.grammar')
@@ -44,10 +44,10 @@ class Test(unittest.TestCase):
 
 		return ind, grammar
 
-	def EXCLUDE_test_pickle_evaluator(self):
-		from fast_denser.utils import Evaluator
-		from fast_denser.utilities.fitness_metrics import accuracy
-		import fast_denser.engine as engine
+	def test_pickle_evaluator(self):
+		from utils import Evaluator
+		from utilities.fitness_metrics import accuracy
+		import engine
 		import os
 
 		random.seed(0)
@@ -63,9 +63,9 @@ class Test(unittest.TestCase):
 
 
 	def test_save_population(self):
-		from fast_denser.utils import Individual
-		from fast_denser.grammar import Grammar
-		import fast_denser.engine as engine
+		from utils import Individual
+		from grammar import Grammar
+		import engine
 		import os
 		import random
 
@@ -96,7 +96,7 @@ class Test(unittest.TestCase):
 
 
 	def test_load_config(self):
-		import fast_denser.engine as engine
+		import engine
 
 		config = engine.load_config('tests/utilities/example_config.json')
 
@@ -104,7 +104,7 @@ class Test(unittest.TestCase):
 
 
 	def test_add_layer_random(self):
-		from fast_denser.engine import mutation
+		from engine import mutation
 
 		random.seed(0)
 		ind, grammar = self.create_individual()
@@ -118,7 +118,7 @@ class Test(unittest.TestCase):
 
 
 	def test_add_layer_replicate(self):
-		from fast_denser.engine import mutation
+		from engine import mutation
 
 		random.seed(0)
 		ind, grammar = self.create_individual()
@@ -132,7 +132,7 @@ class Test(unittest.TestCase):
 
 
 	def test_remove_layer(self):
-		from fast_denser.engine import mutation
+		from engine import mutation
 
 		random.seed(0)
 		ind, grammar = self.create_individual()
@@ -145,7 +145,7 @@ class Test(unittest.TestCase):
 
 
 	def test_mutate_ge(self):
-		from fast_denser.engine import mutation
+		from engine import mutation
 
 		random.seed(0)
 		ind, grammar = self.create_individual()
@@ -170,8 +170,8 @@ class Test(unittest.TestCase):
 			ind = new_ind
 
 	def test_keras_mapping(self):
-		from fast_denser.utils import Evaluator
-		from fast_denser.utilities.fitness_metrics import accuracy
+		from utils import Evaluator
+		from utilities.fitness_metrics import accuracy
 
 		random.seed(0)
 		ind, grammar = self.create_individual()
@@ -192,8 +192,8 @@ class Test(unittest.TestCase):
 		self.assertEqual(len(config['input_layers']), 1)
 		self.assertEqual(len(config['output_layers']), 1)
 	def test_lenet(self):
-		from fast_denser.utils import Evaluator
-		from fast_denser.utilities.fitness_metrics import accuracy
+		from utils import Evaluator
+		from utilities.fitness_metrics import accuracy
 		from keras.utils.layer_utils import count_params
 
 		random.seed(0)

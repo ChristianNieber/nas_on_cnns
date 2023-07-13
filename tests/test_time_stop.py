@@ -13,7 +13,7 @@ class Test(unittest.TestCase):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
 
 	def test_time_stop(self):
-		import fast_denser.utils as utils
+		import utils as utils
 
 		time_stop = utils.TimedStopping(seconds=2, verbose=True)
 		time_stop.model = Model()

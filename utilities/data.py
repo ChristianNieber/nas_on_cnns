@@ -13,9 +13,9 @@
 # limitations under the License.
 
 import numpy as np
-from fast_denser.utilities.datasets.svhn import load_svhn
-from fast_denser.utilities.datasets.cifar import load_cifar
-from fast_denser.utilities.datasets.tiny_imagenet import load_tiny_imagenet
+from utilities.svhn import load_svhn
+from utilities.cifar import load_cifar
+from utilities.tiny_imagenet import load_tiny_imagenet
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
 from multiprocessing import Pool
 import tensorflow as tf
@@ -24,8 +24,8 @@ import contextlib
 import sys
 
 # dataset paths - change if the path is different
-SVHN = 'fast_denser/utilities/datasets/data/svhn'
-TINY_IMAGENET = 'fast_denser/utilities/datasets/data/tiny-imagenet-200'
+SVHN = 'utilities/data/svhn'
+TINY_IMAGENET = 'utilities/data/tiny-imagenet-200'
 
 
 def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10):

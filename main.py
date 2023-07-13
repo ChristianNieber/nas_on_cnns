@@ -1,10 +1,10 @@
-import fast_denser
+import engine
 from keras.models import load_model
 from keras.preprocessing.image import ImageDataGenerator
 # import visualkeras
 from pickle import load
 
-fast_denser.search(0, 'mnist', 'config/config.json', 'config/lenet.grammar')
+engine.main(0, 'mnist', 'config/config.json', 'config/lenet.grammar')
 
 with open('D:/experiments/run_0/evaluator.pkl', 'rb') as f_data:
     evaluator = load(f_data)
@@ -20,7 +20,6 @@ datagen_test = ImageDataGenerator()
 # TODO
 # - penalty function for large networks
 # - test keras error
-# - test: resume
 # --> optimizer test run
 
 # - real time plots & visualisation

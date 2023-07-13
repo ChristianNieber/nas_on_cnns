@@ -16,8 +16,8 @@
 import sys
 import getopt
 import random
-from fast_denser.grammar import Grammar
-from fast_denser.utils import Evaluator, Individual
+from grammar import Grammar
+from utils import Evaluator, Individual
 from copy import deepcopy
 from os import makedirs
 import pickle
@@ -25,11 +25,11 @@ import os
 from shutil import copyfile
 from glob import glob
 import json
-from fast_denser.utilities.fitness_metrics import *
+from utilities.fitness_metrics import *
 from jsmin import jsmin
 from pathlib import Path
 from keras.preprocessing.image import ImageDataGenerator
-from fast_denser.utilities.data_augmentation import augmentation
+from utilities.data_augmentation import augmentation
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 

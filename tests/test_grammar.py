@@ -7,9 +7,9 @@ class Test(unittest.TestCase):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
 
 	def test_read_grammar(self):
-		import fast_denser.grammar
+		import grammar
 
-		grammar = fast_denser.grammar.Grammar('tests/utilities/example.grammar')
+		grammar = grammar.Grammar('tests/utilities/example.grammar')
 		expected_output = """<activation-function> ::= act:linear |  act:relu |  act:sigmoid
 <bias> ::= bias:True |  bias:False
 <convolution> ::= layer:conv [num-filters,int,32,256] [filter-shape,int,2,5] [stride,int,1,3] <padding> <activation-function> <bias>
@@ -21,14 +21,14 @@ class Test(unittest.TestCase):
 		self.assertEqual(output, expected_output, "Error: grammars differ")
 
 	def test_read_invalid_grammar(self):
-		import fast_denser.grammar
+		import grammar
 
 		with self.assertRaises(SystemExit) as cm:
-			grammar = fast_denser.grammar.Grammar('invalid_path')
+			grammar = grammar.Grammar('invalid_path')
 			self.assertEqual(cm.exception.code, -1, "Error: read invalid grammar")
 
 	def test_initialise(self):
-		import fast_denser.grammar
+		import grammar
 		import random
 		import numpy as np
 
@@ -38,14 +38,14 @@ class Test(unittest.TestCase):
 		expected_output = {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 32.0, 256.0, 42), 'filter-shape': ('int', 2.0, 5.0, 4), 'stride': ('int', 1.0, 3.0, 3)}}],
 						   'padding': [{'ge': 1, 'ga': {}}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 1, 'ga': {}}]}
 
-		grammar = fast_denser.grammar.Grammar('tests/utilities/example.grammar')
+		grammar = grammar.Grammar('tests/utilities/example.grammar')
 
 		self.assertEqual(grammar.initialise('features'), expected_output, "Error: initialise not equal")
 
 	def test_decode(self):
-		import fast_denser.grammar
+		import grammar
 
-		grammar = fast_denser.grammar.Grammar('tests/utilities/example.grammar')
+		grammar = grammar.Grammar('tests/utilities/example.grammar')
 
 		start_symbol = 'features'
 		layer = {'features': [{'ge': 0, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'activation-function': [{'ge': 2, 'ga': {}}],

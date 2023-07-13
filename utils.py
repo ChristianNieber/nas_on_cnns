@@ -22,7 +22,7 @@ from keras.utils.layer_utils import count_params
 from time import time
 import numpy as np
 import os
-from fast_denser.utilities.data import load_dataset
+from utilities.data import load_dataset
 
 # TODO: future -- impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
