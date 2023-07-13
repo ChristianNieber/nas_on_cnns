@@ -39,7 +39,7 @@ PENALTY_CONNECTIONS_TARGET = 0
 def fitness_function(accuracy, connections):
 	if (USE_NETWORK_SIZE_PENALTY):
 		error_measure = (1.0-accuracy)*50
-		return -(error_measure**2 - connections/PENALTY_CONNECTIONS_TARGET)
+		return -(error_measure**3 - PENALTY_CONNECTIONS_TARGET/connections)
 	else:
 		return accuracy
 
@@ -581,8 +581,12 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 
 			# evaluate population
 			population_fitness = []
+			population_accuracy = []
+			population_parameters = []
 			for idx, ind in enumerate(population):
 				population_fitness.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
+				population_accuracy.append(ind.test_accuracy)
+				population_parameters.append(ind.parameters)
 
 		# select parent
 		parent = select_fittest(population, population_fitness)
@@ -597,8 +601,10 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		print('[Gen %d] ' % gen, end='')
 		if best_fitness is None or parent.fitness > best_fitness:
 			if best_fitness:
-				print('*** New best individual %s (%f) replaces %s (%f) *** ' % (parent.id, parent.fitness, best_individual, best_fitness), end='')
+				print('*** New best individual %s (%f acc: %f p: %d) replaces %s (%f acc: %f p: %d) *** ' % (parent.id, parent.fitness, parent.test_accuracy, parent.parameters, best_individual, best_fitness, best_accuracy, best_parameters), end='')
 			best_fitness = parent.fitness
+			best_accuracy = parent.test_accuracy
+			best_parameters = parent.parameters
 			best_individual = parent.id
 
 			if os.path.isfile(Path(save_path, 'individual-%s.h5' % best_individual)):
@@ -607,7 +613,9 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-		print('Best fitness: %f, in generation: %f' % (best_fitness, max(population_fitness[1:]) if len(population_fitness) > 1 else max(population_fitness)))
+		best_in_generation_idx = np.argmax(population_fitness[1:]) + 1 if len(population_fitness) > 1 else 0
+		best_in_generation = population[best_in_generation_idx]
+		print('Best fitness: %f acc: %f p: %d, in generation: %f acc: %f p: %d' % (best_fitness, best_accuracy, best_parameters, best_in_generation.fitness, best_in_generation.test_accuracy, best_in_generation.parameters))
 
 		# save population
 		save_population_statistics(population, save_path, gen)

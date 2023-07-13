@@ -803,7 +803,7 @@ class Individual:
 			fitness value of the candidate solution
 		training_epochs : int
 			number of performed epochs during training
-		trainable_parameters : int
+		parameters : int
 			number of trainable parameters of the network
 		id : str
 			string <generation>-<index>
@@ -850,7 +850,7 @@ class Individual:
 	def reset_training(self):
 		"""reset all values computed during training"""
 		self.test_accuracy = None
-		self.trainable_parameters = None
+		self.parameters = None
 		self.training_time = 0
 		self.training_epochs = 0
 		self.final_test_accuracy = None
@@ -869,7 +869,7 @@ class Individual:
 			'id': self.id,
 			'test_accuracy': self.test_accuracy,
 			'fitness': self.fitness,
-			'trainable_parameters': self.trainable_parameters,
+			'trainable_parameters': self.parameters,
 			'training_epochs': self.training_epochs,
 			'training_time': self.training_time,
 			'million_inferences_time': self.million_inferences_time,
@@ -1033,13 +1033,13 @@ class Individual:
 				self.metrics_loss = metrics['loss']
 				self.metrics_val_accuracy = metrics['val_accuracy']
 				self.metrics_val_loss = metrics['val_loss']
-				self.trainable_parameters = metrics['trainable_parameters']
+				self.parameters = metrics['trainable_parameters']
 				self.training_epochs += metrics['training_epochs']
 				self.training_time += metrics['training_time']
 				self.million_inferences_time = metrics['million_inferences_time']
 				if 'test_accuracy' in metrics:
 					self.test_accuracy = metrics['test_accuracy']
-					self.fitness = cnn_eval.fitness_function(self.test_accuracy, self.trainable_parameters)
+					self.fitness = cnn_eval.fitness_function(self.test_accuracy, self.parameters)
 					print(f", fitness: {self.fitness}")
 				else:
 					self.test_accuracy = -1
@@ -1047,7 +1047,7 @@ class Individual:
 			else:
 				self.fitness = -1000000
 				self.test_accuracy = -1
-				self.trainable_parameters = -1
+				self.parameters = -1
 				self.million_inferences_time = -1
 
 			self.training_complete = True

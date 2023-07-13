@@ -8,10 +8,10 @@
     "numpy_seeds": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400],
 
     //Maximum number of generations
-    "num_generations": 5,
+    "num_generations": 1000,
 
     //lambda, i.e. number of offspring
-    "lambda": 2,
+    "lambda": 5,
 
     // popuplation size for generation 0
     "initial_population_size" : 1,
@@ -69,12 +69,12 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 60,
+    "max_training_time": 5,
     //maximum training epochs for each network
-    "max_training_epochs": 5,
+    "max_training_epochs": 10,
 
     //fitness function parameters
     "use_network_size_penalty" : true,
-    "penalty_connections_target" : 62000
+    "penalty_connections_target" : 20000
   }
 }
