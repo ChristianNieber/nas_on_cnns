@@ -46,13 +46,12 @@ class Test(unittest.TestCase):
 
 	def test_pickle_evaluator(self):
 		from utils import Evaluator
-		from utilities.fitness_metrics import accuracy
 		import engine
 		import os
 
 		random.seed(0)
 		ind, grammar = self.create_individual()
-		evaluator = Evaluator('cifar10', accuracy)
+		evaluator = Evaluator('cifar10')
 
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')
@@ -171,11 +170,10 @@ class Test(unittest.TestCase):
 
 	def test_keras_mapping(self):
 		from utils import Evaluator
-		from utilities.fitness_metrics import accuracy
 
 		random.seed(0)
 		ind, grammar = self.create_individual()
-		evaluator = Evaluator('mnist', accuracy)
+		evaluator = Evaluator('mnist')
 
 		phenotype = ind.get_phenotype(grammar)
 		expected_phenotype = ("layer:conv num-filters:98 filter-shape:5 stride:2 padding:valid act:relu bias:False input:-1\n"
@@ -193,12 +191,11 @@ class Test(unittest.TestCase):
 		self.assertEqual(len(config['output_layers']), 1)
 	def test_lenet(self):
 		from utils import Evaluator
-		from utilities.fitness_metrics import accuracy
 		from keras.utils.layer_utils import count_params
 
 		random.seed(0)
 		ind, grammar = self.create_lenet_individual()
-		evaluator = Evaluator('mnist', accuracy)
+		evaluator = Evaluator('mnist')
 
 		phenotype = ind.get_phenotype(grammar)
 		expected_phenotype = ("layer:conv num-filters:6 filter-shape:5 stride:1 padding:same act:relu bias:True batch-normalization:True input:-1\n"

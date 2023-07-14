@@ -9,10 +9,9 @@ class Test(unittest.TestCase):
 
 	def test_learning_mapping(self):
 		from utils import Evaluator
-		from utilities.fitness_metrics import accuracy
 
 		random.seed(0)
-		evaluator = Evaluator('mnist', accuracy)
+		evaluator = Evaluator('mnist')
 
 		learning_params_rmsprop = evaluator.get_learning('learning:rmsprop lr:0.1 rho:1 decay:0.000001')
 		optimiser_rmsprop = evaluator.assemble_optimiser(learning_params_rmsprop)

@@ -15,9 +15,10 @@
 
 import sys
 import getopt
+import numpy as np
 import random
 from grammar import Grammar
-from utils import Evaluator, Individual
+from utils import Evaluator, Individual, test_model_with_dataset
 from copy import deepcopy
 from os import makedirs
 import pickle
@@ -25,9 +26,9 @@ import os
 from shutil import copyfile
 from glob import glob
 import json
-from utilities.fitness_metrics import *
 from jsmin import jsmin
 from pathlib import Path
+from keras.models import load_model
 from keras.preprocessing.image import ImageDataGenerator
 from utilities.data_augmentation import augmentation
 
@@ -36,10 +37,10 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 USE_NETWORK_SIZE_PENALTY = 0
 PENALTY_CONNECTIONS_TARGET = 0
 
-def fitness_function(accuracy, connections):
+def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
 	if (USE_NETWORK_SIZE_PENALTY):
 		error_measure = (1.0-accuracy)*50
-		return -(error_measure**3 - PENALTY_CONNECTIONS_TARGET/connections)
+		return -(error_measure ** 3 - PENALTY_CONNECTIONS_TARGET / trainable_parameters)
 	else:
 		return accuracy
 
@@ -465,7 +466,7 @@ def load_config(config_file):
 	return config
 
 
-def main(run, dataset, config_file, grammar_path):  # pragma: no cover
+def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', grammar_path='config/lenet.grammar'):  # pragma: no cover
 	"""
 		(1+lambda)-ES
 
@@ -540,7 +541,7 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		np.random.seed(NUMPY_SEEDS[run])
 
 		# create evaluator
-		cnn_eval = Evaluator(dataset, fitness_function)
+		cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty)
 
 		# save evaluator
 		pickle_evaluator(cnn_eval, save_path)
@@ -622,82 +623,20 @@ def main(run, dataset, config_file, grammar_path):  # pragma: no cover
 		pickle_population(population, parent, save_path)
 
 	# compute testing performance of the fittest network
-	best_test_acc = cnn_eval.test_with_final_test_dataset(str(Path(save_path, 'best.h5')), data_generator_test)
+	best_test_acc = cnn_eval.final_test_saved_model(str(Path(save_path, 'best.h5')), data_generator_test)
 	print('[%d] Best test accuracy: %f' % (run, best_test_acc))
 
 
-def process_input(argv):  # pragma: no cover
-	"""
-		Maps and checks the input parameters and call the main function.
+def test_saved_model(name = 'best.h5'):
+	# datagen_test = ImageDataGenerator()
+	# evaluator = Evaluator('mnist', fitness_function)
 
-		Parameters
-		----------
-		argv : list
-			argv from system
-	"""
+	with open('D:/experiments/run_0/evaluator.pkl', 'rb') as f_data:
+		evaluator = pickle.load(f_data)
+	X_test = evaluator.dataset['x_test']
+	y_test = evaluator.dataset['y_test']
 
-	dataset = None
-	config_file = None
-	run = 0
-	grammar = None
-
-	try:
-		opts, args = getopt.getopt(argv, "hd:c:r:g:", ["dataset=", "config=", "run=", "grammar="])
-	except getopt.GetoptError:
-		print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammar>')
-		sys.exit(2)
-
-	for opt, arg in opts:
-		if opt == '-h':
-			print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammar>')
-			sys.exit()
-
-		elif opt in ("-d", "--dataset"):
-			dataset = arg
-
-		elif opt in ("-c", "--config"):
-			config_file = arg
-
-		elif opt in ("-r", "--run"):
-			run = int(arg)
-
-		elif opt in ("-g", "--grammar"):
-			grammar = arg
-
-	error = False
-
-	# check if mandatory variables are all set
-	if dataset is None:
-		print('The dataset (-d) parameter is mandatory.')
-		error = True
-
-	if config_file is None:
-		print('The config. file parameter (-c) is mandatory.')
-		error = True
-
-	if grammar is None:
-		print('The grammar (-g) parameter is mandatory.')
-		error = True
-
-	if error:
-		print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammar>')
-		exit(-1)
-
-	# check if files exist
-	if not os.path.isfile(grammar):
-		print('Grammar file does not exist.')
-		error = True
-
-	if not os.path.isfile(config_file):
-		print('Configuration file does not exist.')
-		error = True
-
-	if not error:
-		main(run, dataset, config_file, grammar)
-	else:
-		print('f_denser.py -d <dataset> -c <config> -r <run> -g <grammar>')
-
-
-if __name__ == '__main__':  # pragma: no cover
-
-	process_input(sys.argv[1:])
+	model = load_model(Path('D:/experiments/run_0/', name))
+	accuracy = test_model_with_dataset(model, X_test, y_test)
+	print('Best test accuracy: %f' % accuracy)
+	model.summary(line_length=120)

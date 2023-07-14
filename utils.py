@@ -23,7 +23,7 @@ from time import time
 import numpy as np
 import os
 from utilities.data import load_dataset
-from sklearn.metrics import accuracy_score, mean_squared_error
+from sklearn.metrics import accuracy_score
 
 # TODO: future -- impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
@@ -36,7 +36,7 @@ LOG_MODEL_SUMMARY = False				# keras summary of each evaluated model
 LOG_MODEL_TRAINING = 0					# training progress: 1 for progress bar, 2 for one line per epoch
 LOG_MODEL_SAVE = True					# log for saving after each epoch
 LOG_TIMED_STOPPING = False				# log stopping by timer
-LOG_EARLY_STOPPING = True				# log early stopping
+LOG_EARLY_STOPPING = False				# log early stopping
 LOG_MUTATIONS = False					# log all mutations
 SAVE_MODEL_AFTER_EACH_EPOCH = False		# monitor and save model after each epoch
 
@@ -107,6 +107,8 @@ class TimedStopping(keras.callbacks.Callback):
 			if self.verbose:
 				print('Stopping after %s seconds.' % self.seconds)
 
+def fitness_function_accuracy(accuracy, trainable_parameters):
+	return accuracy
 
 def calculate_accuracy(y_true, y_pred):
 	"""
@@ -139,7 +141,7 @@ class Evaluator:
 		----------
 		dataset : dict
 			dataset instances and partitions
-		fitness_function : function
+		fitness_func : function
 			fitness_metric (y_true, y_pred)
 			y_pred are the confidences
 
@@ -162,7 +164,7 @@ class Evaluator:
 			compute testing performance of the model
 	"""
 
-	def __init__(self, dataset, fitness_function):
+	def __init__(self, dataset, fitness_func = fitness_function_accuracy):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -170,11 +172,13 @@ class Evaluator:
 			----------
 			dataset : str
 				dataset to be loaded
+			fitness_func : function
+				calculates fitness from accuracy and number of trainable weights
 		"""
 
 		#        def setUp(self):
 		self.dataset = load_dataset(dataset)
-		self.fitness_function = fitness_function
+		self.fitness_func = fitness_func
 
 	@staticmethod
 	def get_layers(phenotype):
@@ -617,6 +621,7 @@ class Evaluator:
 		else:
 			print(f" *** no training epoch completed ***")
 
+		# return values
 		score.history['training_epochs'] = training_epochs
 		score.history['training_time'] = training_time
 		score.history['million_inferences_time'] = million_inferences_time
@@ -627,9 +632,9 @@ class Evaluator:
 
 		return score.history
 
-	def test_with_final_test_dataset(self, model_path, datagen_test):  # pragma: no cover
+	def final_test_saved_model(self, model_path, datagen_test = None):  # pragma: no cover
 		"""
-			Compute testing performance of the model
+			Compute final testing performance of the model
 
 			Parameters
 			----------
@@ -643,16 +648,18 @@ class Evaluator:
 		"""
 
 		model = keras.models.load_model(model_path)
-		model_test_start_time = time()
-		if datagen_test is None:
-			y_pred = model.predict(self.dataset['x_test'], verbose=LOG_MODEL_TRAINING)
-		else:
-			y_pred = model.predict_generator(datagen_test.flow(self.dataset['x_test'], shuffle=False), verbose=LOG_MODEL_TRAINING)
-		accuracy = calculate_accuracy(self.dataset['y_test'], y_pred)
-		final_test_time = time() - model_test_start_time
-		final_million_inferences_time = 1000000.0 * final_test_time / len(y_pred)
-		return accuracy
+		return test_model_with_dataset(model, self.dataset['x_test'], self.dataset['y_test'], datagen_test)
 
+def test_model_with_dataset(model, X_test, y_test, datagen_test = None):
+	model_test_start_time = time()
+	if datagen_test is None:
+		y_pred = model.predict(X_test, verbose=LOG_MODEL_TRAINING)
+	else:
+		y_pred = model.predict_generator(datagen_test.flow(X_test, y_test, shuffle=False), verbose=LOG_MODEL_TRAINING)
+	accuracy = calculate_accuracy(y_test, y_pred)
+	final_test_time = time() - model_test_start_time
+	final_million_inferences_time = 1000000.0 * final_test_time / len(y_pred)
+	return accuracy
 
 class Module:
 	"""
@@ -1039,7 +1046,7 @@ class Individual:
 				self.million_inferences_time = metrics['million_inferences_time']
 				if 'test_accuracy' in metrics:
 					self.test_accuracy = metrics['test_accuracy']
-					self.fitness = cnn_eval.fitness_function(self.test_accuracy, self.parameters)
+					self.fitness = cnn_eval.fitness_func(self.test_accuracy, self.parameters)
 					print(f", fitness: {self.fitness}")
 				else:
 					self.test_accuracy = -1
