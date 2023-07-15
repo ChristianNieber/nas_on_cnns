@@ -8,7 +8,7 @@
     "numpy_seeds": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400],
 
     //Maximum number of generations
-    "num_generations": 100,
+    "num_generations": 50,
 
     // my - number of parents
     "my" : 1,
@@ -18,6 +18,9 @@
 
     // popuplation size for generation 0
     "initial_population_size" : 1,
+
+    // initial population, "lenet, "perceptron" or "random"
+    "initial_individuals" : "perceptron",
 
     //maximum of epochs to perform. Evolution is halted when the current number of epochs surpasses this value
     "max_epochs": 1000,
@@ -43,7 +46,7 @@
   //network specific parameters
   "NETWORK": {
     //structure fo the hidden layers of the network [[non-terminal, min, max], ...]
-    "network_structure": [["features", 1, 30], ["classification", 1, 10]],
+    "network_structure": [["features", 1, 10], ["classification", 1, 5]],
 
     //output layer
     "output": "output",
@@ -51,7 +54,7 @@
     //macro blocks: currently only learning
     "macro_structure": ["learning"],
 
-    //number of layers on initialisation
+    //number of layers on random initialisation
     "network_structure_init": {"features":[2,3,4], "classification":[1]},
 
     //number of levels back for each of the blocks
@@ -74,17 +77,17 @@
     //maximum training time for each network (in seconds)
     "max_training_time": 30,
     //maximum training epochs for each network
-    "max_training_epochs": 50,
+    "max_training_epochs": 30,
 
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,
-    //fitness function parameter: roughly number of connections worth the difference between accuracy 0.99 and 1.00
-    "penalty_connections_target" : 30000,
+    //fitness function parameter: roughly number of connections worth the difference of 0.01 accuracy at an accuracy of 0.99
+    "penalty_connections_target" : 15000,
 
     // test new elite individuals with final test set
     "best_retest_with_final_test_set" : true,
     // re-train best individual with K folds and find average accuracy and standard deviation, 0 to disable
-    "best_k_folds" : 10,
+    "best_k_folds" : 0,
     // only start K folds re-training after this generation number
     "best_k_folds_start_at_generation" : 10
   }

@@ -1,18 +1,3 @@
-# Copyright 2019 Filipe Assuncao
-# Restructured 2023 Christian Nieber
-
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-
-#    http://www.apache.org/licenses/LICENSE-2.0
-
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import numpy as np
 import random
 from operator import itemgetter
@@ -39,7 +24,7 @@ PENALTY_CONNECTIONS_TARGET = 0
 def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
 	if (USE_NETWORK_SIZE_PENALTY):
 		error_measure = (1.0-accuracy)*100
-		return -(error_measure ** 3 - PENALTY_CONNECTIONS_TARGET / trainable_parameters)
+		return -(error_measure ** 2 + trainable_parameters / PENALTY_CONNECTIONS_TARGET)
 	else:
 		return accuracy
 
@@ -366,7 +351,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 		for _ in range(random.randint(1, 2)):
 			if len(module.layers) < module.max_expansions and random.random() <= add_layer:
 				insert_pos = random.randint(0, len(module.layers))
-				if random.random() <= re_use_layer:
+				if random.random() <= re_use_layer and len(module.layers):
 					source_layer_index = random.randint(0, len(module.layers)-1)
 					new_layer = module.layers[source_layer_index]
 					layer_phenotype = grammar.decode_layer(module.module, new_layer)
@@ -499,6 +484,7 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	NUMPY_SEEDS = config['EVOLUTIONARY']['numpy_seeds']
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
 	INITIAL_POUPULATION_SIZE = config['EVOLUTIONARY']['initial_population_size']
+	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
 	LAMBDA = config['EVOLUTIONARY']['lambda']
 	SAVE_PATH = config['EVOLUTIONARY']['save_path']
@@ -514,6 +500,8 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	NETWORK_STRUCTURE = config['NETWORK']['network_structure']
 	MACRO_STRUCTURE = config['NETWORK']['macro_structure']
 	OUTPUT_STRUCTURE = config['NETWORK']['output']
+	NETWORK_STRUCTURE_INIT = config['NETWORK']['network_structure_init']
+	LEVELS_BACK = config["NETWORK"]["levels_back"]
 
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
@@ -564,7 +552,15 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		print(f'[Run {run}] Creating the initial population of {INITIAL_POUPULATION_SIZE}:')
 		population = []
 		for idx in range(INITIAL_POUPULATION_SIZE):
-			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx).initialise_as_lenet(grammar)
+			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
+			if INITIAL_INDIVIDUALS == "lenet":
+				new_individual.initialise_as_lenet(grammar)
+			elif INITIAL_INDIVIDUALS == "perceptron":
+				new_individual.initialise_as_perceptron(grammar)
+			elif INITIAL_INDIVIDUALS == "random":
+				new_individual.initialise(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
+			else:
+				raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
 			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 			population.append(new_individual)
 		print()
@@ -611,18 +607,18 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 			best_parameters = parent.parameters
 			best_individual = parent.id
 
-			# remove temporary files to free disk space
-			if gen > 1:
-				for x in range(LAMBDA):
-					if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))):
-						os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
-
 			# copy best individual's weights
 			if os.path.isfile(Path(save_path, 'individual-%s.h5' % best_individual)):
 				copyfile(Path(save_path, 'individual-%s.h5' % best_individual), Path(save_path, 'best.h5'))
 
 			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
+		# remove temporary files to free disk space
+		if gen > 1:
+			for x in range(LAMBDA):
+				if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))):
+					os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
 
 		population_fitness = [ind.fitness for ind in population]
 		best_in_generation_idx = np.argmax(population_fitness[MY:]) + 1 if len(population_fitness) > MY else 0
@@ -641,16 +637,16 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	print('[%d] Best test accuracy: %f' % (run, best_test_acc))
 
 
-def test_saved_model(name = 'best.h5'):
+def test_saved_model(run=0, name='best.h5'):
 	# datagen_test = ImageDataGenerator()
 	# evaluator = Evaluator('mnist', fitness_function)
 
-	with open('D:/experiments/run_0/evaluator.pkl', 'rb') as f_data:
+	with open(f'D:/experiments/run_{run}/evaluator.pkl', 'rb') as f_data:
 		evaluator = pickle.load(f_data)
 	X_test = evaluator.dataset['x_test']
 	y_test = evaluator.dataset['y_test']
 
-	model = load_model(Path('D:/experiments/run_0/', name))
+	model = load_model(Path(f'D:/experiments/run_{run}/', name))
 	accuracy = test_model_with_dataset(model, X_test, y_test)
 	print('Best test accuracy: %f' % accuracy)
-	model.summary(line_length=120)
+	return model

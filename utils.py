@@ -1,18 +1,3 @@
-# Copyright 2019 Filipe Assuncao
-# Restructured 2023 Christian Nieber
-
-# Licensed under the Apache License, Version 2.0 (the "License");
-# you may not use this file except in compliance with the License.
-# You may obtain a copy of the License at
-
-#    http://www.apache.org/licenses/LICENSE-2.0
-
-# Unless required by applicable law or agreed to in writing, software
-# distributed under the License is distributed on an "AS IS" BASIS,
-# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
-# See the License for the specific language governing permissions and
-# limitations under the License.
-
 import random
 import tensorflow as tf
 import keras
@@ -386,17 +371,15 @@ class Evaluator:
 				layer_type = keras_layers[layer_idx][0]
 				layer_params = keras_layers[layer_idx][1]
 				input_idx = layer_inputs[0]
-				# use input layer as first input
-				if input_idx == -1:
-					new_data_layer = layer(inputs)
+				# use inputs for first layer, otherwise input
+				input_layer = inputs if input_idx == -1 else data_layers[input_idx]
 				# add Flatten layer before first fc layer
-				elif layer_type == 'fc' and first_fc:
+				if layer_type == 'fc' and first_fc:
 					first_fc = False
-					flatten = tf.keras.layers.Flatten()(data_layers[input_idx])
+					flatten = tf.keras.layers.Flatten()(input_layer)
 					new_data_layer = layer(flatten)
-				# all other layers
 				else:
-					new_data_layer = layer(data_layers[input_idx])
+					new_data_layer = layer(input_layer)
 
 				# conv and fc layers can have an optional batch normalisation layer, that should be inserted before the activation layer
 				if layer_type == 'conv' or layer_type == 'fc':
@@ -492,7 +475,7 @@ class Evaluator:
 		y_combined = self.dataset['y_combined']
 
 		print(f"evaluating {id} with {nfolds} folds:")
-		split = StratifiedShuffleSplit(n_splits=nfolds, test_size=17000, random_state=0)
+		split = StratifiedShuffleSplit(n_splits=nfolds, test_size=17000)
 		test_accuracy_list = []
 		accuracy_list = []
 		val_accuracy_list = []
@@ -835,7 +818,35 @@ class Module:
 			else:
 				self.connections[layer_idx] = [layer_idx - 1]
 
+	def initialise_module_as_perceptron(self, grammar):
+		"""
+			Creates a pre-defined Perceptron module
 
+			Parameters
+			----------
+			grammar : Grammar
+				grammar instance that stores the expansion rules
+		"""
+
+		feature_layers_perceptron = []
+
+		classification_layers_perceptron = [
+			{'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0, 40)}, 'ge': 0}], 'activation-function': [{'ge': 3, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 1, 'ga': {}}]}
+		]
+
+		if self.module == 'features':
+			self.layers = feature_layers_perceptron
+		elif self.module == 'classification':
+			self.layers = classification_layers_perceptron
+
+		# Initialise connections: feed-forward and allowing skip-connections
+		self.connections = {}
+		for layer_idx in range(len(self.layers)):
+			if layer_idx == 0:
+				# the -1 layer is the input
+				self.connections[layer_idx] = [-1, ]
+			else:
+				self.connections[layer_idx] = [layer_idx - 1]
 class Individual:
 	"""
 		Candidate solution.
@@ -1000,12 +1011,44 @@ class Individual:
 				randomly created candidate solution
 		"""
 
-		new_module = Module('features', 1, 1, 1)
+		new_module = Module('features', 0, 10, 1)
 		new_module.initialise_module_as_lenet(grammar)
 		self.modules.append(new_module)
 
-		new_module = Module('classification', 1, 1, 1)
+		new_module = Module('classification', 1, 5, 1)
 		new_module.initialise_module_as_lenet(grammar)
+		self.modules.append(new_module)
+
+		# Initialise output
+		self.output = grammar.initialise(self.output_rule)
+
+		# Initialise the macro structure: learning, data augmentation, etc.
+		self.macro = [{'learning': [{'ge': 2, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
+						'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
+						'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
+		return self
+
+	def initialise_as_perceptron(self, grammar):
+		"""
+			Create a pre-set Perceptron Individual
+
+			Parameters
+			----------
+			grammar : Grammar
+				grammar instance that stores the expansion rules
+
+			Returns
+			-------
+			candidate_solution : Individual
+				randomly created candidate solution
+		"""
+
+		new_module = Module('features', 0, 10, 1)
+		new_module.initialise_module_as_perceptron(grammar)
+		self.modules.append(new_module)
+
+		new_module = Module('classification', 1, 5, 1)
+		new_module.initialise_module_as_perceptron(grammar)
 		self.modules.append(new_module)
 
 		# Initialise output
