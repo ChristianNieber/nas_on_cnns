@@ -28,7 +28,7 @@ SVHN = 'utilities/data/svhn'
 TINY_IMAGENET = 'utilities/data/tiny-imagenet-200'
 
 
-def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10):
+def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10, for_k_fold_validation=False):
 	"""
 		Split the data into independent sets
 
@@ -64,28 +64,25 @@ def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10):
 		x_train = x_train.reshape((-1, 32, 32, 3))
 		x_test = x_test.reshape((-1, 32, 32, 3))
 
-	# split = StratifiedShuffleSplit(n_splits=1, test_size=7000)
-	# for train_index, test_index in split.split(x_train, y_train):
-	#     evo_x_train, x_val = x_train[train_index], x_train[test_index]
-	#     evo_y_train, y_val = y_train[train_index], y_train[test_index]
+	if for_k_fold_validation:
+		x_combined = np.r_[x_train, x_test]
+		y_combined = np.r_[y_train, y_test]
+		dataset = {
+			'x_combined': x_combined, 'y_combined': y_combined
+		}
+	else:
+		evo_x_train, x_val, evo_y_train, y_val = train_test_split(x_train, y_train, test_size=7000, shuffle=True, stratify=y_train)
+		evo_x_val, evo_x_test, evo_y_val, evo_y_test = train_test_split(x_val, y_val, test_size=3500, shuffle=True, stratify=y_val)
 
-	# split = StratifiedShuffleSplit(n_splits=1, test_size=3500)
-	# for train_index, test_index in split.split(x_train, y_train):
-	#     evo_x_val, evo_x_test = x_test[train_index], x_test[test_index]
-	#     evo_y_val, evo_y_test = y_test[train_index], y_test[test_index]
+		# evo_y_train = keras.utils.to_categorical(evo_y_train, n_classes)
+		# evo_y_val = keras.utils.to_categorical(evo_y_val, n_classes
 
-	evo_x_train, x_val, evo_y_train, y_val = train_test_split(x_train, y_train, test_size=7000, shuffle=True, stratify=y_train)
-	evo_x_val, evo_x_test, evo_y_val, evo_y_test = train_test_split(x_val, y_val, test_size=3500, shuffle=True, stratify=y_val)
-
-	# evo_y_train = keras.utils.to_categorical(evo_y_train, n_classes)
-	# evo_y_val = keras.utils.to_categorical(evo_y_val, n_classes
-
-	dataset = {
-		'evo_x_train': evo_x_train, 'evo_y_train': evo_y_train,
-		'evo_x_val': evo_x_val, 'evo_y_val': evo_y_val,
-		'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
-		'x_test': x_test, 'y_test': y_test
-	}
+		dataset = {
+			'evo_x_train': evo_x_train, 'evo_y_train': evo_y_train,
+			'evo_x_val': evo_x_val, 'evo_y_val': evo_y_val,
+			'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
+			'x_test': x_test, 'y_test': y_test
+		}
 
 	return dataset
 
@@ -118,7 +115,7 @@ def resize_data(args):
 	return content.numpy()
 
 
-def load_dataset(dataset, shape=(32, 32)):
+def load_dataset(dataset, for_k_fold_validation=False, shape=(32, 32)):
 	"""
 		Load a specific dataset
 
@@ -191,6 +188,6 @@ def load_dataset(dataset, shape=(32, 32)):
 		print('Error: the dataset is not valid')
 		sys.exit(-1)
 
-	dataset = prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes)
+	dataset = prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes, for_k_fold_validation)
 
 	return dataset

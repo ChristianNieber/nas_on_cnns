@@ -8,10 +8,10 @@
     "numpy_seeds": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400],
 
     //Maximum number of generations
-    "num_generations": 3,
+    "num_generations": 100,
 
     //lambda, i.e. number of offspring
-    "lambda": 2,
+    "lambda": 5,
 
     // popuplation size for generation 0
     "initial_population_size" : 1,
@@ -69,12 +69,17 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 20,
+    "max_training_time": 30,
     //maximum training epochs for each network
-    "max_training_epochs": 5,
+    "max_training_epochs": 30,
 
     //fitness function parameters
     "use_network_size_penalty" : true,
-    "penalty_connections_target" : 20000
+    "penalty_connections_target" : 20000,
+
+    // test new elite individuals with final test set
+    "best_retest_with_final_test_set" : true,
+    // re-train best individual with K folds and find average accuracy and standard deviation
+    "best_k_folds" : 10
   }
 }

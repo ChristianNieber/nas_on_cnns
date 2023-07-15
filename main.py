@@ -1,8 +1,8 @@
 import engine
-from keras.models import load_model
-from keras.preprocessing.image import ImageDataGenerator
+#from keras.models import load_model
+#from keras.preprocessing.image import ImageDataGenerator
 # import visualkeras
-from pickle import load
+#from pickle import load
 
 engine.do_nas_search(0, 'mnist', 'config/config.json', 'config/lenet.grammar')
 

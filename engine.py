@@ -13,8 +13,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-import sys
-import getopt
 import numpy as np
 import random
 from grammar import Grammar
@@ -29,8 +27,8 @@ import json
 from jsmin import jsmin
 from pathlib import Path
 from keras.models import load_model
-from keras.preprocessing.image import ImageDataGenerator
-from utilities.data_augmentation import augmentation
+#from keras.preprocessing.image import ImageDataGenerator
+#from data_augmentation import augmentation
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -233,11 +231,10 @@ def select_fittest(population, population_fits):  # pragma: no cover
 			individual that seeds the next generation
 	"""
 
-	# TODO output
 	# Get best individual just according to fitness
 	idx_max = np.argmax(population_fits)
 	parent = population[idx_max]
-	return deepcopy(parent)
+	return parent		# deepcopy()?
 
 
 def mutation_dsge(ind, layer, grammar):
@@ -510,6 +507,8 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
 	PENALTY_CONNECTIONS_TARGET = config['TRAINING']['penalty_connections_target']
+	BEST_RETEST_WITH_FINAL_TEST_SET = config['TRAINING']['best_retest_with_final_test_set']
+	BEST_K_FOLDS = config['TRAINING']['best_k_folds']
 	data_generator = eval(config['TRAINING']['datagen'])
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
 	# fitness_metric = eval(config['TRAINING']['fitness_metric'])
@@ -541,7 +540,7 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		np.random.seed(NUMPY_SEEDS[run])
 
 		# create evaluator
-		cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty)
+		cnn_eval = Evaluator(dataset, False, fitness_metric_with_size_penalty)
 
 		# save evaluator
 		pickle_evaluator(cnn_eval, save_path)
@@ -555,6 +554,10 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		last_gen, cnn_eval, population, parent, population_fitness, pkl_random, pkl_numpy = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
+
+	# evaluator for K folds
+	if BEST_K_FOLDS:
+		k_fold_eval = Evaluator(dataset, True, fitness_metric_with_size_penalty)
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# check the total number of epochs (stop criteria)
@@ -601,8 +604,14 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		# update best individual
 		print('[Gen %d] ' % gen, end='')
 		if best_fitness is None or parent.fitness > best_fitness:
+
 			if best_fitness:
-				print('*** New best individual %s (%f acc: %f p: %d) replaces %s (%f acc: %f p: %d) *** ' % (parent.id, parent.fitness, parent.test_accuracy, parent.parameters, best_individual, best_fitness, best_accuracy, best_parameters), end='')
+				print('*** New best individual %s (%f acc: %f p: %d) replaces %s (%f acc: %f p: %d)' % (parent.id, parent.fitness, parent.test_accuracy, parent.parameters, best_individual, best_fitness, best_accuracy, best_parameters), end='')
+			if BEST_RETEST_WITH_FINAL_TEST_SET:
+				parent.calculate_final_test_accuracy(cnn_eval)
+				print(' final acc: %f (acc %f)' % (parent.final_test_accuracy, parent.test_accuracy))
+			if BEST_K_FOLDS:
+				parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, BEST_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 			best_fitness = parent.fitness
 			best_accuracy = parent.test_accuracy
 			best_parameters = parent.parameters
