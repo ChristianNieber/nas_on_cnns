@@ -10,7 +10,10 @@
     //Maximum number of generations
     "num_generations": 100,
 
-    //lambda, i.e. number of offspring
+    // my - number of parents
+    "my" : 1,
+
+    //lambda - number of offspring
     "lambda": 5,
 
     // popuplation size for generation 0
@@ -23,7 +26,7 @@
     "save_path": "D:/experiments",
 
     // resume from saved state
-    "resume": false,
+    "resume": true,
 
     //rates of the different mutations [0, 1]
     "MUTATIONS": {
@@ -79,7 +82,9 @@
 
     // test new elite individuals with final test set
     "best_retest_with_final_test_set" : true,
-    // re-train best individual with K folds and find average accuracy and standard deviation
-    "best_k_folds" : 10
+    // re-train best individual with K folds and find average accuracy and standard deviation, 0 to disable
+    "best_k_folds" : 10,
+    // only start K folds re-training after this generation number
+    "best_k_folds_start_at_generation" : 20
   }
 }

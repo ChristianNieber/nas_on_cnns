@@ -15,6 +15,7 @@
 
 import numpy as np
 import random
+from operator import itemgetter
 from grammar import Grammar
 from utils import Evaluator, Individual, test_model_with_dataset
 from copy import deepcopy
@@ -90,12 +91,11 @@ def pickle_evaluator(evaluator, save_path):
 		pickle.dump(evaluator, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def pickle_population(population, parent, save_path):
+def pickle_population(population, save_path):
 	"""
 		Save the objects (pickle) necessary to later resume evolution:
 		Pickled objects:
 			.population
-			.parent
 			.random states: numpy and random
 		Useful for later conducting more generations.
 		Replaces the objects of the previous generation.
@@ -104,17 +104,12 @@ def pickle_population(population, parent, save_path):
 		----------
 		population : list
 			list of Individual instances
-		parent : Individual
-			fittest individual that will seed the next generation
 		save_path: str
 			path to the json file
 	"""
 
 	with open(Path('%s/population.pkl' % save_path), 'wb') as handle_pop:
 		pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
-
-	with open(Path('%s/parent.pkl' % save_path), 'wb') as handle_pop:
-		pickle.dump(parent, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
 	with open(Path('%s/random.pkl' % save_path), 'wb') as handle_random:
 		pickle.dump(random.getstate(), handle_random, protocol=pickle.HIGHEST_PROTOCOL)
@@ -173,8 +168,6 @@ def unpickle_population(save_path):
 			Loaded because it has the data used for training.
 		pickle_population : list
 			population of the last performed generation
-		pickle_parent : Individual
-			fittest individual of the last performed generation
 		pickle_population_fitness : list
 			ordered list of fitnesses of the last population of individuals
 		pickle_random : tuple
@@ -195,9 +188,6 @@ def unpickle_population(save_path):
 		with open(Path(save_path, 'population.pkl'), 'rb') as handle_pop:
 			pickled_population = pickle.load(handle_pop)
 
-		with open(Path(save_path, 'parent.pkl'), 'rb') as handle_parent:
-			pickle_parent = pickle.load(handle_parent)
-
 		pickle_population_fitness = [ind.fitness for ind in pickled_population]
 
 		with open(Path(save_path, 'random.pkl'), 'rb') as handle_random:
@@ -208,13 +198,13 @@ def unpickle_population(save_path):
 
 		# total_epochs = get_total_epochs(save_path, last_generation)
 
-		return last_generation, pickled_evaluator, pickled_population, pickle_parent, pickle_population_fitness, pickle_random, pickle_numpy
+		return last_generation, pickled_evaluator, pickled_population, pickle_population_fitness, pickle_random, pickle_numpy
 
 	else:
 		return None
 
 
-def select_fittest(population, population_fits):  # pragma: no cover
+def select_parent(parents, parent_fitnesses):
 	"""
 		Select the parent to seed the next generation.
 
@@ -232,9 +222,29 @@ def select_fittest(population, population_fits):  # pragma: no cover
 	"""
 
 	# Get best individual just according to fitness
-	idx_max = np.argmax(population_fits)
-	parent = population[idx_max]
-	return parent		# deepcopy()?
+	idx = random.randint(0, len(parents) - 1)
+	return parents[idx]
+
+def select_new_parents(population, population_fitness, number_of_parents):
+	"""
+		Select the parent to seed the next generation.
+
+		Parameters
+		----------
+		population : list
+			list of instances of Individual
+		population_fitness : list
+			ordered list of fitness of the population of individuals
+
+		Returns
+		-------
+		new_parents : list
+			individual that seeds the next generation
+	"""
+
+	# Get best individuals ordered by fitness
+	sorted_fitness, sorted_population = zip(*sorted(zip(population_fitness, population), key=itemgetter(0), reverse=True))
+	return sorted_population[0:number_of_parents]
 
 
 def mutation_dsge(ind, layer, grammar):
@@ -488,6 +498,7 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	NUMPY_SEEDS = config['EVOLUTIONARY']['numpy_seeds']
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
 	INITIAL_POUPULATION_SIZE = config['EVOLUTIONARY']['initial_population_size']
+	MY = config['EVOLUTIONARY']['my']
 	LAMBDA = config['EVOLUTIONARY']['lambda']
 	SAVE_PATH = config['EVOLUTIONARY']['save_path']
 	RESUME = config['EVOLUTIONARY']['resume']
@@ -509,6 +520,7 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	PENALTY_CONNECTIONS_TARGET = config['TRAINING']['penalty_connections_target']
 	BEST_RETEST_WITH_FINAL_TEST_SET = config['TRAINING']['best_retest_with_final_test_set']
 	BEST_K_FOLDS = config['TRAINING']['best_k_folds']
+	BEST_K_FOLDS_START_AT_GENERATION = config['TRAINING']['best_k_folds_start_at_generation']
 	data_generator = eval(config['TRAINING']['datagen'])
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
 	# fitness_metric = eval(config['TRAINING']['fitness_metric'])
@@ -547,89 +559,81 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 
 		# status variables
 		last_gen = -1
-		# total_epochs = 0
+
+		print(f'[Run {run}] Creating the initial population:')
+		population = []
+		for idx in range(INITIAL_POUPULATION_SIZE):
+			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx).initialise_as_lenet(grammar)
+			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+			population.append(new_individual)
 
 	# in case there is a previous population, load it
 	else:
-		last_gen, cnn_eval, population, parent, population_fitness, pkl_random, pkl_numpy = unpickle
+		last_gen, cnn_eval, population, population_fitness, pkl_random, pkl_numpy = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
+		print(f'[Run {run}] Resuming evaluation at generation {last_gen}:')
 
 	# evaluator for K folds
 	if BEST_K_FOLDS:
 		k_fold_eval = Evaluator(dataset, True, fitness_metric_with_size_penalty)
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
-		# check the total number of epochs (stop criteria)
-		# if total_epochs is not None and total_epochs >= MAX_EPOCHS:
-		# 	break
-		if gen == 0:
-			print('[Run %d] Creating the initial population' % run)
+		population_fitness = [ind.fitness for ind in population]
+		# generate offspring by mutations and evaluate population
+		# population = [parent] + offspring
+		for idx in range(LAMBDA):
+			parent = select_parent(population[0:MY], population_fitness[0:MY])
+			while True:
+				new_individual = mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER, gen, idx)
+				fitness = new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+				if fitness:
+					break
+			population.append(new_individual)
+			population_fitness.append(fitness)
 
-			# create initial population
-			population = [Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, gen, idx).initialise_as_lenet(grammar)
-						  for idx in range(INITIAL_POUPULATION_SIZE)]
-
-			# set initial population variables and evaluate population
-			population_fitness = []
-			for idx, ind in enumerate(population):
-				ind.training_time = 0
-				population_fitness.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
-
-		else:
-			# generate offspring (by mutation)
-			offspring = [mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER, gen, idx)
-						 for idx in range(LAMBDA)]
-
-			population = [parent] + offspring
-
-			# evaluate population
-			population_fitness = []
-			population_accuracy = []
-			population_parameters = []
-			for idx, ind in enumerate(population):
-				population_fitness.append(ind.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS))
-				population_accuracy.append(ind.test_accuracy)
-				population_parameters.append(ind.parameters)
-
-		# select parent
-		parent = select_fittest(population, population_fitness)
-
-		# remove temporary files to free disk space
-		if gen > 1:
-			for x in range(len(population)):
-				if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))):
-					os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
+		# select parents
+		new_parents = select_new_parents(population, population_fitness, MY)
+		parent = new_parents[0]
 
 		# update best individual
 		print('[Gen %d] ' % gen, end='')
 		if best_fitness is None or parent.fitness > best_fitness:
-
 			if best_fitness:
 				print('*** New best individual %s (%f acc: %f p: %d) replaces %s (%f acc: %f p: %d)' % (parent.id, parent.fitness, parent.test_accuracy, parent.parameters, best_individual, best_fitness, best_accuracy, best_parameters), end='')
-			if BEST_RETEST_WITH_FINAL_TEST_SET:
+			if BEST_RETEST_WITH_FINAL_TEST_SET and not parent.final_test_accuracy:
 				parent.calculate_final_test_accuracy(cnn_eval)
 				print(' final acc: %f (acc %f)' % (parent.final_test_accuracy, parent.test_accuracy))
-			if BEST_K_FOLDS:
+			if BEST_K_FOLDS and gen >= BEST_K_FOLDS_START_AT_GENERATION and not parent.k_fold_test_accuracy_average:
 				parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, BEST_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 			best_fitness = parent.fitness
 			best_accuracy = parent.test_accuracy
 			best_parameters = parent.parameters
 			best_individual = parent.id
 
+			# remove temporary files to free disk space
+			if gen > 1:
+				for x in range(len(population)):
+					if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))):
+						os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
+
+			# copy best individual weights
 			if os.path.isfile(Path(save_path, 'individual-%s.h5' % best_individual)):
 				copyfile(Path(save_path, 'individual-%s.h5' % best_individual), Path(save_path, 'best.h5'))
 
 			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
-		best_in_generation_idx = np.argmax(population_fitness[1:]) + 1 if len(population_fitness) > 1 else 0
+		best_in_generation_idx = np.argmax(population_fitness[MY:]) + 1 if len(population_fitness) > MY else 0
 		best_in_generation = population[best_in_generation_idx]
 		print('Best fitness: %f acc: %f p: %d, in generation: %f acc: %f p: %d' % (best_fitness, best_accuracy, best_parameters, best_in_generation.fitness, best_in_generation.test_accuracy, best_in_generation.parameters))
 
 		# save population
 		save_population_statistics(population, save_path, gen)
-		pickle_population(population, parent, save_path)
+		pickle_population(population, save_path)
+
+		# keep only best as new parent
+		population = [parent]
 
 	# compute testing performance of the fittest network
 	best_test_acc = cnn_eval.final_test_saved_model(str(Path(save_path, 'best.h5')), data_generator_test)

@@ -4,7 +4,7 @@ import engine
 # import visualkeras
 #from pickle import load
 
-engine.do_nas_search(0, 'mnist', 'config/config.json', 'config/lenet.grammar')
+engine.do_nas_search(0)
 
 # engine.test_saved_model()
 

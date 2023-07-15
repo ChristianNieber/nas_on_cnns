@@ -381,7 +381,6 @@ class Evaluator:
 		invalid_layers = []
 
 		for layer_idx, layer in enumerate(layers):
-			# try:
 			layer_inputs = keras_layers[layer_idx][1]['input']
 			if len(layer_inputs) == 1:
 				layer_type = keras_layers[layer_idx][0]
@@ -451,12 +450,6 @@ class Evaluator:
 					merged_signal = data_layers[-1]
 
 				data_layers.append(layer(merged_signal))
-			# except ValueError as e:
-			#    data_layers.append(data_layers[-1])
-			#    invalid_layers.append(layer_idx)
-			#    if DEBUG:
-			#        print(keras_layers[layer_idx][0])
-			#        print(e)
 
 		model = tf.keras.models.Model(inputs=inputs, outputs=data_layers[-1])
 
@@ -706,7 +699,6 @@ class Evaluator:
 		"""
 
 		model = keras.models.load_model(model_path)
-		model.summary()
 		return test_model_with_dataset(model, self.dataset['x_test'], self.dataset['y_test'], datagen_test)
 
 def test_model_with_dataset(model, X_test, y_test, datagen_test = None):
@@ -1097,15 +1089,15 @@ class Individual:
 
 			model_save_path = save_path + 'individual-' + self.id + '.h5'
 
+			metrics = None
 			try:
 				metrics = cnn_eval.evaluate_cnn(phenotype, max_training_time, max_training_epochs, model_save_path, self.id, cnn_eval.dataset, datagen, datagen_test)
 			except tf.errors.ResourceExhaustedError as e:
+				print(f"### {self.id} : ResourceExhaustedError {e} ###")
 				keras.backend.clear_session()
-				return None
-			except TypeError as e2:
+			except (TypeError, ValueError) as e:
+				print(f"### {self.id} : caught exception {e} ###")
 				keras.backend.clear_session()
-				return None
-
 
 			if metrics is not None:
 				self.model_save_path = model_save_path
@@ -1123,8 +1115,8 @@ class Individual:
 				else:
 					self.test_accuracy = -1
 			else:
-				self.fitness = -1000000
-				self.test_accuracy = -1
+				self.fitness = None
+				self.test_accuracy = None
 				self.parameters = -1
 				self.million_inferences_time = -1
 
@@ -1161,13 +1153,13 @@ class Individual:
 			self.k_fold_test_accuracy_min = np.min(test_accuracy_list)
 			self.k_fold_test_accuracy_max = np.max(test_accuracy_list)
 			self.k_fold_metrics = metrics
-			print(f"{self.id} with {nfolds} folds: test accuracy (was {self.test_accuracy:0.5f}) avg={self.k_fold_test_accuracy_average:0.5f}  std={self.k_fold_test_accuracy_std:0.5f} [{self.k_fold_test_accuracy_min:0.5f}, {self.k_fold_test_accuracy_max:0.5f}]")
+			print(f"{self.id} with {nfolds} folds: test accuracy (was {self.test_accuracy:0.5f}) avg={self.k_fold_test_accuracy_average:0.5f}  std={self.k_fold_test_accuracy_std:0.5f} range={self.k_fold_test_accuracy_max-self.k_fold_test_accuracy_min:0.5f}")
 		except tf.errors.ResourceExhaustedError as e:
 			keras.backend.clear_session()
 			return None
-#		except TypeError as e2:
-#			keras.backend.clear_session()
-#			return None
+		except TypeError as e2:
+			keras.backend.clear_session()
+			return None
 
 
 	def calculate_final_test_accuracy(self, cnn_eval):
