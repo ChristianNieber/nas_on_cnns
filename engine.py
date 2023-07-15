@@ -38,7 +38,7 @@ PENALTY_CONNECTIONS_TARGET = 0
 
 def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
 	if (USE_NETWORK_SIZE_PENALTY):
-		error_measure = (1.0-accuracy)*50
+		error_measure = (1.0-accuracy)*100
 		return -(error_measure ** 3 - PENALTY_CONNECTIONS_TARGET / trainable_parameters)
 	else:
 		return accuracy
@@ -91,7 +91,7 @@ def pickle_evaluator(evaluator, save_path):
 		pickle.dump(evaluator, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def pickle_population(population, save_path):
+def pickle_population(gen, population, save_path):
 	"""
 		Save the objects (pickle) necessary to later resume evolution:
 		Pickled objects:
@@ -102,19 +102,22 @@ def pickle_population(population, save_path):
 
 		Parameters
 		----------
+		gen : int
+			generation
 		population : list
 			list of Individual instances
 		save_path: str
 			path to the json file
 	"""
 
-	with open(Path('%s/population.pkl' % save_path), 'wb') as handle_pop:
+	path = save_path + 'gen_%d_' % gen
+	with open(path + 'population.pkl', 'wb') as handle_pop:
 		pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
-	with open(Path('%s/random.pkl' % save_path), 'wb') as handle_random:
+	with open(path + 'random.pkl', 'wb') as handle_random:
 		pickle.dump(random.getstate(), handle_random, protocol=pickle.HIGHEST_PROTOCOL)
 
-	with open(Path('%s/numpy.pkl' % save_path), 'wb') as handle_numpy:
+	with open(path + 'numpy.pkl', 'wb') as handle_numpy:
 		pickle.dump(np.random.get_state(), handle_numpy, protocol=pickle.HIGHEST_PROTOCOL)
 
 
@@ -182,29 +185,29 @@ def unpickle_population(save_path):
 		json_file_paths = [int(path.split(os.sep)[-1].replace('gen_', '').replace('.json', '')) for path in json_file_paths]
 		last_generation = max(json_file_paths)
 
-		with open(Path(save_path, 'evaluator.pkl'), 'rb') as handle_eval:
+		path = save_path + 'gen_%d_' % last_generation
+
+		with open(save_path + 'evaluator.pkl', 'rb') as handle_eval:
 			pickled_evaluator = pickle.load(handle_eval)
 
-		with open(Path(save_path, 'population.pkl'), 'rb') as handle_pop:
+		with open(path + 'population.pkl', 'rb') as handle_pop:
 			pickled_population = pickle.load(handle_pop)
 
-		pickle_population_fitness = [ind.fitness for ind in pickled_population]
-
-		with open(Path(save_path, 'random.pkl'), 'rb') as handle_random:
+		with open(path + 'random.pkl', 'rb') as handle_random:
 			pickle_random = pickle.load(handle_random)
 
-		with open(Path(save_path, 'numpy.pkl'), 'rb') as handle_numpy:
+		with open(path + 'numpy.pkl', 'rb') as handle_numpy:
 			pickle_numpy = pickle.load(handle_numpy)
 
 		# total_epochs = get_total_epochs(save_path, last_generation)
 
-		return last_generation, pickled_evaluator, pickled_population, pickle_population_fitness, pickle_random, pickle_numpy
+		return last_generation, pickled_evaluator, pickled_population, pickle_random, pickle_numpy
 
 	else:
 		return None
 
 
-def select_parent(parents, parent_fitnesses):
+def select_parent(parents):
 	"""
 		Select the parent to seed the next generation.
 
@@ -225,7 +228,7 @@ def select_parent(parents, parent_fitnesses):
 	idx = random.randint(0, len(parents) - 1)
 	return parents[idx]
 
-def select_new_parents(population, population_fitness, number_of_parents):
+def select_new_parents(population, number_of_parents):
 	"""
 		Select the parent to seed the next generation.
 
@@ -233,8 +236,6 @@ def select_new_parents(population, population_fitness, number_of_parents):
 		----------
 		population : list
 			list of instances of Individual
-		population_fitness : list
-			ordered list of fitness of the population of individuals
 
 		Returns
 		-------
@@ -243,7 +244,7 @@ def select_new_parents(population, population_fitness, number_of_parents):
 	"""
 
 	# Get best individuals ordered by fitness
-	sorted_fitness, sorted_population = zip(*sorted(zip(population_fitness, population), key=itemgetter(0), reverse=True))
+	sorted_population = sorted(population, key=lambda ind: ind.fitness, reverse=True)
 	return sorted_population[0:number_of_parents]
 
 
@@ -558,42 +559,41 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		pickle_evaluator(cnn_eval, save_path)
 
 		# status variables
-		last_gen = -1
+		last_gen = 0
 
-		print(f'[Run {run}] Creating the initial population:')
+		print(f'[Run {run}] Creating the initial population of {INITIAL_POUPULATION_SIZE}:')
 		population = []
 		for idx in range(INITIAL_POUPULATION_SIZE):
 			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx).initialise_as_lenet(grammar)
 			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 			population.append(new_individual)
+		print()
 
 	# in case there is a previous population, load it
 	else:
-		last_gen, cnn_eval, population, population_fitness, pkl_random, pkl_numpy = unpickle
+		last_gen, cnn_eval, population, pkl_random, pkl_numpy = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
-		print(f'[Run {run}] Resuming evaluation at generation {last_gen}:')
+		print(f'[Run {run}] Resuming evaluation after generation {last_gen}:')
 
 	# evaluator for K folds
 	if BEST_K_FOLDS:
 		k_fold_eval = Evaluator(dataset, True, fitness_metric_with_size_penalty)
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
-		population_fitness = [ind.fitness for ind in population]
 		# generate offspring by mutations and evaluate population
 		# population = [parent] + offspring
 		for idx in range(LAMBDA):
-			parent = select_parent(population[0:MY], population_fitness[0:MY])
+			parent = select_parent(population[0:MY])
 			while True:
 				new_individual = mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER, gen, idx)
 				fitness = new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 				if fitness:
 					break
 			population.append(new_individual)
-			population_fitness.append(fitness)
 
 		# select parents
-		new_parents = select_new_parents(population, population_fitness, MY)
+		new_parents = select_new_parents(population, MY)
 		parent = new_parents[0]
 
 		# update best individual
@@ -613,24 +613,25 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 
 			# remove temporary files to free disk space
 			if gen > 1:
-				for x in range(len(population)):
+				for x in range(LAMBDA):
 					if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))):
 						os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
 
-			# copy best individual weights
+			# copy best individual's weights
 			if os.path.isfile(Path(save_path, 'individual-%s.h5' % best_individual)):
 				copyfile(Path(save_path, 'individual-%s.h5' % best_individual), Path(save_path, 'best.h5'))
 
 			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
+		population_fitness = [ind.fitness for ind in population]
 		best_in_generation_idx = np.argmax(population_fitness[MY:]) + 1 if len(population_fitness) > MY else 0
 		best_in_generation = population[best_in_generation_idx]
 		print('Best fitness: %f acc: %f p: %d, in generation: %f acc: %f p: %d' % (best_fitness, best_accuracy, best_parameters, best_in_generation.fitness, best_in_generation.test_accuracy, best_in_generation.parameters))
 
 		# save population
 		save_population_statistics(population, save_path, gen)
-		pickle_population(population, save_path)
+		pickle_population(gen, population, save_path)
 
 		# keep only best as new parent
 		population = [parent]

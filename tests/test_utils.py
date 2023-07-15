@@ -82,7 +82,7 @@ class Test(unittest.TestCase):
 
 		self.assertTrue(os.path.exists('./run_0/gen_0.json'))
 
-		engine.pickle_population([ind], './run_0/')
+		engine.pickle_population(0, [ind], './run_0/')
 
 		self.assertTrue(os.path.exists('./run_0/population.pkl'))
 		self.assertTrue(os.path.exists('./run_0/parent.pkl'))

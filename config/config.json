@@ -74,17 +74,18 @@
     //maximum training time for each network (in seconds)
     "max_training_time": 30,
     //maximum training epochs for each network
-    "max_training_epochs": 30,
+    "max_training_epochs": 50,
 
-    //fitness function parameters
+    //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,
-    "penalty_connections_target" : 20000,
+    //fitness function parameter: roughly number of connections worth the difference between accuracy 0.99 and 1.00
+    "penalty_connections_target" : 30000,
 
     // test new elite individuals with final test set
     "best_retest_with_final_test_set" : true,
     // re-train best individual with K folds and find average accuracy and standard deviation, 0 to disable
     "best_k_folds" : 10,
     // only start K folds re-training after this generation number
-    "best_k_folds_start_at_generation" : 20
+    "best_k_folds_start_at_generation" : 10
   }
 }

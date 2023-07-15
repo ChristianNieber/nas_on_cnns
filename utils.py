@@ -950,6 +950,7 @@ class Individual:
 			'k_fold_test_accuracy_min' : self.k_fold_test_accuracy_min,
 			'k_fold_test_accuracy_max' : self.k_fold_test_accuracy_max,
 			'k_fold_metrics' : self.k_fold_metrics,
+			'history' : self.history
 		}
 
 	def initialise(self, grammar, levels_back, reuse, init_max):
@@ -1153,7 +1154,7 @@ class Individual:
 			self.k_fold_test_accuracy_min = np.min(test_accuracy_list)
 			self.k_fold_test_accuracy_max = np.max(test_accuracy_list)
 			self.k_fold_metrics = metrics
-			print(f"{self.id} with {nfolds} folds: test accuracy (was {self.test_accuracy:0.5f}) avg={self.k_fold_test_accuracy_average:0.5f}  std={self.k_fold_test_accuracy_std:0.5f} range={self.k_fold_test_accuracy_max-self.k_fold_test_accuracy_min:0.5f}")
+			print(f"--> {self.id} with {nfolds} folds: test accuracy (was {self.test_accuracy:0.5f}) avg={self.k_fold_test_accuracy_average:0.5f}  std={self.k_fold_test_accuracy_std:0.5f} range={self.k_fold_test_accuracy_max-self.k_fold_test_accuracy_min:0.5f}")
 		except tf.errors.ResourceExhaustedError as e:
 			keras.backend.clear_session()
 			return None

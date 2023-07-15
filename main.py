@@ -11,15 +11,9 @@ engine.do_nas_search(0)
 # visualkeras.layered_view(model, legend=True)
 
 # TODO
-# - test keras error
-# --> optimizer test run
-
-# - test variance of accuracy (K-fold, or random number seeds)
+# - save log
 # - simplify layer representation
-# - test retraining after load
-# - learning code
 # - more activation functions and parameters?
-# - final test for new best
 # - Comparison with GE?
 # - numeric default values
 # - ES integers
@@ -41,3 +35,5 @@ engine.do_nas_search(0)
 # - phenotypes with \n
 # - record mutations
 # - penalty function for large networks
+# - test variance of accuracy (K-fold, or random number seeds)
+# - final test for new best
