@@ -737,6 +737,7 @@ class Module:
 		self.module = module
 		self.levels_back = levels_back
 		self.layers = []
+
 		self.min_expansions = min_expansions
 		self.max_expansions = max_expansions
 
@@ -910,10 +911,10 @@ class Individual:
 		self.modules = []
 		self.output = None
 		self.macro = []
-		self.phenotype = None
+		self.phenotype = []
 		self.id = f"{gen}-{idx}"
 		self.parent = None
-		self.history = ''
+		self.evolution_history = []
 		self.reset_training()
 
 	def reset_training(self):
@@ -961,7 +962,7 @@ class Individual:
 			'k_fold_test_accuracy_min' : self.k_fold_test_accuracy_min,
 			'k_fold_test_accuracy_max' : self.k_fold_test_accuracy_max,
 			'k_fold_metrics' : self.k_fold_metrics,
-			'history' : self.history
+			'history' : self.evolution_history
 		}
 
 	def initialise(self, grammar, levels_back, reuse, init_max):
@@ -1062,15 +1063,15 @@ class Individual:
 
 	def log_mutation(self, description):
 		"""log a mutation"""
-		if len(self.history):
-			self.history += '\n'
-		self.history += self.parent + ': ' + description
+		self.evolution_history.append(f"{self.id} <- {self.parent}: {description}")
 		if LOG_MUTATIONS:
-			print(f"mutate {self.id}({self.parent}): {description}")
+			print(f"mutate {self.id} <- {self.parent}: {description}")
 
 	def log_mutation_add_to_line(self, description):
-		"""log a mutation"""
-		self.history += description
+		"""log a mutation, appending to last line"""
+		if len(self.evolution_history) == 0:
+			self.evolution_history.append("")
+		self.evolution_history[-1] += "    " + description
 		if LOG_MUTATIONS:
 			print(f"    {description}")
 
@@ -1103,8 +1104,9 @@ class Individual:
 		for rule_idx, learning_rule in enumerate(self.learning_rule):
 			phenotype += '\n' + grammar.decode_layer(learning_rule, self.macro[rule_idx])
 
-		self.phenotype = phenotype.lstrip('\n')
-		return self.phenotype
+		phenotype = phenotype.lstrip('\n')
+		self.phenotype = phenotype.split('\n')
+		return phenotype
 
 	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, save_path, max_training_time, max_training_epochs):
 		"""

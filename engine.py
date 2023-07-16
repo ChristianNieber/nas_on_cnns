@@ -459,14 +459,14 @@ def load_config(config_file):
 	return config
 
 
-def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', grammar_path='config/lenet.grammar'):  # pragma: no cover
+def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', config_file='config/config.json', grammar_path='config/lenet.grammar'):  # pragma: no cover
 	"""
 		(1+lambda)-ES
 
 		Parameters
 		----------
-		run : int
-			evolutionary run to perform
+		experiments_directory : str
+			directory where all experiments are saved
 		dataset : str
 			dataset to be solved
 		config_file : str
@@ -480,14 +480,13 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 
 	# load config file
 	config = load_config(config_file)
-	RANDOM_SEEDS = config['EVOLUTIONARY']['random_seeds']
-	NUMPY_SEEDS = config['EVOLUTIONARY']['numpy_seeds']
+	RANDOM_SEED = config['EVOLUTIONARY']['random_seed']
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
 	INITIAL_POUPULATION_SIZE = config['EVOLUTIONARY']['initial_population_size']
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
 	LAMBDA = config['EVOLUTIONARY']['lambda']
-	SAVE_PATH = config['EVOLUTIONARY']['save_path']
+	EXPERIMENT_NAME = config['EVOLUTIONARY']['experiment_name']
 	RESUME = config['EVOLUTIONARY']['resume']
 	REUSE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['reuse_layer']
 	ADD_LAYER = config['EVOLUTIONARY']['MUTATIONS']['add_layer']
@@ -514,7 +513,8 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
 	# fitness_metric = eval(config['TRAINING']['fitness_metric'])
 
-	save_path = '%s/run_%d/' % (SAVE_PATH, run)
+	if not experiments_directory.endswith('/') : experiments_directory += '/'
+	save_path = experiments_directory + EXPERIMENT_NAME + '/'
 
 	# load grammar
 	grammar = Grammar(grammar_path)
@@ -537,8 +537,9 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 				os.remove(f)
 
 		# set random seeds
-		random.seed(RANDOM_SEEDS[run])
-		np.random.seed(NUMPY_SEEDS[run])
+		if RANDOM_SEED != -1:
+			random.seed(RANDOM_SEED)
+			np.random.seed(RANDOM_SEED)
 
 		# create evaluator
 		cnn_eval = Evaluator(dataset, False, fitness_metric_with_size_penalty)
@@ -549,7 +550,7 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		# status variables
 		last_gen = -1
 
-		print(f'[Run {run}] Creating the initial population of {INITIAL_POUPULATION_SIZE}:')
+		print(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {INITIAL_POUPULATION_SIZE}')
 		population = []
 		for idx in range(INITIAL_POUPULATION_SIZE):
 			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
@@ -570,7 +571,7 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		last_gen, cnn_eval, population, pkl_random, pkl_numpy = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
-		print(f'[Run {run}] Resuming evaluation after generation {last_gen}:')
+		print(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
 
 	# evaluator for K folds
 	if BEST_K_FOLDS:
@@ -637,24 +638,25 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	print('\n\n----------------------------------------------------------------------------------------------------------------------------------------')
 	print('Best fitness: %s %f final: %f acc: %f p: %d' % (parent.id, parent.fitness, parent.final_test_accuracy, parent.test_accuracy, parent.parameters))
 	print('\n\nPhenotype:\n')
-	print(parent.phenotype)
+	print(*parent.phenotype, sep="\n")
 	print()
 	model = load_model(Path(save_path, 'best.h5'))
 	model.summary(line_length=120)
 	print('\n\nEvolution history:\n')
-	print(parent.history)
+	print(*parent.evolution_history, sep="\n")
 
 
-def test_saved_model(run=0, name='best.h5'):
+def test_saved_model(save_path, name='best.h5'):
 	# datagen_test = ImageDataGenerator()
 	# evaluator = Evaluator('mnist', fitness_function)
 
-	with open(f'D:/experiments/run_{run}/evaluator.pkl', 'rb') as f_data:
+	if not save_path.endswith('/') : save_path += '/'
+	with open(Path(save_path, 'evaluator.pkl'), 'rb') as f_data:
 		evaluator = pickle.load(f_data)
 	X_test = evaluator.dataset['x_test']
 	y_test = evaluator.dataset['y_test']
 
-	model = load_model(Path(f'D:/experiments/run_{run}/', name))
+	model = load_model(Path(save_path, name))
 	accuracy = test_model_with_dataset(model, X_test, y_test)
 	print('Best test accuracy: %f' % accuracy)
 	return model
