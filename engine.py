@@ -23,8 +23,8 @@ PENALTY_CONNECTIONS_TARGET = 0
 
 def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
 	if (USE_NETWORK_SIZE_PENALTY):
-		error_measure = (1.0-accuracy)*100
-		return -(error_measure ** 2 + trainable_parameters / PENALTY_CONNECTIONS_TARGET)
+		error_measure = (1.0-accuracy)*50
+		return 3 - (error_measure ** 2 + trainable_parameters / PENALTY_CONNECTIONS_TARGET)
 	else:
 		return accuracy
 
@@ -36,7 +36,7 @@ def save_population_statistics(population, save_path, gen):
 			.phenotype: phenotype of the individual
 			.fitness: fitness of the individual
 			.metrics: other evaluation metrics (e.g., loss, accuracy)
-			.trainable_parameters: number of network trainable parameters
+			.parameters: number of network trainable parameters
 			.training_epochs: number of performed training epochs
 			.training_time: time (sec) the network took to perform training_epochs
 			.million_inferences_time: measured time per million inferences
@@ -547,7 +547,7 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		pickle_evaluator(cnn_eval, save_path)
 
 		# status variables
-		last_gen = 0
+		last_gen = -1
 
 		print(f'[Run {run}] Creating the initial population of {INITIAL_POUPULATION_SIZE}:')
 		population = []
@@ -579,14 +579,15 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
 		# population = [parent] + offspring
-		for idx in range(LAMBDA):
-			parent = select_parent(population[0:MY])
-			while True:
-				new_individual = mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER, gen, idx)
-				fitness = new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
-				if fitness:
-					break
-			population.append(new_individual)
+		if gen:
+			for idx in range(LAMBDA):
+				parent = select_parent(population[0:MY])
+				while True:
+					new_individual = mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER, gen, idx)
+					fitness = new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					if fitness:
+						break
+				population.append(new_individual)
 
 		# select parents
 		new_parents = select_new_parents(population, MY)
@@ -599,7 +600,7 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 				print('*** New best individual %s (%f acc: %f p: %d) replaces %s (%f acc: %f p: %d)' % (parent.id, parent.fitness, parent.test_accuracy, parent.parameters, best_individual, best_fitness, best_accuracy, best_parameters), end='')
 			if BEST_RETEST_WITH_FINAL_TEST_SET and not parent.final_test_accuracy:
 				parent.calculate_final_test_accuracy(cnn_eval)
-				print(' final acc: %f (acc %f)' % (parent.final_test_accuracy, parent.test_accuracy))
+				print('final acc: %f (acc %f)' % (parent.final_test_accuracy, parent.test_accuracy))
 			if BEST_K_FOLDS and gen >= BEST_K_FOLDS_START_AT_GENERATION and not parent.k_fold_test_accuracy_average:
 				parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, BEST_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 			best_fitness = parent.fitness
@@ -632,9 +633,16 @@ def do_nas_search(run=0, dataset='mnist', config_file='config/config.json', gram
 		# keep only best as new parent
 		population = [parent]
 
-	# compute testing performance of the fittest network
-	best_test_acc = cnn_eval.final_test_saved_model(str(Path(save_path, 'best.h5')), data_generator_test)
-	print('[%d] Best test accuracy: %f' % (run, best_test_acc))
+	parent = population[0]
+	print('\n\n----------------------------------------------------------------------------------------------------------------------------------------')
+	print('Best fitness: %s %f final: %f acc: %f p: %d' % (parent.id, parent.fitness, parent.final_test_accuracy, parent.test_accuracy, parent.parameters))
+	print('\n\nPhenotype:\n')
+	print(parent.phenotype)
+	print()
+	model = load_model(Path(save_path, 'best.h5'))
+	model.summary(line_length=120)
+	print('\n\nEvolution history:\n')
+	print(parent.history)
 
 
 def test_saved_model(run=0, name='best.h5'):

@@ -8,7 +8,7 @@
     "numpy_seeds": [100, 200, 300, 400, 500, 600, 700, 800, 900, 1000, 1100, 1200, 1300, 1400],
 
     //Maximum number of generations
-    "num_generations": 50,
+    "num_generations": 200,
 
     // my - number of parents
     "my" : 1,
@@ -20,7 +20,7 @@
     "initial_population_size" : 1,
 
     // initial population, "lenet, "perceptron" or "random"
-    "initial_individuals" : "perceptron",
+    "initial_individuals" : "lenet",
 
     //maximum of epochs to perform. Evolution is halted when the current number of epochs surpasses this value
     "max_epochs": 1000,
@@ -81,14 +81,14 @@
 
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,
-    //fitness function parameter: roughly number of connections worth the difference of 0.01 accuracy at an accuracy of 0.99
-    "penalty_connections_target" : 15000,
+    //fitness function parameter: roughly number of connections worth the difference of 0.02 accuracy at an accuracy of 0.98
+    "penalty_connections_target" : 62000,
 
     // test new elite individuals with final test set
     "best_retest_with_final_test_set" : true,
     // re-train best individual with K folds and find average accuracy and standard deviation, 0 to disable
     "best_k_folds" : 0,
     // only start K folds re-training after this generation number
-    "best_k_folds_start_at_generation" : 10
+    "best_k_folds_start_at_generation" : 0
   }
 }
