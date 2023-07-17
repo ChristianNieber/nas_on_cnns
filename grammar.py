@@ -290,6 +290,7 @@ class Grammar:
 		symbol, non_terminal = symbol
 
 		if non_terminal:
+			assert symbol in read_integers
 			if symbol not in read_integers:
 				read_integers[symbol] = 0
 				layer_genotype[symbol] = []

@@ -1,6 +1,5 @@
 import numpy as np
 import random
-from operator import itemgetter
 from grammar import Grammar
 from utils import Evaluator, Individual, test_model_with_dataset
 from copy import deepcopy
@@ -13,8 +12,8 @@ import json
 from jsmin import jsmin
 from pathlib import Path
 from keras.models import load_model
-#from keras.preprocessing.image import ImageDataGenerator
-#from data_augmentation import augmentation
+# from keras.preprocessing.image import ImageDataGenerator
+# from data_augmentation import augmentation
 from logger import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -22,12 +21,14 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 USE_NETWORK_SIZE_PENALTY = 0
 PENALTY_CONNECTIONS_TARGET = 0
 
+
 def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
-	if (USE_NETWORK_SIZE_PENALTY):
+	if USE_NETWORK_SIZE_PENALTY:
 		error_measure = (1.0-accuracy)*50
 		return 3 - (error_measure ** 2 + trainable_parameters / PENALTY_CONNECTIONS_TARGET)
 	else:
 		return accuracy
+
 
 def save_population_statistics(population, save_path, gen):
 	"""
@@ -91,7 +92,7 @@ def pickle_population(gen, population, save_path):
 		gen : int
 			generation
 		population : list
-			list of Individual instances
+			a list of Individuals
 		save_path: str
 			path to the json file
 	"""
@@ -157,12 +158,10 @@ def unpickle_population(save_path):
 			Loaded because it has the data used for training.
 		pickle_population : list
 			population of the last performed generation
-		pickle_population_fitness : list
-			ordered list of fitnesses of the last population of individuals
 		pickle_random : tuple
-			Random random state
+			Random module random state
 		pickle_numpy : tuple
-			Numpy random state
+			Numpy module random state
 	"""
 
 	json_file_paths = glob(str(Path(save_path, '*.json')))
@@ -199,10 +198,8 @@ def select_parent(parents):
 
 		Parameters
 		----------
-		population : list
-			list of instances of Individual
-		population_fits : list
-			ordered list of fitnesses of the population of individuals
+		parents : list
+			list of potential parent Individuals
 
 		Returns
 		-------
@@ -214,6 +211,7 @@ def select_parent(parents):
 	idx = random.randint(0, len(parents) - 1)
 	return parents[idx]
 
+
 def select_new_parents(population, number_of_parents):
 	"""
 		Select the parent to seed the next generation.
@@ -222,6 +220,7 @@ def select_new_parents(population, number_of_parents):
 		----------
 		population : list
 			list of instances of Individual
+		number_of_parents : int
 
 		Returns
 		-------
@@ -344,7 +343,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 	# name for new individual
 	ind.id = f"{gen}-{idx}"
 
-	# mutation resets training time
+	# mutation resets training results
 	ind.reset_training()
 
 	for module in ind.modules:
@@ -483,7 +482,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	config = load_config(config_file)
 	RANDOM_SEED = config['EVOLUTIONARY']['random_seed']
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
-	INITIAL_POUPULATION_SIZE = config['EVOLUTIONARY']['initial_population_size']
+	INITIAL_POPULATION_SIZE = config['EVOLUTIONARY']['initial_population_size']
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
 	LAMBDA = config['EVOLUTIONARY']['lambda']
@@ -514,7 +513,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
 	# fitness_metric = eval(config['TRAINING']['fitness_metric'])
 
-	if not experiments_directory.endswith('/') : experiments_directory += '/'
+	if not experiments_directory.endswith('/'):
+		experiments_directory += '/'
 	save_path = experiments_directory + EXPERIMENT_NAME + '/'
 	log_file_path = save_path + '#' + EXPERIMENT_NAME + '.log'
 
@@ -523,7 +523,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	# best fitness so far
 	best_fitness = None
-	best_individual = None
 
 	# load previous population content (if any)
 	unpickle = unpickle_population(save_path) if RESUME else None
@@ -553,9 +552,9 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 		init_logger(log_file_path, overwrite=True)
 
-		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {INITIAL_POUPULATION_SIZE}')
+		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {INITIAL_POPULATION_SIZE}')
 		population = []
-		for idx in range(INITIAL_POUPULATION_SIZE):
+		for idx in range(INITIAL_POPULATION_SIZE):
 			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
 			if INITIAL_INDIVIDUALS == "lenet":
 				new_individual.initialise_as_lenet(grammar)
@@ -576,9 +575,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		last_gen, cnn_eval, population, pkl_random, pkl_numpy = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
+		log('\n========================================================================================================')
 		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
 
-	logger_configuration(log_training=True, log_mutations=False)
+	logger_configuration(log_training=True, log_mutations=True)
 
 	# evaluator for K folds
 	if BEST_K_FOLDS:
@@ -604,21 +604,19 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		# update best individual
 		log_nolf('[Gen %d] ' % gen)
 		if best_fitness is None or parent.fitness > best_fitness:
-			if best_fitness:
-				log_bold('*** New best individual %s (%f acc: %f p: %d) replaces %s (%f acc: %f p: %d)' % (parent.id, parent.fitness, parent.test_accuracy, parent.parameters, best_individual, best_fitness, best_accuracy, best_parameters))
 			if BEST_RETEST_WITH_FINAL_TEST_SET and not parent.final_test_accuracy:
 				parent.calculate_final_test_accuracy(cnn_eval)
-				log_bold('final acc: %f (acc %f)' % (parent.final_test_accuracy, parent.test_accuracy))
+			if best_fitness:
+				replaced_individual = population[0]
+				log_bold(f'*** New best individual {parent.short_description()} replaces  {replaced_individual.short_description()} ***')
 			if BEST_K_FOLDS and gen >= BEST_K_FOLDS_START_AT_GENERATION and not parent.k_fold_test_accuracy_average:
 				parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, BEST_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 			best_fitness = parent.fitness
-			best_accuracy = parent.test_accuracy
-			best_parameters = parent.parameters
-			best_individual = parent.id
 
 			# copy best individual's weights
-			if os.path.isfile(Path(save_path, 'individual-%s.h5' % best_individual)):
-				copyfile(Path(save_path, 'individual-%s.h5' % best_individual), Path(save_path, 'best.h5'))
+			best_individual_path = Path(save_path, 'individual-%s.h5' % parent.id)
+			if os.path.isfile(best_individual_path):
+				copyfile(best_individual_path, Path(save_path, 'best.h5'))
 
 			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -626,13 +624,15 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		# remove temporary files to free disk space
 		if gen > 1:
 			for x in range(LAMBDA):
-				if os.path.isfile(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))):
-					os.remove(Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x)))
+				individual_path = Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))
+				if os.path.isfile(individual_path):
+					os.remove(individual_path)
 
+		best_individual = population[0]
 		population_fitness = [ind.fitness for ind in population]
 		best_in_generation_idx = np.argmax(population_fitness[MY:]) + 1 if len(population_fitness) > MY else 0
 		best_in_generation = population[best_in_generation_idx]
-		log('Best fitness: %f acc: %f p: %d, in generation: %f acc: %f p: %d' % (best_fitness, best_accuracy, best_parameters, best_in_generation.fitness, best_in_generation.test_accuracy, best_in_generation.parameters))
+		log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
 
 		# save population
 		save_population_statistics(population, save_path, gen)
@@ -659,7 +659,8 @@ def test_saved_model(save_path, name='best.h5'):
 	# datagen_test = ImageDataGenerator()
 	# evaluator = Evaluator('mnist', fitness_function)
 
-	if not save_path.endswith('/') : save_path += '/'
+	if not save_path.endswith('/'):
+		save_path += '/'
 	with open(Path(save_path, 'evaluator.pkl'), 'rb') as f_data:
 		evaluator = pickle.load(f_data)
 	X_test = evaluator.dataset['x_test']
