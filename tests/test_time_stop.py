@@ -15,7 +15,7 @@ class Test(unittest.TestCase):
 	def test_time_stop(self):
 		import utils as utils
 
-		time_stop = utils.TimedStopping(seconds=2, verbose=True)
+		time_stop = utils.TimedStopping(seconds=2)
 		time_stop.model = Model()
 
 		time_stop.on_train_begin()

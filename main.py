@@ -15,7 +15,6 @@ engine.do_nas_search("D:/experiments")
 # visualkeras.layered_view(model, legend=True)
 
 # TODO
-# - save/restore random state
 # - save log
 # - main log
 # - early stopping
@@ -47,3 +46,4 @@ engine.do_nas_search("D:/experiments")
 # - penalty function for large networks
 # - test variance of accuracy (K-fold, or random number seeds)
 # - final test for new best
+# - save/restore random state

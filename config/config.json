@@ -72,7 +72,7 @@
     //maximum training time for each network (in seconds)
     "max_training_time": 3,
     //maximum training epochs for each network
-    "max_training_epochs": 30,
+    "max_training_epochs": 3,
 
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,
@@ -82,7 +82,7 @@
     // test new elite individuals with final test set
     "best_retest_with_final_test_set" : true,
     // re-train best individual with K folds and find average accuracy and standard deviation, 0 to disable
-    "best_k_folds" : 0,
+    "best_k_folds" : 3,
     // only start K folds re-training after this generation number
     "best_k_folds_start_at_generation" : 0
   }

@@ -1,10 +1,12 @@
 import unittest
 import warnings
 import random
+from logger import init_logger
 
 class Test(unittest.TestCase):
 	def setUp(self):
 		warnings.simplefilter('ignore', category=DeprecationWarning)
+		init_logger()
 
 
 	def count_unique_layers(self, modules):

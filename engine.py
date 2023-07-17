@@ -15,6 +15,7 @@ from pathlib import Path
 from keras.models import load_model
 #from keras.preprocessing.image import ImageDataGenerator
 #from data_augmentation import augmentation
+from logger import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
@@ -515,6 +516,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	if not experiments_directory.endswith('/') : experiments_directory += '/'
 	save_path = experiments_directory + EXPERIMENT_NAME + '/'
+	log_file_path = save_path + '#' + EXPERIMENT_NAME + '.log'
 
 	# load grammar
 	grammar = Grammar(grammar_path)
@@ -547,10 +549,11 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		# save evaluator
 		pickle_evaluator(cnn_eval, save_path)
 
-		# status variables
 		last_gen = -1
 
-		print(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {INITIAL_POUPULATION_SIZE}')
+		init_logger(log_file_path, overwrite=True)
+
+		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {INITIAL_POUPULATION_SIZE}')
 		population = []
 		for idx in range(INITIAL_POUPULATION_SIZE):
 			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
@@ -564,14 +567,18 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
 			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 			population.append(new_individual)
-		print()
+		log()
 
 	# in case there is a previous population, load it
 	else:
+		init_logger(log_file_path, overwrite=False)
+
 		last_gen, cnn_eval, population, pkl_random, pkl_numpy = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
-		print(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
+		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
+
+	logger_configuration(log_training=True, log_mutations=False)
 
 	# evaluator for K folds
 	if BEST_K_FOLDS:
@@ -595,13 +602,13 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		parent = new_parents[0]
 
 		# update best individual
-		print('[Gen %d] ' % gen, end='')
+		log_nolf('[Gen %d] ' % gen)
 		if best_fitness is None or parent.fitness > best_fitness:
 			if best_fitness:
-				print('*** New best individual %s (%f acc: %f p: %d) replaces %s (%f acc: %f p: %d)' % (parent.id, parent.fitness, parent.test_accuracy, parent.parameters, best_individual, best_fitness, best_accuracy, best_parameters), end='')
+				log_bold('*** New best individual %s (%f acc: %f p: %d) replaces %s (%f acc: %f p: %d)' % (parent.id, parent.fitness, parent.test_accuracy, parent.parameters, best_individual, best_fitness, best_accuracy, best_parameters))
 			if BEST_RETEST_WITH_FINAL_TEST_SET and not parent.final_test_accuracy:
 				parent.calculate_final_test_accuracy(cnn_eval)
-				print('final acc: %f (acc %f)' % (parent.final_test_accuracy, parent.test_accuracy))
+				log_bold('final acc: %f (acc %f)' % (parent.final_test_accuracy, parent.test_accuracy))
 			if BEST_K_FOLDS and gen >= BEST_K_FOLDS_START_AT_GENERATION and not parent.k_fold_test_accuracy_average:
 				parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, BEST_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 			best_fitness = parent.fitness
@@ -625,7 +632,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		population_fitness = [ind.fitness for ind in population]
 		best_in_generation_idx = np.argmax(population_fitness[MY:]) + 1 if len(population_fitness) > MY else 0
 		best_in_generation = population[best_in_generation_idx]
-		print('Best fitness: %f acc: %f p: %d, in generation: %f acc: %f p: %d' % (best_fitness, best_accuracy, best_parameters, best_in_generation.fitness, best_in_generation.test_accuracy, best_in_generation.parameters))
+		log('Best fitness: %f acc: %f p: %d, in generation: %f acc: %f p: %d' % (best_fitness, best_accuracy, best_parameters, best_in_generation.fitness, best_in_generation.test_accuracy, best_in_generation.parameters))
 
 		# save population
 		save_population_statistics(population, save_path, gen)
@@ -635,15 +642,17 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		population = [parent]
 
 	parent = population[0]
-	print('\n\n----------------------------------------------------------------------------------------------------------------------------------------')
-	print('Best fitness: %s %f final: %f acc: %f p: %d' % (parent.id, parent.fitness, parent.final_test_accuracy, parent.test_accuracy, parent.parameters))
-	print('\n\nPhenotype:\n')
-	print(*parent.phenotype, sep="\n")
-	print()
+	log('\n\n----------------------------------------------------------------------------------------------------------------------------------------')
+	log_bold('Best fitness: %s %f final: %f acc: %f p: %d' % (parent.id, parent.fitness, parent.final_test_accuracy, parent.test_accuracy, parent.parameters))
+	log_bold('\nPhenotype:')
+	for line in parent.phenotype:
+		log(line)
+	log()
 	model = load_model(Path(save_path, 'best.h5'))
 	model.summary(line_length=120)
-	print('\n\nEvolution history:\n')
-	print(*parent.evolution_history, sep="\n")
+	log_bold('\nEvolution history:')
+	for line in parent.evolution_history:
+		log(line)
 
 
 def test_saved_model(save_path, name='best.h5'):
@@ -658,5 +667,5 @@ def test_saved_model(save_path, name='best.h5'):
 
 	model = load_model(Path(save_path, name))
 	accuracy = test_model_with_dataset(model, X_test, y_test)
-	print('Best test accuracy: %f' % accuracy)
+	log('Best test accuracy: %f' % accuracy)
 	return model

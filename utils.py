@@ -10,6 +10,7 @@ import os
 from utilities.data import load_dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import train_test_split, StratifiedShuffleSplit
+from logger import *
 
 # TODO: future -- impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
@@ -21,11 +22,8 @@ DEBUG = True
 LOG_MODEL_SUMMARY = False				# keras summary of each evaluated model
 LOG_MODEL_TRAINING = 0					# training progress: 1 for progress bar, 2 for one line per epoch
 LOG_MODEL_SAVE = True					# log for saving after each epoch
-LOG_TIMED_STOPPING = False				# log stopping by timer
-LOG_EARLY_STOPPING = False				# log early stopping
-LOG_MUTATIONS = False					# log all mutations
+LOG_EARLY_STOPPING = True				# log early stopping
 SAVE_MODEL_AFTER_EACH_EPOCH = False		# monitor and save model after each epoch
-
 
 class TimedStopping(keras.callbacks.Callback):
 	"""
@@ -50,7 +48,7 @@ class TimedStopping(keras.callbacks.Callback):
 			method called after the end of each training epoch
 	"""
 
-	def __init__(self, seconds=None, verbose=0):
+	def __init__(self, seconds=None):
 		"""
 		Parameters
 		----------
@@ -62,7 +60,7 @@ class TimedStopping(keras.callbacks.Callback):
 		super(keras.callbacks.Callback, self).__init__()
 		self.start_time = 0
 		self.seconds = seconds
-		self.verbose = verbose
+		self.timer_stop_triggered = False
 
 	def on_train_begin(self, logs={}):
 		"""
@@ -74,6 +72,7 @@ class TimedStopping(keras.callbacks.Callback):
 				training logs
 		"""
 		self.start_time = time()
+		self.timer_stop_triggered = False
 
 	def on_epoch_end(self, epoch, logs={}):
 		"""
@@ -90,8 +89,7 @@ class TimedStopping(keras.callbacks.Callback):
 		"""
 		if time() - self.start_time > self.seconds:
 			self.model.stop_training = True
-			if self.verbose:
-				print('Stopping after %s seconds.' % self.seconds)
+			self.timer_stop_triggered = True
 
 def fitness_function_accuracy(accuracy, trainable_parameters):
 	return accuracy
@@ -396,7 +394,7 @@ class Evaluator:
 						elif activation_function == 'linear':
 							pass
 						else:
-							print(f"### Invalid activation value {activation_function}")
+							log_warning(f"Invalid activation value {activation_function}")
 
 				data_layers.append(new_data_layer)
 
@@ -471,10 +469,13 @@ class Evaluator:
 											beta_2=float(learning['beta2']))
 
 	def evaluate_cnn_k_folds(self, phenotype, nfolds, max_training_time, max_training_epochs, id, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
+		random_state = random.getstate()
+		numpy_state = np.random.get_state()
+
 		x_combined = self.dataset['x_combined']
 		y_combined = self.dataset['y_combined']
 
-		print(f"evaluating {id} with {nfolds} folds:")
+		log(f"evaluating {id} with {nfolds} folds:")
 		split = StratifiedShuffleSplit(n_splits=nfolds, test_size=17000)
 		test_accuracy_list = []
 		accuracy_list = []
@@ -518,6 +519,8 @@ class Evaluator:
 			'loss_list': loss_list,
 			'fitness_list': fitness_list,
 		}
+		random.setstate(random_state)
+		np.random.set_state(numpy_state)
 		return k_fold_metrics
 
 
@@ -588,11 +591,11 @@ class Evaluator:
 		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=int(keras_learning['early_stop']), restore_best_weights=True, verbose=LOG_EARLY_STOPPING)
 
 		# time based stopping
-		time_stop = TimedStopping(seconds=max_training_time, verbose=LOG_TIMED_STOPPING)
+		time_stop = TimedStopping(seconds=max_training_time)
 
 		callbacks_list = [early_stop, time_stop]
 
-		print(f"{id} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}", end="")
+		log_training_nolf(f"{id} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}")
 
 		training_start_time = time()
 		# save individual with the lowest validation loss - useful for when training is halted because of time
@@ -625,6 +628,8 @@ class Evaluator:
 							  verbose=LOG_MODEL_TRAINING)
 
 		training_time = time() - training_start_time
+		timer_stop_triggered = time_stop.timer_stop_triggered
+		early_stop_triggered = False
 
 		# save final model to file
 		if model_save_path:
@@ -646,25 +651,28 @@ class Evaluator:
 		fitness = self.fitness_func(test_accuracy, trainable_parameters)
 
 		training_epochs = len(score.epoch)
+		history = score.history
 		if training_epochs:
-			accuracy = score.history['accuracy'][-1]
-			val_accuracy = score.history['val_accuracy'][-1]
-			loss = score.history['loss'][-1]
-			print(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {test_accuracy:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f}), fitness: {fitness}")
+			accuracy = history['accuracy'][-1]
+			val_accuracy = history['val_accuracy'][-1]
+			loss = history['loss'][-1]
+			log_training(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {test_accuracy:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f}), fitness: {fitness} {'T' if timer_stop_triggered else ''}{'E' if early_stop_triggered else ''}")
 		else:
-			print(f" *** no training epoch completed ***")
+			log_warning(f" *** no training epoch completed ***")
 
 		# return values
-		score.history['training_epochs'] = training_epochs
-		score.history['training_time'] = training_time
-		score.history['million_inferences_time'] = million_inferences_time
-		score.history['trainable_parameters'] = trainable_parameters
-		score.history['test_accuracy'] = test_accuracy
-		score.history['fitness'] = fitness
+		history['training_epochs'] = training_epochs
+		history['training_time'] = training_time
+		history['million_inferences_time'] = million_inferences_time
+		history['trainable_parameters'] = trainable_parameters
+		history['test_accuracy'] = test_accuracy
+		history['fitness'] = fitness
+		history['time_stop'] = timer_stop_triggered
+		history['early_stop'] = early_stop_triggered
 
 		keras.backend.clear_session()
 
-		return score.history
+		return history
 
 	def final_test_saved_model(self, model_path, datagen_test = None):  # pragma: no cover
 		"""
@@ -681,8 +689,15 @@ class Evaluator:
 				Model accuracy
 		"""
 
+		random_state = random.getstate()
+		numpy_state = np.random.get_state()
+
 		model = keras.models.load_model(model_path)
-		return test_model_with_dataset(model, self.dataset['x_test'], self.dataset['y_test'], datagen_test)
+		accuracy = test_model_with_dataset(model, self.dataset['x_test'], self.dataset['y_test'], datagen_test)
+
+		random.setstate(random_state)
+		np.random.set_state(numpy_state)
+		return accuracy
 
 def test_model_with_dataset(model, X_test, y_test, datagen_test = None):
 	model_test_start_time = time()
@@ -924,7 +939,6 @@ class Individual:
 		self.parameters = None
 		self.training_time = 0
 		self.training_epochs = 0
-		self.final_test_accuracy = None
 		self.million_inferences_time = None
 		self.fitness = None
 		self.training_complete = False
@@ -1064,16 +1078,14 @@ class Individual:
 	def log_mutation(self, description):
 		"""log a mutation"""
 		self.evolution_history.append(f"{self.id} <- {self.parent}: {description}")
-		if LOG_MUTATIONS:
-			print(f"mutate {self.id} <- {self.parent}: {description}")
+		log_mutation(f"mutate {self.id} <- {self.parent}: {description}")
 
 	def log_mutation_add_to_line(self, description):
 		"""log a mutation, appending to last line"""
 		if len(self.evolution_history) == 0:
 			self.evolution_history.append("")
 		self.evolution_history[-1] += "    " + description
-		if LOG_MUTATIONS:
-			print(f"    {description}")
+		log_mutation(f"    {description}")
 
 	def get_phenotype(self, grammar):
 		"""
@@ -1139,10 +1151,10 @@ class Individual:
 			try:
 				metrics = cnn_eval.evaluate_cnn(phenotype, max_training_time, max_training_epochs, model_save_path, self.id, cnn_eval.dataset, datagen, datagen_test)
 			except tf.errors.ResourceExhaustedError as e:
-				print(f"### {self.id} : ResourceExhaustedError {e} ###")
+				log_warning(f"{self.id} : ResourceExhaustedError {e}")
 				keras.backend.clear_session()
 			except (TypeError, ValueError) as e:
-				print(f"### {self.id} : caught exception {e} ###")
+				log_warning(f"{self.id} : caught exception {e}")
 				keras.backend.clear_session()
 
 			if metrics is not None:
@@ -1199,7 +1211,7 @@ class Individual:
 			self.k_fold_test_accuracy_min = np.min(test_accuracy_list)
 			self.k_fold_test_accuracy_max = np.max(test_accuracy_list)
 			self.k_fold_metrics = metrics
-			print(f"--> {self.id} with {nfolds} folds: test accuracy (was {self.test_accuracy:0.5f}) avg={self.k_fold_test_accuracy_average:0.5f}  std={self.k_fold_test_accuracy_std:0.5f} range={self.k_fold_test_accuracy_max-self.k_fold_test_accuracy_min:0.5f}")
+			log_bold(f"--> {self.id} with {nfolds} folds: test accuracy (was {self.test_accuracy:0.5f}) avg={self.k_fold_test_accuracy_average:0.5f}  std={self.k_fold_test_accuracy_std:0.5f} range={self.k_fold_test_accuracy_max-self.k_fold_test_accuracy_min:0.5f}")
 		except tf.errors.ResourceExhaustedError as e:
 			keras.backend.clear_session()
 			return None
