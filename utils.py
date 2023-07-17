@@ -17,12 +17,14 @@ from logger import *
 
 # Tuning parameters
 PREDICT_BATCH_SIZE = 1024  # batch size used for model.predict()
+EARLY_STOP_DELTA = 0.001
+EARLY_STOP_PATIENCE = 3
 
 DEBUG = True
 LOG_MODEL_SUMMARY = False				# keras summary of each evaluated model
 LOG_MODEL_TRAINING = 0					# training progress: 1 for progress bar, 2 for one line per epoch
 LOG_MODEL_SAVE = True					# log for saving after each epoch
-LOG_EARLY_STOPPING = True				# log early stopping
+LOG_EARLY_STOPPING = False				# log early stopping
 SAVE_MODEL_AFTER_EACH_EPOCH = False		# monitor and save model after each epoch
 
 class TimedStopping(keras.callbacks.Callback):
@@ -105,7 +107,6 @@ def calculate_accuracy(y_true, y_pred):
 	    y_pred : np.array
 	        array of class confidences for each instance
 
-
 	    Returns
 	    -------
 	    accuracy : float
@@ -162,6 +163,12 @@ class Evaluator:
 
 		self.dataset = load_dataset(dataset, for_k_fold_validation)
 		self.fitness_func = fitness_func
+		self.early_stop_delta = EARLY_STOP_DELTA
+		self.early_stop_patience = EARLY_STOP_PATIENCE
+
+	def init_options(self, early_stop_patience, early_stop_delta):
+		self.early_stop_patience = early_stop_patience
+		self.early_stop_delta = early_stop_delta
 
 	@staticmethod
 	def get_layers(phenotype):
@@ -588,7 +595,7 @@ class Evaluator:
 		non_trainable_parameters = count_params(model.non_trainable_weights)
 
 		# early stopping
-		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=int(keras_learning['early_stop']), restore_best_weights=True, verbose=LOG_EARLY_STOPPING)
+		early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
 
 		# time based stopping
 		time_stop = TimedStopping(seconds=max_training_time)
@@ -628,8 +635,9 @@ class Evaluator:
 							  verbose=LOG_MODEL_TRAINING)
 
 		training_time = time() - training_start_time
+		training_epochs = len(score.epoch)
 		timer_stop_triggered = time_stop.timer_stop_triggered
-		early_stop_triggered = False
+		early_stop_triggered = training_epochs < max_training_epochs and not timer_stop_triggered
 
 		# save final model to file
 		if model_save_path:
@@ -650,7 +658,6 @@ class Evaluator:
 		million_inferences_time = 1000000.0 * model_test_time / len(y_pred_test)
 		fitness = self.fitness_func(test_accuracy, trainable_parameters)
 
-		training_epochs = len(score.epoch)
 		history = score.history
 		if training_epochs:
 			accuracy = history['accuracy'][-1]
@@ -1039,8 +1046,8 @@ class Individual:
 
 		# Initialise the macro structure: learning, data augmentation, etc.
 		self.macro = [{'learning': [{'ge': 2, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
-						'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
-						'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
+						'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}]
+					   }]
 		return self
 
 	def initialise_as_perceptron(self, grammar):
@@ -1072,7 +1079,7 @@ class Individual:
 		# Initialise the macro structure: learning, data augmentation, etc.
 		self.macro = [{'learning': [{'ge': 2, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
 						'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
-						'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
+						}]
 		return self
 
 	def log_mutation(self, description):
