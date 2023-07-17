@@ -14,45 +14,47 @@ engine.do_nas_search("D:/experiments")
 
 # visualkeras.layered_view(model, legend=True)
 
-# TODO
+'''
+TODO
 
-# - simplify layer representation
-# - more activation functions and parameters?
-# - Comparison with GE?
-# - numeric default values
-# - ES integers
-# - ES categorical values
+- simplify layer representation
+- more activation functions and parameters?
+- Comparison with GE?
+- numeric default values
+- ES integers
+- ES categorical values
 
-# - real time plots & visualisation
+- real time plots & visualisation
 
-# - stepwidth mutation, initial stepwidth
-# - geometric normal distribution for some variables?
+- stepwidth mutation, initial stepwidth
+- geometric normal distribution for some variables?
 
-# EA strategies to try
-# -------------------
-# - verify fitness with K-fold validation
-# - crossover?
-# - early stopping
+EA strategies to try
+-------------------
+- verify fitness with K-fold validation
+- crossover?
+- early stopping
 
-# CNN features to try
-# -------------------
-# - weight regularization (weight decay)
-# - add noise
+CNN features to try
+-------------------
+- weight regularization (weight decay)
+- add noise
 
-# Done
-# ----
-# - Input 28*28*3 instead of 32*32*3
-# - lenet test code
-# - better configuration variables
-# - reduced numeric parameters groups to single value for simplicity
-# - better metrics
-# - phenotypes with \n
-# - record mutations
-# - penalty function for large networks
-# - test variance of accuracy (K-fold, or random number seeds)
-# - final test for new best
-# - save/restore random state
-# - save log
-# - colored log
-# - early stopping
-# - early stop parameter?
+Done
+----
+- Input 28*28*3 instead of 32*32*3
+- lenet test code
+- better configuration variables
+- reduced numeric parameters groups to single value for simplicity
+- better metrics
+- phenotypes with \n
+- record mutations
+- penalty function for large networks
+- test variance of accuracy (K-fold, or random number seeds)
+- final test for new best
+- save/restore random state
+- save log
+- colored log
+- early stopping
+- early stop parameter?
+'''
