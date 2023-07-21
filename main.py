@@ -16,8 +16,13 @@ engine.do_nas_search("D:/experiments")
 
 '''
 TODO
+DSGE mutation (optimizer)
+try blocks
+test: wrong symbol
+test: wrong type
+add more tests
 
-- simplify layer representation
+- tensorflow warnings engine.py
 - more activation functions and parameters?
 - Comparison with GE?
 - numeric default values
@@ -57,4 +62,5 @@ Done
 - colored log
 - early stopping
 - early stop parameter?
+- simplify layer representation
 '''

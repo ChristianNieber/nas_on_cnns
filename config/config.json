@@ -9,7 +9,7 @@
     "my" : 1,
 
     //lambda - number of offspring
-    "lambda": 2,
+    "lambda": 5,
 
     // popuplation size for generation 0
     "initial_population_size" : 1,
@@ -24,7 +24,7 @@
     "random_seed" : 100,
 
     // resume from saved state
-    "resume": true,
+    "resume": false,
 
     //rates of the different mutations [0, 1]
     "MUTATIONS": {
@@ -77,12 +77,12 @@
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,
     //fitness function parameter: roughly number of connections worth the difference of 0.02 accuracy at an accuracy of 0.98
-    "penalty_connections_target" : 62000,
+    "penalty_connections_target" : 30000,
 
     // test new elite individuals with final test set
     "best_retest_with_final_test_set" : true,
     // re-train best individual with K folds and find average accuracy and standard deviation, 0 to disable
-    "best_k_folds" : 3,
+    "best_k_folds" : 0,
     // only start K folds re-training after this generation number
     "best_k_folds_start_at_generation" : 0
   }

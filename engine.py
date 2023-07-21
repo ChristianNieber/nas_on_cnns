@@ -1,8 +1,8 @@
 import numpy as np
 import random
-from grammar import Grammar
+from grammar import Grammar, Var, Type
 from utils import Evaluator, Individual, test_model_with_dataset
-from copy import deepcopy
+from copy import copy, deepcopy
 from os import makedirs
 import pickle
 import os
@@ -21,11 +21,17 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 USE_NETWORK_SIZE_PENALTY = 0
 PENALTY_CONNECTIONS_TARGET = 0
 
-
 def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
 	if USE_NETWORK_SIZE_PENALTY:
 		error_measure = (1.0-accuracy)*50
 		return 3 - (error_measure ** 2 + trainable_parameters / PENALTY_CONNECTIONS_TARGET)
+	else:
+		return accuracy
+
+def fitness_metric_for_8000_solution(accuracy, trainable_parameters):
+	if USE_NETWORK_SIZE_PENALTY:
+		error_measure = (1.0-accuracy)*100
+		return -(error_measure ** 3 - 30000 / trainable_parameters)
 	else:
 		return accuracy
 
@@ -233,7 +239,7 @@ def select_new_parents(population, number_of_parents):
 	return sorted_population[0:number_of_parents]
 
 
-def mutation_dsge(ind, layer, grammar):
+def mutation_dsge(ind, layer, grammar, layer_name):
 	"""
 		DSGE mutations (check DSGE for further details)
 
@@ -249,53 +255,52 @@ def mutation_dsge(ind, layer, grammar):
 			to phenotype mapping
 	"""
 
-	nt_keys = sorted(list(layer.keys()))
-	nt_key = random.choice(nt_keys)
-	nt_idx = random.randint(0, len(layer[nt_key]) - 1)
-	assert nt_idx == 0
+	# descend layer tree until terminal symbol encountered
+	value_list = layer
+	while True:
+		(key, val) = value_list[0]
+		if type(val) != list:
+			break
+		value_list = val
+		value_list_key = key
 
-	sge_possibilities = []
-	random_possibilities = []
-	if len(grammar.grammar[nt_key]) > 1:
-		sge_possibilities = list(set(range(len(grammar.grammar[nt_key]))) - set([layer[nt_key][nt_idx]['ge']]))
-		random_possibilities.append('ge')
+	alternatives_list = grammar.rules_list[value_list_key]
+	vars_list = alternatives_list[0]
 
-	if layer[nt_key][nt_idx]['ga']:
-		random_possibilities.extend(['ga', 'ga'])
+	valid_var_indices = [i for i, var in enumerate(vars_list) if var.type.value >= Type.FLOAT.value]
+	var_index = random.choice(valid_var_indices)
+	var = vars_list[var_index]
+	var_name = var.name
+	layer_value_index = -1
+	for idx, item in enumerate(value_list):
+		if item[0] == var_name:
+			layer_value_index = idx
+			break
+	if layer_value_index < 0:
+		log_warning(f"Variable {var_name} not present in layer {layer}")
+		return
 
-	if random_possibilities:
-		mt_type = random.choice(random_possibilities)
-
-		if mt_type == 'ga':
-			var_name = random.choice(sorted(list(layer[nt_key][nt_idx]['ga'].keys())))
-			var_type, min_val, max_val, value = layer[nt_key][nt_idx]['ga'][var_name]
-
-			if var_type == 'int':
-				while True:
-					new_val = random.randint(min_val, max_val)
-					if new_val != value or min_val == max_val:
-						break
-				ind.log_mutation(f"int {nt_key}/{var_name} {value} -> {new_val}")
-			elif var_type == 'float':
-				new_val = value + random.gauss(0, 0.15)
-				new_val = np.clip(new_val, min_val, max_val)
-				ind.log_mutation(f"float {nt_key}/{var_name} {value} -> {new_val}")
-
-			layer[nt_key][nt_idx]['ga'][var_name] = (var_type, min_val, max_val, new_val)
-
-		elif mt_type == 'ge':
-			new_val = random.choice(sge_possibilities)
-			old_val = layer[nt_key][nt_idx]['ge']
-			ind.log_mutation(f"ge {nt_key} {old_val} -> {new_val}")
-			layer[nt_key][nt_idx]['ge'] = new_val
-			old_layer_value = deepcopy(layer)
-			grammar.fix_layer_after_change(nt_key, layer)
-			if layer != old_layer_value:
-				ind.log_mutation_add_to_line(f"{old_layer_value}  -->  {layer}")
-
-		else:
-			return NotImplementedError
-
+	value = value_list[layer_value_index][1]
+	if var.type == Type.FLOAT:
+		new_value = value + random.gauss(0, 0.15)
+		new_value = np.clip(new_value, var.min_value, var.max_value)
+		ind.log_mutation(f"{layer_name}: float {value_list_key}/{var_name} {value:.06f} -> {new_value:.06f}")
+		value_list[layer_value_index] = (var_name, new_value)
+	elif var.type == Type.INT:
+		while True:
+			new_value = random.randint(var.min_value, var.max_value)
+			if new_value != value or var.min_value == var.max_value:
+				break
+		ind.log_mutation(f"{layer_name}: int {value_list_key}/{var_name} {value} -> {new_value}")
+		value_list[layer_value_index] = (var_name, new_value)
+	elif var.type == Type.CAT:
+		list_of_choices = copy(var.categories)
+		list_of_choices.remove(value)
+		new_value = random.choice(list_of_choices)
+		ind.log_mutation(f"{layer_name}: {value_list_key}/{var_name} {value} -> {new_value}")
+		value_list[layer_value_index] = (var_name, new_value)
+	else:
+		raise ValueError(f"Unexpected var type {var.type}")
 
 def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer, gen=0, idx=0):
 	"""
@@ -346,7 +351,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 	# mutation resets training results
 	ind.reset_training()
 
-	for module in ind.modules:
+	for module_idx, module in enumerate(ind.modules):
 		# add-layer (duplicate or new)
 		for _ in range(random.randint(1, 2)):
 			if len(module.layers) < module.max_expansions and random.random() <= add_layer:
@@ -355,11 +360,11 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 					source_layer_index = random.randint(0, len(module.layers)-1)
 					new_layer = module.layers[source_layer_index]
 					layer_phenotype = grammar.decode_layer(module.module, new_layer)
-					ind.log_mutation(f"copy layer {insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
+					ind.log_mutation(f"copy layer {module_idx}#{insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
 				else:
-					new_layer = grammar.initialise(module.module)
+					new_layer = grammar.initialise_layer(module.module)
 					layer_phenotype = grammar.decode_layer(module.module, new_layer)
-					ind.log_mutation(f"insert layer {insert_pos}/{len(module.layers)} - {layer_phenotype}")
+					ind.log_mutation(f"insert layer {module_idx}#{insert_pos}/{len(module.layers)} - {layer_phenotype}")
 
 				# fix connections
 				for _key_ in sorted(module.connections, reverse=True):
@@ -391,7 +396,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 			if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
 				remove_idx = random.randint(0, len(module.layers) - 1)
 				layer_phenotype = grammar.decode_layer(module.module, module.layers[remove_idx])
-				ind.log_mutation(f"remove layer {remove_idx}/{len(module.layers)} - {layer_phenotype}")
+				ind.log_mutation(f"remove layer {module_idx}#{remove_idx}/{len(module.layers)} - {layer_phenotype}")
 				del module.layers[remove_idx]
 
 				# fix connections
@@ -411,7 +416,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 		for layer_idx, layer in enumerate(module.layers):
 			# dsge mutation
 			if random.random() <= dsge_layer:
-				mutation_dsge(ind, layer, grammar)
+				mutation_dsge(ind, layer, grammar, f"{module_idx}#{layer_idx}")
 
 			# add connection
 			if layer_idx != 0 and random.random() <= add_connection:
@@ -431,7 +436,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 	# macro level mutation
 	for macro_idx, macro in enumerate(ind.macro):
 		if random.random() <= macro_layer:
-			mutation_dsge(ind, macro, grammar)
+			mutation_dsge(ind, macro, grammar, "learning")
 
 	return ind
 
@@ -459,7 +464,7 @@ def load_config(config_file):
 	return config
 
 
-def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', config_file='config/config.json', grammar_path='config/lenet.grammar'):  # pragma: no cover
+def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar'):
 	"""
 		(1+lambda)-ES
 
@@ -471,7 +476,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			dataset to be solved
 		config_file : str
 			path to the configuration file
-		grammar_path : str
+		grammar_file : str
 			path to the grammar file
 	"""
 
@@ -519,7 +524,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	log_file_path = save_path + '#' + EXPERIMENT_NAME + '.log'
 
 	# load grammar
-	grammar = Grammar(grammar_path)
+	grammar = Grammar(grammar_file)
 
 	# best fitness so far
 	best_fitness = None
@@ -536,6 +541,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		if not RESUME:
 			for f in glob(str(Path(save_path, '*'))):
 				os.remove(f)
+
+		# copy config files to path
+		copyfile(config_file, save_path + Path(config_file).name)
+		copyfile(grammar_file, save_path + Path(grammar_file).name)
 
 		# set random seeds
 		if RANDOM_SEED != -1:
@@ -561,7 +570,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			elif INITIAL_INDIVIDUALS == "perceptron":
 				new_individual.initialise_as_perceptron(grammar)
 			elif INITIAL_INDIVIDUALS == "random":
-				new_individual.initialise(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
+				new_individual.initialise_individual_random(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
 			else:
 				raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
 			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)

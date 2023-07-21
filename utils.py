@@ -24,7 +24,7 @@ DEBUG = True
 LOG_MODEL_SUMMARY = False  # keras summary of each evaluated model
 LOG_MODEL_TRAINING = 0  # training progress: 1 for progress bar, 2 for one line per epoch
 LOG_MODEL_SAVE = True  # log for saving after each epoch
-LOG_EARLY_STOPPING = False  # log early stopping
+LOG_EARLY_STOPPING = True  # log early stopping
 SAVE_MODEL_AFTER_EACH_EPOCH = False  # monitor and save model after each epoch
 
 
@@ -293,18 +293,16 @@ class Evaluator:
 				layers.append(batch_norm_layer)
 
 			# average pooling layer
-			elif layer_type == 'pool-avg':
-				pool_avg = tf.keras.layers.AveragePooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
+			elif layer_type == 'pooling':
+				if layer_params['pooling-type'] == 'max':
+					pooling_layer = tf.keras.layers.MaxPooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
 															strides=int(layer_params['stride']),
 															padding=layer_params['padding'])
-				layers.append(pool_avg)
-
-			# max pooling layer
-			elif layer_type == 'pool-max':
-				pool_max = tf.keras.layers.MaxPooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
-														strides=int(layer_params['stride']),
-														padding=layer_params['padding'])
-				layers.append(pool_max)
+				else:
+					pooling_layer = tf.keras.layers.AveragePooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
+																strides=int(layer_params['stride']),
+																padding=layer_params['padding'])
+				layers.append(pooling_layer)
 
 			# fully-connected layer
 			elif layer_type == 'fc':
@@ -598,12 +596,15 @@ class Evaluator:
 		# time based stopping
 		time_stop = TimedStopping(seconds=max_training_time)
 
-		callbacks_list = [time_stop]
-
 		# early stopping
-		if not suppress_early_stopping:
-			early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
-			callbacks_list.append(early_stop)
+		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True, verbose=LOG_EARLY_STOPPING)
+
+		callbacks_list = [early_stop, time_stop]
+
+		# new early stopping
+		#if not suppress_early_stopping:
+		#	early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
+		#	callbacks_list.append(early_stop)
 
 		if not suppress_logging:
 			log_training_nolf(f"{id} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}")
@@ -744,7 +745,7 @@ class Module:
 
 		Methods
 		-------
-			initialise(grammar, reuse)
+			initialise_module(grammar, reuse)
 				Randomly creates a module
 	"""
 
@@ -770,7 +771,7 @@ class Module:
 		self.min_expansions = min_expansions
 		self.max_expansions = max_expansions
 
-	def initialise(self, grammar, reuse, init_max):
+	def initialise_module(self, grammar, reuse, init_max):
 		"""
 			Randomly creates a module
 
@@ -783,19 +784,19 @@ class Module:
 				likelihood of reusing an existing layer
 		"""
 
-		num_expansions = random.choice(init_max[self.module])
+		num_layers = random.choice(init_max[self.module])
 
 		# Initialise layers
-		for idx in range(num_expansions):
+		for idx in range(num_layers):
 			if idx > 0 and random.random() <= reuse:
 				r_idx = random.randint(0, idx - 1)
 				self.layers.append(self.layers[r_idx])
 			else:
-				self.layers.append(grammar.initialise(self.module))
+				self.layers.append(grammar.initialise_layer(self.module))
 
 		# Initialise connections: feed-forward and allowing skip-connections
 		self.connections = {}
-		for layer_idx in range(num_expansions):
+		for layer_idx in range(num_layers):
 			if layer_idx == 0:
 				# the -1 layer is the input
 				self.connections[layer_idx] = [-1, ]
@@ -821,17 +822,15 @@ class Module:
 		"""
 
 		feature_layers_lenet = [
-			{'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 2.0, 64.0, 6), 'filter-shape': ('int', 2.0, 5.0, 5), 'stride': ('int', 1.0, 3.0, 1)}}],
-			 'activation-function': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 0, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-			{'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int', 2.0, 5.0, 2), 'stride': ('int', 1.0, 3.0, 2)}, 'ge': 0}]},
-			{'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 2.0, 64.0, 16), 'filter-shape': ('int', 2.0, 5.0, 5), 'stride': ('int', 1.0, 3.0, 1)}}],
-			 'activation-function': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-			{'features': [{'ge': 1, 'ga': {}}], 'padding': [{'ge': 1, 'ga': {}}], 'pool-type': [{'ge': 1, 'ga': {}}], 'pooling': [{'ga': {'kernel-size': ('int', 2.0, 5.0, 2), 'stride': ('int', 1.0, 3.0, 2)}, 'ge': 0}]},
+			[('features', [('convolution',	[('layer:conv' , ''), ('num-filters', 6), ('filter-shape', 5), ('stride', 1), ('act', 'relu'), ('padding', 'same'), ('bias', 'True'), ('batch-normalization', 'True')])])],
+			[('features', [('pooling', 		[('layer:pooling', ''), ('kernel-size', 2), ('stride', 2), ('padding', 'valid'), ('pooling-type', 'max')])])],
+			[('features', [('convolution',	[('layer:conv' , ''), ('num-filters', 16), ('filter-shape', 5), ('stride', 1), ('act', 'relu'), ('padding', 'valid'), ('bias', 'True'), ('batch-normalization', 'True')])])],
+			[('features', [('pooling', 		[('layer:pooling', ''), ('kernel-size', 2), ('stride', 2), ('padding', 'valid'), ('pooling-type', 'max')])])],
 		]
 
 		classification_layers_lenet = [
-			{'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0, 120)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
-			{'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0, 84)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
+			[('classification', [('layer:fc', ''), ('act', 'relu'), ('num-units', 120), ('bias', 'True'), ('batch-normalization', 'True')])],
+			[('classification', [('layer:fc', ''), ('act', 'relu'), ('num-units', 84), ('bias', 'True'), ('batch-normalization', 'True')])],
 		]
 
 		if self.module == 'features':
@@ -861,7 +860,7 @@ class Module:
 		feature_layers_perceptron = []
 
 		classification_layers_perceptron = [
-			{'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0, 40)}, 'ge': 0}], 'activation-function': [{'ge': 3, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 1, 'ga': {}}]}
+			[('classification', [('layer:fc', ''), ('act', 'sigmoid'), ('num-units', 20), ('bias', 'True'), ('batch-normalization', 'False')])],
 		]
 
 		if self.module == 'features':
@@ -911,7 +910,7 @@ class Individual:
 
 		Methods
 		-------
-			initialise(grammar, levels_back, reuse)
+			initialise_individual(grammar, levels_back, reuse)
 				Randomly creates a candidate solution
 			decode(grammar)
 				Maps the genotype to the phenotype
@@ -998,7 +997,7 @@ class Individual:
 			'evolution_history': self.evolution_history
 		}
 
-	def initialise(self, grammar, levels_back, reuse, init_max):
+	def initialise_individual_random(self, grammar, levels_back, reuse, init_max):
 		"""Randomly creates a candidate solution
 
 			Parameters
@@ -1018,16 +1017,16 @@ class Individual:
 
 		for non_terminal, min_expansions, max_expansions in self.network_structure:
 			new_module = Module(non_terminal, min_expansions, max_expansions, levels_back[non_terminal])
-			new_module.initialise(grammar, reuse, init_max)
+			new_module.initialise_module(grammar, reuse, init_max)
 
 			self.modules.append(new_module)
 
 		# Initialise output
-		self.output = grammar.initialise(self.output_rule)
+		self.output = grammar.initialise_layer(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
 		for rule in self.learning_rule:
-			self.macro.append(grammar.initialise(rule))
+			self.macro.append(grammar.initialise_layer(rule))
 		return self
 
 	def initialise_as_lenet(self, grammar):
@@ -1054,12 +1053,12 @@ class Individual:
 		self.modules.append(new_module)
 
 		# Initialise output
-		self.output = grammar.initialise(self.output_rule)
+		self.output = [('output', [('layer:output', ''), ('num-units', 10), ('bias', 'True')])]
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro = [{'learning': [{'ge': 2, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
-					   'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}]
-					   }]
+		self.macro = [
+			[('learning', [('adam', [('learning:adam', ''), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)])]), ('early_stop', 8), ('batch_size', 1024)]
+		]
 		return self
 
 	def initialise_as_perceptron(self, grammar):
@@ -1086,12 +1085,12 @@ class Individual:
 		self.modules.append(new_module)
 
 		# Initialise output
-		self.output = grammar.initialise(self.output_rule)
+		self.output = grammar.initialise_layer(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro = [{'learning': [{'ge': 2, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
-					   'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
-					   }]
+		self.macro = [
+			[('learning', [('adam', [('', 'learning:adam'), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)])]), ('early_stop', 8), ('batch_size', 1024)]
+		]
 		return self
 
 	def log_mutation(self, description):

@@ -29,7 +29,7 @@ class Test(unittest.TestCase):
 		levels_back = {"features": 1, "classification": 1}
 		network_structure_init = {"features":[2]}
 
-		ind = Individual(network_structure, [], 'output', 0, 0).initialise(grammar, levels_back, 0, network_structure_init)
+		ind = Individual(network_structure, [], 'output', 0, 0).initialise_individual_random(grammar, levels_back, 0, network_structure_init)
 
 		print(ind.get_phenotype(grammar))
 
@@ -178,9 +178,9 @@ class Test(unittest.TestCase):
 		evaluator = Evaluator('mnist')
 
 		phenotype = ind.get_phenotype(grammar)
-		expected_phenotype = ("layer:conv num-filters:98 filter-shape:5 stride:2 padding:valid act:relu bias:False input:-1\n"
-							  "layer:conv num-filters:104 filter-shape:3 stride:1 padding:valid act:sigmoid bias:True input:0\n"
-							  "layer:fc num-units:10 bias:True input:1")
+		expected_phenotype = ("layer:conv num-filters:226 filter-shape:5 stride:1 padding:valid act:sigmoid bias:False input:-1\n"
+								"layer:conv num-filters:244 filter-shape:4 stride:2 padding:valid act:relu bias:True input:0\n"
+								"layer:fc num-units:10 bias:True input:1")
 		self.assertEqual(phenotype, expected_phenotype, "error in phenotype = ind.decode(grammar)")
 
 		keras_layers = evaluator.get_layers(phenotype)
@@ -200,23 +200,22 @@ class Test(unittest.TestCase):
 		evaluator = Evaluator('mnist')
 
 		phenotype = ind.get_phenotype(grammar)
-		expected_phenotype = ("layer:conv num-filters:6 filter-shape:5 stride:1 padding:same act:relu bias:True batch-normalization:True input:-1\n"
-							  "layer:pool-max kernel-size:2 stride:2 padding:valid input:0\n"
-							  "layer:conv num-filters:16 filter-shape:5 stride:1 padding:valid act:relu bias:True batch-normalization:True input:1\n"
-							  "layer:pool-max kernel-size:2 stride:2 padding:valid input:2\n"
-							  "layer:fc act:relu num-units:120 bias:True batch-normalization:True input:3\n"
-							  "layer:fc act:relu num-units:84 bias:True batch-normalization:True input:4\n"
-							  "layer:output num-units:10 bias:True input:5")
+		expected_phenotype = ("layer:conv num-filters:6 filter-shape:5 stride:1 act:relu padding:same bias:True batch-normalization:True input:-1\n"
+								"layer:pooling kernel-size:2 stride:2 padding:valid pooling-type:max input:0\n"
+								"layer:conv num-filters:16 filter-shape:5 stride:1 act:relu padding:valid bias:True batch-normalization:True input:1\n"
+								"layer:pooling kernel-size:2 stride:2 padding:valid pooling-type:max input:2\n"
+								"layer:fc act:relu num-units:120 bias:True batch-normalization:True input:3\n"
+								"layer:fc act:relu num-units:84 bias:True batch-normalization:True input:4\n"
+								"layer:output num-units:10 bias:True input:5")
 		self.assertEqual(phenotype, expected_phenotype, "error in phenotype = ind.decode(grammar)")
 
 		keras_layers = evaluator.get_layers(phenotype)
-		expected_keras_layers = [('conv', {'num-filters': '6', 'filter-shape': '5', 'stride': '1', 'padding': 'same', 'act': 'relu', 'bias': 'True', 'batch-normalization': 'True', 'input': '-1'}),
-								 ('pool-max', {'kernel-size': '2', 'stride': '2', 'padding': 'valid', 'input': '0'}),
-								 ('conv', {'num-filters': '16', 'filter-shape': '5', 'stride': '1', 'padding': 'valid', 'act': 'relu', 'bias': 'True', 'batch-normalization': 'True', 'input': '1'}),
-								 ('pool-max', {'kernel-size': '2', 'stride': '2', 'padding': 'valid', 'input': '2'}),
+		expected_keras_layers = [('conv', {'num-filters': '6', 'filter-shape': '5', 'stride': '1', 'act': 'relu', 'padding': 'same', 'bias': 'True', 'batch-normalization': 'True', 'input': '-1'}),
+								 ('pooling', {'kernel-size': '2', 'stride': '2', 'padding': 'valid', 'pooling-type': 'max', 'input': '0'}),
+								 ('conv', {'num-filters': '16', 'filter-shape': '5', 'stride': '1', 'act': 'relu', 'padding': 'valid', 'bias': 'True', 'batch-normalization': 'True', 'input': '1'}),
+								 ('pooling', {'kernel-size': '2', 'stride': '2', 'padding': 'valid', 'pooling-type': 'max', 'input': '2'}),
 								 ('fc', {'act': 'relu', 'num-units': '120', 'bias': 'True', 'batch-normalization': 'True', 'input': '3'}),
-								 ('fc', {'act': 'relu', 'num-units': '84', 'bias': 'True', 'batch-normalization': 'True', 'input': '4'}),
-								 ('output', {'num-units': '10', 'bias': 'True', 'input': '5'})]
+								 ('fc', {'act': 'relu', 'num-units': '84', 'bias': 'True', 'batch-normalization': 'True', 'input': '4'}), ('output', {'num-units': '10', 'bias': 'True', 'input': '5'})]
 		self.assertEqual(keras_layers, expected_keras_layers)
 
 		model = evaluator.assemble_network(keras_layers, (28, 28, 1))
