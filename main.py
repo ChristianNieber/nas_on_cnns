@@ -1,26 +1,28 @@
 import engine
-#from keras.models import load_model
-#from keras.preprocessing.image import ImageDataGenerator
-#from pickle import load
+# from keras.models import load_model
+# from keras.preprocessing.image import ImageDataGenerator
+# from pickle import load
 # import visualkeras
 
-engine.do_nas_search("D:/experiments", grammar_file='config/lenet_fd.grammar')
+engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
 
-#model = engine.test_saved_model()
-#model.summary(line_length=120)
-#
-#print("layer:conv num-filters:26 filter-shape:4 stride:2 padding:valid act:sigmoid bias:False batch-normalization:False input:-1\nlayer:conv num-filters:4 filter-shape:5 stride:3 padding:valid act:linear bias:True batch-normalization:True input:0\nlayer:fc act:elu num-units:367 bias:True batch-normalization:False input:1\nlayer:output num-units:10 bias:True input:2\nlearning:adam lr:0.0005 beta1:0.9 beta2:0.999 batch_size:535")
-#print()
+# model = engine.test_saved_model()
+# model.summary(line_length=120)
+
+# print("layer:conv num-filters:26 filter-shape:4 stride:2 padding:valid act:sigmoid bias:False batch-normalization:False input:-1\nlayer:conv num-filters:4 filter-shape:5 stride:3 padding:valid act:linear bias:True batch-normalization:True input:0\nlayer:fc act:elu num-units:367 bias:True batch-normalization:False input:1\nlayer:output num-units:10 bias:True input:2\nlearning:adam lr:0.0005 beta1:0.9 beta2:0.999 batch_size:535")
+# print()
 
 # visualkeras.layered_view(model, legend=True)
 
 '''
-TODO
+To do
+
 DSGE mutation (optimizer)
-try blocks
 test: wrong symbol
 test: wrong type
 add more tests
+
+- init_max random initialisation
 
 - tensorflow warnings engine.py
 - more activation functions and parameters?

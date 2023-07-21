@@ -1,4 +1,5 @@
 # Copyright 2019 Filipe Assuncao
+# modified by Christian Nieber 2023
 
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -11,6 +12,8 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
+
+# Alternative module implementing Fast-DENSER grammar and DSGE mutation handling
 
 import numpy as np
 import random
@@ -439,7 +442,7 @@ class Module:
 				number of previous layers a given layer can receive as input
 		"""
 
-		self.module = module
+		self.module_name = module
 		self.levels_back = levels_back
 		self.layers = []
 		self.min_expansions = min_expansions
@@ -458,7 +461,7 @@ class Module:
 				likelihood of reusing an existing layer
 		"""
 
-		num_expansions = random.choice(init_max[self.module])
+		num_expansions = random.choice(init_max[self.module_name])
 
 		# Initialise layers
 		for idx in range(num_expansions):
@@ -466,7 +469,7 @@ class Module:
 				r_idx = random.randint(0, idx - 1)
 				self.layers.append(self.layers[r_idx])
 			else:
-				self.layers.append(grammar.initialise(self.module))
+				self.layers.append(grammar.initialise(self.module_name))
 
 		# Initialise connections: feed-forward and allowing skip-connections
 		self.connections = {}
@@ -485,15 +488,8 @@ class Module:
 				if sample_size > 0:
 					self.connections[layer_idx] += random.sample(connection_possibilities, sample_size)
 
-	def initialise_module_as_lenet(self, grammar):
-		"""
-			Creates a pre-defined LeNet module
-
-			Parameters
-			----------
-			grammar : Grammar
-				grammar instance that stores the expansion rules
-		"""
+	def initialise_module_as_lenet(self):
+		""" Creates a pre-defined LeNet module """
 
 		feature_layers_lenet = [
 			{'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 2.0, 64.0, 6), 'filter-shape': ('int', 2.0, 5.0, 5), 'stride': ('int', 1.0, 3.0, 1)}}],
@@ -509,9 +505,9 @@ class Module:
 			{'classification': [{'ga': {'num-units': ('int', 64.0, 2048.0, 84)}, 'ge': 0}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 0, 'ga': {}}], 'batch-normalization': [{'ge': 0, 'ga': {}}]},
 		]
 
-		if self.module == 'features':
+		if self.module_name == 'features':
 			self.layers = feature_layers_lenet
-		elif self.module == 'classification':
+		elif self.module_name == 'classification':
 			self.layers = classification_layers_lenet
 
 		# Initialise connections: feed-forward and allowing skip-connections

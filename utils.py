@@ -1,4 +1,6 @@
 import random
+from typing import Union, Dict, List, Any
+
 import tensorflow as tf
 import keras
 from keras import backend
@@ -7,6 +9,9 @@ from keras.utils.layer_utils import count_params
 from time import time
 import numpy as np
 import os
+
+from numpy import ndarray
+
 from utilities.data import load_dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
@@ -14,7 +19,7 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from grammar import Module, default_learning_rule_adam
 from logger import *
 
-# TODO: future -- impose memory constraints
+# possible test: impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
 
 # Tuning parameters
@@ -26,7 +31,7 @@ DEBUG = True
 LOG_MODEL_SUMMARY = False  # keras summary of each evaluated model
 LOG_MODEL_TRAINING = 0  # training progress: 1 for progress bar, 2 for one line per epoch
 LOG_MODEL_SAVE = True  # log for saving after each epoch
-LOG_EARLY_STOPPING = True  # log early stopping
+LOG_EARLY_STOPPING = False  # log early stopping
 SAVE_MODEL_AFTER_EACH_EPOCH = False  # monitor and save model after each epoch
 
 
@@ -112,7 +117,7 @@ def calculate_accuracy(y_true, y_pred):
 		-------
 		accuracy : float
 			accuracy value
-    """
+	"""
 
 	y_pred_labels = np.argmax(y_pred, axis=1)
 
@@ -290,7 +295,7 @@ class Evaluator:
 
 			# batch-normalisation
 			elif layer_type == 'batch-norm':
-				# TODO - check because channels are not first
+				# DENSER - check because channels are not first
 				batch_norm_layer = tf.keras.layers.BatchNormalization()
 				layers.append(batch_norm_layer)
 
@@ -311,18 +316,18 @@ class Evaluator:
 			# fully-connected layer
 			elif layer_type == 'fc':
 				fc = tf.keras.layers.Dense(int(layer_params['num-units']),
-										   use_bias=eval(layer_params['bias']),
-										   # activation=layer_params['act'],
-										   kernel_initializer='he_normal',
-										   kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+											use_bias=eval(layer_params['bias']),
+											# activation=layer_params['act'],
+											kernel_initializer='he_normal',
+											kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(fc)
 
 			elif layer_type == 'output':
 				output_layer = tf.keras.layers.Dense(int(layer_params['num-units']),
-													 use_bias=eval(layer_params['bias']),
-													 activation='softmax',
-													 kernel_initializer='he_normal',
-													 kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+														use_bias=eval(layer_params['bias']),
+														activation='softmax',
+														kernel_initializer='he_normal',
+														kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(output_layer)
 
 			# dropout layer
@@ -330,15 +335,15 @@ class Evaluator:
 				dropout = tf.keras.layers.Dropout(rate=min(0.5, float(layer_params['rate'])))
 				layers.append(dropout)
 
-			# gru layer #TODO: initializers, recurrent dropout, dropout, unroll, reset_after
+			# gru layer DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'gru':
 				gru = tf.keras.layers.GRU(units=int(layer_params['units']),
-										  activation=layer_params['act'],
-										  recurrent_activation=layer_params['rec_act'],
-										  use_bias=eval(layer_params['bias']))
+											activation=layer_params['act'],
+											recurrent_activation=layer_params['rec_act'],
+											use_bias=eval(layer_params['bias']))
 				layers.append(gru)
 
-			# lstm layer #TODO: initializers, recurrent dropout, dropout, unroll, reset_after
+			# lstm layer DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'lstm':
 				lstm = tf.keras.layers.LSTM(units=int(layer_params['units']),
 											activation=layer_params['act'],
@@ -346,7 +351,7 @@ class Evaluator:
 											use_bias=eval(layer_params['bias']))
 				layers.append(lstm)
 
-			# rnn #TODO: initializers, recurrent dropout, dropout, unroll, reset_after
+			# rnn DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'rnn':
 				rnn = tf.keras.layers.SimpleRNN(units=int(layer_params['units']),
 												activation=layer_params['act'],
@@ -468,12 +473,12 @@ class Evaluator:
 
 		if learning['learning'] == 'rmsprop':
 			return tf.keras.optimizers.RMSprop(learning_rate=float(learning['lr']),
-											   rho=float(learning['rho']))
+												rho=float(learning['rho']))
 
 		elif learning['learning'] == 'gradient-descent':
 			return tf.keras.optimizers.SGD(learning_rate=float(learning['lr']),
-										   momentum=float(learning['momentum']),
-										   nesterov=bool(learning['nesterov']))
+											momentum=float(learning['momentum']),
+											nesterov=bool(learning['nesterov']))
 
 		elif learning['learning'] == 'adam':
 			return tf.keras.optimizers.Adam(learning_rate=float(learning['lr']),
@@ -534,7 +539,7 @@ class Evaluator:
 		np.random.set_state(numpy_state)
 		return k_fold_metrics
 
-	def evaluate_cnn(self, phenotype, max_training_time, max_training_epochs, model_save_path, id, dataset, datagen=None, datagen_test=None, suppress_logging=False, suppress_early_stopping=False, load_prev_weights=False, input_size=(28, 28, 1)):
+	def evaluate_cnn(self, phenotype, max_training_time, max_training_epochs, model_save_path, name, dataset, datagen=None, datagen_test=None, suppress_logging=False, suppress_early_stopping=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -550,7 +555,7 @@ class Evaluator:
 				maximum number of epochs
 			model_save_path : str
 				path where model and its weights are saved
-			id : str
+			name : str
 				id string (<generation>-<number>)
 			dataset : dict
 				train and test datasets
@@ -558,6 +563,10 @@ class Evaluator:
 				Data augmentation method image data generator
 			datagen_test : keras.preprocessing.image.ImageDataGenerator
 				Image data generator without augmentation
+			suppress_logging : bool
+				suppress logging, e.g. for k-folds validation
+			suppress_early_stopping : bool
+				don't stop early, e.g. for k-folds validation
 			input_size : tuple
 				dataset input shape
 
@@ -585,7 +594,7 @@ class Evaluator:
 
 		if load_prev_weights and os.path.exists(model_save_path):
 			model = keras.models.load_model(model_save_path)
-			initial_epoch = 10  # TODO
+			initial_epoch = 10  # !! load weights not implemented
 		else:
 			initial_epoch = 0
 			model = self.assemble_network(keras_layers, input_size)
@@ -603,17 +612,17 @@ class Evaluator:
 		time_stop = TimedStopping(seconds=max_training_time)
 
 		# early stopping
-		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=True, verbose=LOG_EARLY_STOPPING)
+		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
 
 		callbacks_list = [early_stop, time_stop]
 
-		# new early stopping
-		#if not suppress_early_stopping:
-		#	early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
-		#	callbacks_list.append(early_stop)
+		# experimental early stopping on validation accuracy
+		# if not suppress_early_stopping:
+		# early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
+		# callbacks_list.append(early_stop)
 
 		if not suppress_logging:
-			log_training_nolf(f"{id} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}")
+			log_training_nolf(f"{name} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}")
 
 		training_start_time = time()
 		# save individual with the lowest validation loss - useful for when training is halted because of time
@@ -636,14 +645,14 @@ class Evaluator:
 										verbose=LOG_MODEL_TRAINING)
 		else:
 			score = model.fit(x=x_train,
-							  y=y_train,
-							  batch_size=batch_size,
-							  epochs=max_training_epochs,
-							  steps_per_epoch=(x_train.shape[0] // batch_size),
-							  validation_data=(x_val, y_val),
-							  callbacks=callbacks_list,
-							  initial_epoch=initial_epoch,
-							  verbose=LOG_MODEL_TRAINING)
+								y=y_train,
+								batch_size=batch_size,
+								epochs=max_training_epochs,
+								steps_per_epoch=(x_train.shape[0] // batch_size),
+								validation_data=(x_val, y_val),
+								callbacks=callbacks_list,
+								initial_epoch=initial_epoch,
+								verbose=LOG_MODEL_TRAINING)
 
 		training_time = time() - training_start_time
 		training_epochs = len(score.epoch)
@@ -674,7 +683,7 @@ class Evaluator:
 			loss = history['loss'][-1]
 			if not suppress_logging:
 				log_training(
-					f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} test: {test_accuracy:0.5f}, acc: {accuracy:0.5f} val: {val_accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f}) fitness: {fitness} {'T' if timer_stop_triggered else ''}{'E' if early_stop_triggered else ''}")
+					f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} acc: {test_accuracy:0.5f}, val: {val_accuracy:0.5f} acc0: {accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f}) fitness: {fitness} {'T' if timer_stop_triggered else ''}{'E' if early_stop_triggered else ''}")
 		else:
 			log_warning(f" *** no training epoch completed ***")
 
@@ -730,8 +739,6 @@ def test_model_with_dataset(model, x_test, y_test, datagen_test=None):
 	return accuracy
 
 
-
-
 class Individual:
 	"""
 		Candidate solution.
@@ -771,6 +778,13 @@ class Individual:
 			evaluate_individual()
 				Performs the evaluation of a candidate solution
 	"""
+	k_fold_test_accuracy_max: Union[ndarray, int, float, complex]
+	k_fold_metrics: Union[dict[str, list[Any]], Any]
+	test_accuracy: None
+	k_fold_test_accuracy_average = None
+	k_fold_test_accuracy_std = None
+	k_fold_test_accuracy_min = None
+	k_fold_test_accuracy_max = None
 
 	def __init__(self, network_structure, learning_rule, output_rule, gen, idx):
 		"""
@@ -899,17 +913,15 @@ class Individual:
 		"""
 
 		new_module = Module('features', 0, 10, 1)
-		new_module.initialise_module_as_lenet(grammar)
+		new_module.initialise_module_as_lenet()
 		self.modules.append(new_module)
 
 		new_module = Module('classification', 1, 5, 1)
-		new_module.initialise_module_as_lenet(grammar)
+		new_module.initialise_module_as_lenet()
 		self.modules.append(new_module)
 
 		# Initialise output
 		self.output = grammar.initialise_layer(self.output_rule)
-
-#		self.output = [('output', [('layer:output', ''), ('num-units', 10), ('bias', 'True')])]
 
 		# Initialise the macro structure: learning, data augmentation, etc.
 		self.macro = default_learning_rule_adam()
@@ -931,11 +943,11 @@ class Individual:
 		"""
 
 		new_module = Module('features', 0, 10, 1)
-		new_module.initialise_module_as_perceptron(grammar)
+		new_module.initialise_module_as_perceptron()
 		self.modules.append(new_module)
 
 		new_module = Module('classification', 1, 5, 1)
-		new_module.initialise_module_as_perceptron(grammar)
+		new_module.initialise_module_as_perceptron()
 		self.modules.append(new_module)
 
 		# Initialise output
@@ -978,7 +990,7 @@ class Individual:
 			offset = layer_counter
 			for layer_idx, layer in enumerate(module.layers):
 				layer_counter += 1
-				phenotype += '\n' + grammar.decode_layer(module.module, layer) + ' input:' + ",".join(map(str, np.array(module.connections[layer_idx]) + offset))
+				phenotype += '\n' + grammar.decode_layer(module.module_name, layer) + ' input:' + ",".join(map(str, np.array(module.connections[layer_idx]) + offset))
 
 		phenotype += '\n' + grammar.decode_layer(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
 
@@ -1060,10 +1072,16 @@ class Individual:
 				grammar instance that stores the expansion rules
 			k_fold_eval : Evaluator
 				Evaluator instance used to train the networks
+			nfolds : int
+				number of folds
 			datagen : keras.preprocessing.image.ImageDataGenerator
 				Data augmentation method image data generator
 			datagen_test : keras.preprocessing.image.ImageDataGenerator
 				Image data generator without augmentation
+			max_training_time : int
+				Maximum training time per model
+			max_training_epochs : int
+				Maximal epochs to train
 
 			Returns
 			-------
@@ -1081,10 +1099,10 @@ class Individual:
 			self.k_fold_test_accuracy_max = np.max(test_accuracy_list)
 			self.k_fold_metrics = metrics
 			log_bold(f"--> {self.id} with {nfolds} folds: avg acc: {self.k_fold_test_accuracy_average:0.5f} sd: {self.k_fold_test_accuracy_std:0.5f} range: {self.k_fold_test_accuracy_max - self.k_fold_test_accuracy_min:0.5f}")
-		except tf.errors.ResourceExhaustedError as e:
+		except tf.errors.ResourceExhaustedError:
 			keras.backend.clear_session()
 			return None
-		except TypeError as e2:
+		except TypeError:
 			keras.backend.clear_session()
 			return None
 

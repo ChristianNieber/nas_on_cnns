@@ -4,6 +4,7 @@ from enum import Enum
 from copy import copy
 from logger import *
 
+
 class Type(Enum):
 	NONTERMINAL = 0
 	TERMINAL = 1
@@ -11,17 +12,18 @@ class Type(Enum):
 	INT = 3
 	CAT = 4
 
+
 class Var:
-	def __init__(self, name, type, min_value=0, max_value=0, categories=[]):
+	def __init__(self, name, value_type, min_value=None, max_value=None, categories=None):
 		self.name = name
-		self.type = type
-		if type == type.CAT:
-			self.categories=categories
-		elif type == Type.FLOAT or type == Type.INT:
+		self.type = value_type
+		if value_type == value_type.CAT:
+			self.categories = categories
+		elif value_type == Type.FLOAT or value_type == Type.INT:
 			self.min_value = min_value
 			self.max_value = max_value
 
-# nice display in debugger
+	# nice display in debugger
 	def __repr__(self) -> str:
 		result = f"Var({self.name}, {self.type}"
 		if self.type == Type.CAT:
@@ -41,7 +43,7 @@ class Grammar:
 
 		Attributes
 		----------
-		grammar : dict
+		rules : dict
 			object where the grammar is stored, and later used for initialisation,
 			and decoding of the individuals.
 	"""
@@ -54,9 +56,10 @@ class Grammar:
 				Path to the BNF grammar file
 		"""
 
-		self.rules_list = self.read_grammar_from_file(path)
+		self.rules = Grammar.read_grammar_from_file(path)
 
-	def read_grammar_from_file(self, path):
+	@staticmethod
+	def read_grammar_from_file(path):
 		"""
 			Read the grammar from a file.
 
@@ -79,13 +82,14 @@ class Grammar:
 			print('Grammar file does not exist.')
 			exit(-1)
 
-		return self.parse_grammar(raw_grammar)
+		return Grammar.parse_grammar(raw_grammar)
 
 	@staticmethod
 	def strip_symbol(symbol):
 		return symbol.rstrip().lstrip().replace('<', '').replace('>', '')
 
-	def parse_grammar(self, raw_grammar):
+	@staticmethod
+	def parse_grammar(raw_grammar):
 		"""
 			Auxiliary function of the get_grammar method; parses the grammar to a dictionary
 
@@ -101,7 +105,7 @@ class Grammar:
 				and decoding of the individuals
 		"""
 
-		rules_list = {}
+		rules = {}
 		start_symbol = None
 
 		for rule in raw_grammar:
@@ -141,15 +145,15 @@ class Grammar:
 
 						elif ':' in symbol:
 							var = Var(symbol, Type.TERMINAL)
+
 						vars_list.append(var)
 					rule_expansions.append(vars_list)
-				rules_list[non_terminal] = rule_expansions
+				rules[non_terminal] = rule_expansions
 
 				if start_symbol is None:
 					start_symbol = non_terminal
 
-		return rules_list
-
+		return rules
 
 	def initialise_layer(self, symbol):
 		return [(symbol, self.initialise_layer_recursive(symbol))]
@@ -166,9 +170,9 @@ class Grammar:
 
 		"""
 
-		alternatives_list = self.rules_list[symbol]
+		alternatives_list = self.rules[symbol]
 		if len(alternatives_list) > 1:
-			idx = random.randint(0, len(alternatives_list)-1)
+			idx = random.randint(0, len(alternatives_list) - 1)
 			vars_list = alternatives_list[idx]
 		else:
 			vars_list = alternatives_list[0]
@@ -206,13 +210,14 @@ class Grammar:
 				phenotype += f"{name}:{value}"
 		return phenotype
 
+
 class Module:
 	"""
 		Each of the units of the outer-level genotype
 
 		Attributes
 		----------
-		module : str
+		module_name : str
 			non-terminal symbol
 		min_expansions : int
 			minimum expansions of the block
@@ -246,7 +251,7 @@ class Module:
 		"""
 
 		self.connections = None
-		self.module = module
+		self.module_name = module
 		self.levels_back = levels_back
 		self.layers = []
 
@@ -266,7 +271,7 @@ class Module:
 				likelihood of reusing an existing layer
 		"""
 
-		num_layers = random.choice(init_max[self.module])
+		num_layers = random.choice(init_max[self.module_name])
 
 		# Initialise layers
 		for idx in range(num_layers):
@@ -274,7 +279,7 @@ class Module:
 				r_idx = random.randint(0, idx - 1)
 				self.layers.append(self.layers[r_idx])
 			else:
-				self.layers.append(grammar.initialise_layer(self.module))
+				self.layers.append(grammar.initialise_layer(self.module_name))
 
 		# Initialise connections: feed-forward and allowing skip-connections
 		self.connections = {}
@@ -293,21 +298,14 @@ class Module:
 				if sample_size > 0:
 					self.connections[layer_idx] += random.sample(connection_possibilities, sample_size)
 
-	def initialise_module_as_lenet(self, grammar):
-		"""
-			Creates a pre-defined LeNet module
-
-			Parameters
-			----------
-			grammar : Grammar
-				grammar instance that stores the expansion rules
-		"""
+	def initialise_module_as_lenet(self):
+		""" Creates a pre-defined LeNet module """
 
 		feature_layers_lenet = [
-			[('features', [('convolution',	[('layer:conv' , ''), ('num-filters', 6), ('filter-shape', 5), ('stride', 1), ('act', 'relu'), ('padding', 'same'), ('bias', 'True'), ('batch-normalization', 'True')])])],
-			[('features', [('pooling', 		[('layer:pooling', ''), ('kernel-size', 2), ('stride', 2), ('padding', 'valid'), ('pooling-type', 'max')])])],
-			[('features', [('convolution',	[('layer:conv' , ''), ('num-filters', 16), ('filter-shape', 5), ('stride', 1), ('act', 'relu'), ('padding', 'valid'), ('bias', 'True'), ('batch-normalization', 'True')])])],
-			[('features', [('pooling', 		[('layer:pooling', ''), ('kernel-size', 2), ('stride', 2), ('padding', 'valid'), ('pooling-type', 'max')])])],
+			[('features', [('convolution', [('layer:conv', ''), ('num-filters', 6), ('filter-shape', 5), ('stride', 1), ('act', 'relu'), ('padding', 'same'), ('bias', 'True'), ('batch-normalization', 'True')])])],
+			[('features', [('pooling', [('layer:pooling', ''), ('kernel-size', 2), ('stride', 2), ('padding', 'valid'), ('pooling-type', 'max')])])],
+			[('features', [('convolution', [('layer:conv', ''), ('num-filters', 16), ('filter-shape', 5), ('stride', 1), ('act', 'relu'), ('padding', 'valid'), ('bias', 'True'), ('batch-normalization', 'True')])])],
+			[('features', [('pooling', [('layer:pooling', ''), ('kernel-size', 2), ('stride', 2), ('padding', 'valid'), ('pooling-type', 'max')])])],
 		]
 
 		classification_layers_lenet = [
@@ -315,9 +313,9 @@ class Module:
 			[('classification', [('layer:fc', ''), ('act', 'relu'), ('num-units', 84), ('bias', 'True'), ('batch-normalization', 'True')])],
 		]
 
-		if self.module == 'features':
+		if self.module_name == 'features':
 			self.layers = feature_layers_lenet
-		elif self.module == 'classification':
+		elif self.module_name == 'classification':
 			self.layers = classification_layers_lenet
 
 		# Initialise connections: feed-forward and allowing skip-connections
@@ -329,15 +327,8 @@ class Module:
 			else:
 				self.connections[layer_idx] = [layer_idx - 1]
 
-	def initialise_module_as_perceptron(self, grammar):
-		"""
-			Creates a pre-defined Perceptron module
-
-			Parameters
-			----------
-			grammar : Grammar
-				grammar instance that stores the expansion rules
-		"""
+	def initialise_module_as_perceptron(self):
+		""" Creates a pre-defined Perceptron module """
 
 		feature_layers_perceptron = []
 
@@ -345,9 +336,9 @@ class Module:
 			[('classification', [('layer:fc', ''), ('act', 'sigmoid'), ('num-units', 20), ('bias', 'True'), ('batch-normalization', 'False')])],
 		]
 
-		if self.module == 'features':
+		if self.module_name == 'features':
 			self.layers = feature_layers_perceptron
-		elif self.module == 'classification':
+		elif self.module_name == 'classification':
 			self.layers = classification_layers_perceptron
 
 		# Initialise connections: feed-forward and allowing skip-connections
@@ -359,11 +350,13 @@ class Module:
 			else:
 				self.connections[layer_idx] = [layer_idx - 1]
 
+
 def default_learning_rule_adam():
 	""" default learning rule for Individual.macro initialisation """
-	return [ [('learning', [('adam', [('learning:adam', ''), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)])]), ('early_stop', 8), ('batch_size', 1024)] ]
+	return [[('learning', [('adam', [('learning:adam', ''), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)])]), ('early_stop', 8), ('batch_size', 1024)]]
 
-#---------------------------------------------------------------------------
+
+# ---------------------------------------------------------------------------
 
 def mutation_dsge(ind, layer, grammar, layer_name):
 	"""
@@ -379,10 +372,13 @@ def mutation_dsge(ind, layer, grammar, layer_name):
 		grammar : Grammar
 			Grammar instance, used to perform the initialisation and the genotype
 			to phenotype mapping
+		layer_name : str
+			name of layer (e.g. "<Module number>#<Layer number>") for logging
 	"""
 
 	# descend layer tree until terminal symbol encountered
 	value_list = layer
+	value_list_key = None
 	while True:
 		(key, val) = value_list[0]
 		if type(val) != list:
@@ -390,40 +386,41 @@ def mutation_dsge(ind, layer, grammar, layer_name):
 		value_list = val
 		value_list_key = key
 
-	alternatives_list = grammar.rules_list[value_list_key]
+	alternatives_list = grammar.rules[value_list_key]
 	vars_list = alternatives_list[0]
 
 	valid_var_indices = [i for i, var in enumerate(vars_list) if var.type.value >= Type.FLOAT.value]
-	var_index = random.choice(valid_var_indices)
-	var = vars_list[var_index]
-	var_name = var.name
-	layer_value_index = -1
-	for idx, item in enumerate(value_list):
-		if item[0] == var_name:
-			layer_value_index = idx
-			break
-	if layer_value_index < 0:
-		log_warning(f"Variable {var_name} not present in layer {layer}")
-		return
-
-	value = value_list[layer_value_index][1]
-	if var.type == Type.FLOAT:
-		new_value = value + random.gauss(0, 0.15)
-		new_value = np.clip(new_value, var.min_value, var.max_value)
-		ind.log_mutation(f"{layer_name}: float {value_list_key}/{var_name} {value:.06f} -> {new_value:.06f}")
-		value_list[layer_value_index] = (var_name, new_value)
-	elif var.type == Type.INT:
-		while True:
-			new_value = random.randint(var.min_value, var.max_value)
-			if new_value != value or var.min_value == var.max_value:
+	if len(valid_var_indices):
+		var_index = random.choice(valid_var_indices)
+		var = vars_list[var_index]
+		var_name = var.name
+		layer_value_index = -1
+		for idx, item in enumerate(value_list):
+			if item[0] == var_name:
+				layer_value_index = idx
 				break
-		ind.log_mutation(f"{layer_name}: int {value_list_key}/{var_name} {value} -> {new_value}")
-		value_list[layer_value_index] = (var_name, new_value)
-	elif var.type == Type.CAT:
-		list_of_choices = copy(var.categories)
-		list_of_choices.remove(value)
-		new_value = random.choice(list_of_choices)
-		ind.log_mutation(f"{layer_name}: {value_list_key}/{var_name} {value} -> {new_value}")
-		value_list[layer_value_index] = (var_name, new_value)
-	else:
-		raise ValueError(f"Unexpected var type {var.type}")
+		if layer_value_index < 0:
+			log_warning(f"Variable {var_name} not present in layer {layer}")
+			return
+
+		value = value_list[layer_value_index][1]
+		if var.type == Type.FLOAT:
+			new_value = value + random.gauss(0, 0.15)
+			new_value = np.clip(new_value, var.min_value, var.max_value)
+			ind.log_mutation(f"{layer_name}: float {value_list_key}/{var_name} {value:.06f} -> {new_value:.06f}")
+			value_list[layer_value_index] = (var_name, new_value)
+		elif var.type == Type.INT:
+			while True:
+				new_value = random.randint(var.min_value, var.max_value)
+				if new_value != value or var.min_value == var.max_value:
+					break
+			ind.log_mutation(f"{layer_name}: int {value_list_key}/{var_name} {value} -> {new_value}")
+			value_list[layer_value_index] = (var_name, new_value)
+		elif var.type == Type.CAT:
+			list_of_choices = copy(var.categories)
+			list_of_choices.remove(value)
+			new_value = random.choice(list_of_choices)
+			ind.log_mutation(f"{layer_name}: {value_list_key}/{var_name} {value} -> {new_value}")
+			value_list[layer_value_index] = (var_name, new_value)
+		else:
+			raise ValueError(f"Unexpected var type {var.type}")

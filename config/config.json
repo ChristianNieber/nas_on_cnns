@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     //Maximum number of generations
-    "num_generations": 5,
+    "num_generations": 100,
 
     // my - number of parents
     "my" : 1,
@@ -24,7 +24,7 @@
     "random_seed" : 100,
 
     // resume from saved state
-    "resume": false,
+    "resume": true,
 
     //rates of the different mutations [0, 1]
     "MUTATIONS": {
@@ -70,9 +70,9 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 3,
+    "max_training_time": 30,
     //maximum training epochs for each network
-    "max_training_epochs": 3,
+    "max_training_epochs": 30,
 
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,

@@ -22,17 +22,11 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 USE_NETWORK_SIZE_PENALTY = 0
 PENALTY_CONNECTIONS_TARGET = 0
 
+
 def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
 	if USE_NETWORK_SIZE_PENALTY:
 		error_measure = (1.0-accuracy)*50
 		return 3 - (error_measure ** 2 + trainable_parameters / PENALTY_CONNECTIONS_TARGET)
-	else:
-		return accuracy
-
-def fitness_metric_for_8000_solution(accuracy, trainable_parameters):
-	if USE_NETWORK_SIZE_PENALTY:
-		error_measure = (1.0-accuracy)*100
-		return -(error_measure ** 3 - 30000 / trainable_parameters)
 	else:
 		return accuracy
 
@@ -171,7 +165,7 @@ def unpickle_population(save_path):
 			Numpy module random state
 	"""
 
-	json_file_paths = glob(str(Path(save_path, '*.json')))
+	json_file_paths = glob(str(Path(save_path, 'gen_*.json')))
 
 	if json_file_paths:
 		json_file_paths = [int(path.split(os.sep)[-1].replace('gen_', '').replace('.json', '')) for path in json_file_paths]
@@ -239,6 +233,7 @@ def select_new_parents(population, number_of_parents):
 	sorted_population = sorted(population, key=lambda ind: ind.fitness, reverse=True)
 	return sorted_population[0:number_of_parents]
 
+
 def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer, gen=0, idx=0):
 	"""
 		Network mutations: add and remove layer, add and remove connections, macro structure
@@ -296,11 +291,11 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 				if random.random() <= re_use_layer and len(module.layers):
 					source_layer_index = random.randint(0, len(module.layers)-1)
 					new_layer = module.layers[source_layer_index]
-					layer_phenotype = grammar.decode_layer(module.module, new_layer)
+					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
 					ind.log_mutation(f"copy layer {module_idx}#{insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
 				else:
-					new_layer = grammar.initialise_layer(module.module)
-					layer_phenotype = grammar.decode_layer(module.module, new_layer)
+					new_layer = grammar.initialise_layer(module.module_name)
+					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
 					ind.log_mutation(f"insert layer {module_idx}#{insert_pos}/{len(module.layers)} - {layer_phenotype}")
 
 				# fix connections
@@ -332,7 +327,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 		for _ in range(random.randint(1, 2)):
 			if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
 				remove_idx = random.randint(0, len(module.layers) - 1)
-				layer_phenotype = grammar.decode_layer(module.module, module.layers[remove_idx])
+				layer_phenotype = grammar.decode_layer(module.module_name, module.layers[remove_idx])
 				ind.log_mutation(f"remove layer {module_idx}#{remove_idx}/{len(module.layers)} - {layer_phenotype}")
 				del module.layers[remove_idx]
 
@@ -489,7 +484,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			np.random.seed(RANDOM_SEED)
 
 		# create evaluator
-		cnn_eval = Evaluator(dataset, False, fitness_metric_for_8000_solution)
+		cnn_eval = Evaluator(dataset, False, fitness_metric_with_size_penalty)
 
 		# save evaluator
 		pickle_evaluator(cnn_eval, save_path)
@@ -524,7 +519,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		log('\n========================================================================================================')
 		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
 
-	logger_configuration(log_training=True, log_mutations=True)
+	logger_configuration(logger_log_training=True, logger_log_mutations=True)
 
 	# evaluator for K folds
 	if BEST_K_FOLDS:
