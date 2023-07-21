@@ -4,7 +4,7 @@ import engine
 #from pickle import load
 # import visualkeras
 
-engine.do_nas_search("D:/experiments")
+engine.do_nas_search("D:/experiments", grammar_file='config/lenet_fd.grammar')
 
 #model = engine.test_saved_model()
 #model.summary(line_length=120)

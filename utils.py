@@ -10,6 +10,8 @@ import os
 from utilities.data import load_dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
+
+from grammar import Module, default_learning_rule_adam
 from logger import *
 
 # TODO: future -- impose memory constraints
@@ -292,17 +294,19 @@ class Evaluator:
 				batch_norm_layer = tf.keras.layers.BatchNormalization()
 				layers.append(batch_norm_layer)
 
-			# average pooling layer
-			elif layer_type == 'pooling':
-				if layer_params['pooling-type'] == 'max':
-					pooling_layer = tf.keras.layers.MaxPooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
+			# average pooling layer; pool-avg is for fd back compatibility
+			elif layer_type == 'pool-avg' or (layer_type == 'pooling' and layer_params['pooling-type'] == 'avg'):
+				pool_avg = tf.keras.layers.AveragePooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
 															strides=int(layer_params['stride']),
 															padding=layer_params['padding'])
-				else:
-					pooling_layer = tf.keras.layers.AveragePooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
-																strides=int(layer_params['stride']),
-																padding=layer_params['padding'])
-				layers.append(pooling_layer)
+				layers.append(pool_avg)
+
+			# max pooling layer, pool-max is for fd back compatibility
+			elif layer_type == 'pool-max' or (layer_type == 'pooling' and layer_params['pooling-type'] == 'max'):
+				pool_max = tf.keras.layers.MaxPooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
+														strides=int(layer_params['stride']),
+														padding=layer_params['padding'])
+				layers.append(pool_max)
 
 			# fully-connected layer
 			elif layer_type == 'fc':
@@ -357,6 +361,8 @@ class Evaluator:
 												activation=layer_params['activation'],
 												use_bias=eval(layer_params['bias']))
 				layers.append(conv1d)
+			else:
+				raise ValueError(f"Invalid {layer_type=}")
 
 		# END ADD NEW LAYERS
 
@@ -724,158 +730,6 @@ def test_model_with_dataset(model, x_test, y_test, datagen_test=None):
 	return accuracy
 
 
-class Module:
-	"""
-		Each of the units of the outer-level genotype
-
-		Attributes
-		----------
-		module : str
-			non-terminal symbol
-		min_expansions : int
-			minimum expansions of the block
-		max_expansions : int
-			maximum expansions of the block
-		levels_back : dict
-			number of previous layers a given layer can receive as input
-		layers : list
-			list of layers of the module
-		connections : dict
-			list of connections of each layer
-
-		Methods
-		-------
-			initialise_module(grammar, reuse)
-				Randomly creates a module
-	"""
-
-	def __init__(self, module, min_expansions, max_expansions, levels_back):
-		"""
-			Parameters
-			----------
-			module : str
-				non-terminal symbol
-			min_expansions : int
-				minimum expansions of the block
-					max_expansions : int
-				maximum expansions of the block
-			levels_back : int
-				number of previous layers a given layer can receive as input
-		"""
-
-		self.connections = None
-		self.module = module
-		self.levels_back = levels_back
-		self.layers = []
-
-		self.min_expansions = min_expansions
-		self.max_expansions = max_expansions
-
-	def initialise_module(self, grammar, reuse, init_max):
-		"""
-			Randomly creates a module
-
-			Parameters
-			----------
-			grammar : Grammar
-				grammar instance that stores the expansion rules
-
-			reuse : float
-				likelihood of reusing an existing layer
-		"""
-
-		num_layers = random.choice(init_max[self.module])
-
-		# Initialise layers
-		for idx in range(num_layers):
-			if idx > 0 and random.random() <= reuse:
-				r_idx = random.randint(0, idx - 1)
-				self.layers.append(self.layers[r_idx])
-			else:
-				self.layers.append(grammar.initialise_layer(self.module))
-
-		# Initialise connections: feed-forward and allowing skip-connections
-		self.connections = {}
-		for layer_idx in range(num_layers):
-			if layer_idx == 0:
-				# the -1 layer is the input
-				self.connections[layer_idx] = [-1, ]
-			else:
-				connection_possibilities = list(range(max(0, layer_idx - self.levels_back), layer_idx - 1))
-				if len(connection_possibilities) < self.levels_back - 1:
-					connection_possibilities.append(-1)
-
-				sample_size = random.randint(0, len(connection_possibilities))
-
-				self.connections[layer_idx] = [layer_idx - 1]
-				if sample_size > 0:
-					self.connections[layer_idx] += random.sample(connection_possibilities, sample_size)
-
-	def initialise_module_as_lenet(self, grammar):
-		"""
-			Creates a pre-defined LeNet module
-
-			Parameters
-			----------
-			grammar : Grammar
-				grammar instance that stores the expansion rules
-		"""
-
-		feature_layers_lenet = [
-			[('features', [('convolution',	[('layer:conv' , ''), ('num-filters', 6), ('filter-shape', 5), ('stride', 1), ('act', 'relu'), ('padding', 'same'), ('bias', 'True'), ('batch-normalization', 'True')])])],
-			[('features', [('pooling', 		[('layer:pooling', ''), ('kernel-size', 2), ('stride', 2), ('padding', 'valid'), ('pooling-type', 'max')])])],
-			[('features', [('convolution',	[('layer:conv' , ''), ('num-filters', 16), ('filter-shape', 5), ('stride', 1), ('act', 'relu'), ('padding', 'valid'), ('bias', 'True'), ('batch-normalization', 'True')])])],
-			[('features', [('pooling', 		[('layer:pooling', ''), ('kernel-size', 2), ('stride', 2), ('padding', 'valid'), ('pooling-type', 'max')])])],
-		]
-
-		classification_layers_lenet = [
-			[('classification', [('layer:fc', ''), ('act', 'relu'), ('num-units', 120), ('bias', 'True'), ('batch-normalization', 'True')])],
-			[('classification', [('layer:fc', ''), ('act', 'relu'), ('num-units', 84), ('bias', 'True'), ('batch-normalization', 'True')])],
-		]
-
-		if self.module == 'features':
-			self.layers = feature_layers_lenet
-		elif self.module == 'classification':
-			self.layers = classification_layers_lenet
-
-		# Initialise connections: feed-forward and allowing skip-connections
-		self.connections = {}
-		for layer_idx in range(len(self.layers)):
-			if layer_idx == 0:
-				# the -1 layer is the input
-				self.connections[layer_idx] = [-1, ]
-			else:
-				self.connections[layer_idx] = [layer_idx - 1]
-
-	def initialise_module_as_perceptron(self, grammar):
-		"""
-			Creates a pre-defined Perceptron module
-
-			Parameters
-			----------
-			grammar : Grammar
-				grammar instance that stores the expansion rules
-		"""
-
-		feature_layers_perceptron = []
-
-		classification_layers_perceptron = [
-			[('classification', [('layer:fc', ''), ('act', 'sigmoid'), ('num-units', 20), ('bias', 'True'), ('batch-normalization', 'False')])],
-		]
-
-		if self.module == 'features':
-			self.layers = feature_layers_perceptron
-		elif self.module == 'classification':
-			self.layers = classification_layers_perceptron
-
-		# Initialise connections: feed-forward and allowing skip-connections
-		self.connections = {}
-		for layer_idx in range(len(self.layers)):
-			if layer_idx == 0:
-				# the -1 layer is the input
-				self.connections[layer_idx] = [-1, ]
-			else:
-				self.connections[layer_idx] = [layer_idx - 1]
 
 
 class Individual:
@@ -1053,12 +907,12 @@ class Individual:
 		self.modules.append(new_module)
 
 		# Initialise output
-		self.output = [('output', [('layer:output', ''), ('num-units', 10), ('bias', 'True')])]
+		self.output = grammar.initialise_layer(self.output_rule)
+
+#		self.output = [('output', [('layer:output', ''), ('num-units', 10), ('bias', 'True')])]
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro = [
-			[('learning', [('adam', [('learning:adam', ''), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)])]), ('early_stop', 8), ('batch_size', 1024)]
-		]
+		self.macro = default_learning_rule_adam()
 		return self
 
 	def initialise_as_perceptron(self, grammar):
@@ -1088,9 +942,7 @@ class Individual:
 		self.output = grammar.initialise_layer(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro = [
-			[('learning', [('adam', [('', 'learning:adam'), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)])]), ('early_stop', 8), ('batch_size', 1024)]
-		]
+		self.macro = default_learning_rule_adam()
 		return self
 
 	def log_mutation(self, description):

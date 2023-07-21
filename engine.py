@@ -1,8 +1,6 @@
 import numpy as np
 import random
-from grammar import Grammar, Var, Type
-from utils import Evaluator, Individual, test_model_with_dataset
-from copy import copy, deepcopy
+from copy import deepcopy
 from os import makedirs
 import pickle
 import os
@@ -14,6 +12,9 @@ from pathlib import Path
 from keras.models import load_model
 # from keras.preprocessing.image import ImageDataGenerator
 # from data_augmentation import augmentation
+from grammar import Grammar, mutation_dsge
+
+from utils import Evaluator, Individual, test_model_with_dataset
 from logger import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -237,70 +238,6 @@ def select_new_parents(population, number_of_parents):
 	# Get best individuals ordered by fitness
 	sorted_population = sorted(population, key=lambda ind: ind.fitness, reverse=True)
 	return sorted_population[0:number_of_parents]
-
-
-def mutation_dsge(ind, layer, grammar, layer_name):
-	"""
-		DSGE mutations (check DSGE for further details)
-
-
-		Parameters
-		----------
-		ind : Individual
-			Individual to mutate
-		layer : dict
-			layer to be mutated (DSGE genotype)
-		grammar : Grammar
-			Grammar instance, used to perform the initialisation and the genotype
-			to phenotype mapping
-	"""
-
-	# descend layer tree until terminal symbol encountered
-	value_list = layer
-	while True:
-		(key, val) = value_list[0]
-		if type(val) != list:
-			break
-		value_list = val
-		value_list_key = key
-
-	alternatives_list = grammar.rules_list[value_list_key]
-	vars_list = alternatives_list[0]
-
-	valid_var_indices = [i for i, var in enumerate(vars_list) if var.type.value >= Type.FLOAT.value]
-	var_index = random.choice(valid_var_indices)
-	var = vars_list[var_index]
-	var_name = var.name
-	layer_value_index = -1
-	for idx, item in enumerate(value_list):
-		if item[0] == var_name:
-			layer_value_index = idx
-			break
-	if layer_value_index < 0:
-		log_warning(f"Variable {var_name} not present in layer {layer}")
-		return
-
-	value = value_list[layer_value_index][1]
-	if var.type == Type.FLOAT:
-		new_value = value + random.gauss(0, 0.15)
-		new_value = np.clip(new_value, var.min_value, var.max_value)
-		ind.log_mutation(f"{layer_name}: float {value_list_key}/{var_name} {value:.06f} -> {new_value:.06f}")
-		value_list[layer_value_index] = (var_name, new_value)
-	elif var.type == Type.INT:
-		while True:
-			new_value = random.randint(var.min_value, var.max_value)
-			if new_value != value or var.min_value == var.max_value:
-				break
-		ind.log_mutation(f"{layer_name}: int {value_list_key}/{var_name} {value} -> {new_value}")
-		value_list[layer_value_index] = (var_name, new_value)
-	elif var.type == Type.CAT:
-		list_of_choices = copy(var.categories)
-		list_of_choices.remove(value)
-		new_value = random.choice(list_of_choices)
-		ind.log_mutation(f"{layer_name}: {value_list_key}/{var_name} {value} -> {new_value}")
-		value_list[layer_value_index] = (var_name, new_value)
-	else:
-		raise ValueError(f"Unexpected var type {var.type}")
 
 def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer, gen=0, idx=0):
 	"""
@@ -552,7 +489,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			np.random.seed(RANDOM_SEED)
 
 		# create evaluator
-		cnn_eval = Evaluator(dataset, False, fitness_metric_with_size_penalty)
+		cnn_eval = Evaluator(dataset, False, fitness_metric_for_8000_solution)
 
 		# save evaluator
 		pickle_evaluator(cnn_eval, save_path)
