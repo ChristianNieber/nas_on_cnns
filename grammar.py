@@ -1,7 +1,7 @@
 import numpy as np
 import random
 from enum import Enum
-from copy import copy
+from copy import copy, deepcopy
 from logger import *
 
 
@@ -367,7 +367,7 @@ def mutation_dsge(ind, layer, grammar, layer_name):
 		----------
 		ind : Individual
 			Individual to mutate
-		layer : dict
+		layer : list
 			layer to be mutated (DSGE genotype)
 		grammar : Grammar
 			Grammar instance, used to perform the initialisation and the genotype
@@ -379,19 +379,40 @@ def mutation_dsge(ind, layer, grammar, layer_name):
 	# descend layer tree until terminal symbol encountered
 	value_list = layer
 	value_list_key = None
+	mutable_nonterminals = []
 	while True:
 		(key, val) = value_list[0]
 		if type(val) != list:
 			break
+		if len(grammar.rules[key]) > 1:
+			mutable_nonterminals.append(value_list)
 		value_list = val
 		value_list_key = key
 
 	alternatives_list = grammar.rules[value_list_key]
 	vars_list = alternatives_list[0]
+	mutable_var_indices = [i for i, var in enumerate(vars_list) if var.type.value >= Type.FLOAT.value]
 
-	valid_var_indices = [i for i, var in enumerate(vars_list) if var.type.value >= Type.FLOAT.value]
-	if len(valid_var_indices):
-		var_index = random.choice(valid_var_indices)
+	if len(mutable_var_indices) and len(mutable_nonterminals):
+		if random.randint(0, 2) == 0:
+			mutable_var_indices = []
+		else:
+			mutable_nonterminals = []
+
+	if len(mutable_nonterminals):
+		value_list = random.choice(mutable_nonterminals)
+		(value_list_key, val) = value_list[0]
+		key = val[0][0]
+		alternatives_list = grammar.rules[value_list_key]
+		list_of_choices = [varlist[0].name for varlist in alternatives_list]
+		list_of_choices.remove(key)
+		new_value = random.choice(list_of_choices)
+		old_layer_phenotype = grammar.decode_value_list(layer)
+		value_list[0] = (value_list_key, grammar.initialise_layer(new_value))
+		log_mutation(f"{layer_name}: <{value_list_key}>/<{key}> -> <{new_value}>\n    {old_layer_phenotype} --> {grammar.decode_value_list(layer)}")
+
+	elif len(mutable_var_indices):
+		var_index = random.choice(mutable_var_indices)
 		var = vars_list[var_index]
 		var_name = var.name
 		layer_value_index = -1
@@ -411,13 +432,15 @@ def mutation_dsge(ind, layer, grammar, layer_name):
 			value_list[layer_value_index] = (var_name, new_value)
 		elif var.type == Type.INT:
 			while True:
-				new_value = random.randint(var.min_value, var.max_value)
+				# random.randint(var.min_value, var.max_value)
+				new_value = int(value + random.gauss(0, 0.15) * (var.max_value - var.min_value))
+				new_value = np.clip(new_value, var.min_value, var.max_value)
 				if new_value != value or var.min_value == var.max_value:
 					break
 			ind.log_mutation(f"{layer_name}: int {value_list_key}/{var_name} {value} -> {new_value}")
 			value_list[layer_value_index] = (var_name, new_value)
 		elif var.type == Type.CAT:
-			list_of_choices = copy(var.categories)
+			list_of_choices = var.categories.copy()
 			list_of_choices.remove(value)
 			new_value = random.choice(list_of_choices)
 			ind.log_mutation(f"{layer_name}: {value_list_key}/{var_name} {value} -> {new_value}")
