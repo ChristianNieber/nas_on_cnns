@@ -30,6 +30,71 @@ def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
 	else:
 		return accuracy
 
+class GenerationStatistics:
+	""" keeps statistics over all generations """
+	def __init__(self):
+		# best individual
+		self.best_individual = []
+		self.final_test_accuracy = []
+		self.accuracy = []
+		self.parameters = []
+		self.training_time = []
+		self.training_epochs = []
+		self.million_inferences_time = []
+		self.fitness = []
+		self.train_accuracy = []
+		self.train_loss = []
+		self.val_accuracy = []
+		self.val_loss = []
+		self.k_fold_accuracy = []
+		self.k_fold_accuracy_std = []
+		# best of generation
+		self.generation_best_accuracy = []
+		self.generation_best_fitness = []
+		self.generation_best_parameters = []
+		# generation
+		self.generation_accuracy = []
+		self.generation_fitness = []
+		self.generation_parameters = []
+
+	def record_best(self, ind):
+		self.best_individual.append(ind.id)
+		self.final_test_accuracy.append(ind.final_test_accuracy)
+		self.accuracy.append(ind.accuracy)
+		self.parameters.append(ind.parameters)
+		self.training_time.append(ind.training_time)
+		self.training_epochs.append(ind.training_epochs)
+		self.million_inferences_time.append(ind.million_inferences_time)
+		self.fitness.append(ind.fitness)
+		self.train_accuracy.append(ind.metrics_train_accuracy[-1])
+		self.train_loss.append(ind.metrics_train_loss[-1])
+		self.val_accuracy.append(ind.metrics_val_accuracy[-1])
+		self.val_loss.append(ind.metrics_val_loss[-1])
+		self.k_fold_accuracy.append(ind.k_fold_accuracy)
+		self.k_fold_accuracy_std.append(ind.k_fold_accuracy_std)
+
+	def record_generation(self, generation_list):
+		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
+		best_in_generation = generation_list[best_in_generation_idx]
+		self.generation_best_accuracy.append(best_in_generation.accuracy)
+		self.generation_best_fitness.append(best_in_generation.fitness)
+		self.generation_best_parameters.append(best_in_generation.parameters)
+		self.generation_accuracy.append([ind.accuracy for ind in generation_list])
+		self.generation_fitness.append([ind.fitness for ind in generation_list])
+		self.generation_parameters.append([ind.parameters for ind in generation_list])
+
+	def to_json(self):
+		""" makes object json serializable """
+		return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
+
+	def save_to_json_file(self, save_path):
+		""" save statistics """
+		json_dump = self.to_json()
+		with open(save_path + 'statistics.json', 'w') as f_json:
+			f_json.write(json_dump)
+
+def read_statistics_from_json_file(save_path):
+	pass
 
 def save_population_statistics(population, save_path, gen):
 	"""
@@ -231,7 +296,7 @@ def select_new_parents(population, number_of_parents, after_k_folds_evaluation=F
 	"""
 
 	if after_k_folds_evaluation:
-		candidates = [ind for ind in population if ind.k_fold_accuracy_average]		# only individuals where k folds evaluation has been done
+		candidates = [ind for ind in population if ind.k_fold_accuracy]		# only individuals where k folds evaluation has been done
 	else:
 		candidates = population
 	# candidates ordered by fitness
@@ -463,9 +528,11 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	# init statistics
 	best_fitness = None
+	stat = GenerationStatistics()
 
 	# load previous population content (if any)
 	unpickle = unpickle_population(save_path) if RESUME else None
+
 
 	# if there is not a previous population
 	if unpickle is None:
@@ -582,14 +649,24 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					os.remove(individual_path)
 
 		best_individual = parent_list[0]
-		population_fitness = [ind.fitness for ind in population]
-		best_in_generation_idx = np.argmax(population_fitness[MY:]) + MY if len(population_fitness) > MY else 0
-		best_in_generation = population[best_in_generation_idx]
+		if gen:
+			generation_list = population[MY:]
+		else:
+			generation_list = population
+			while len(generation_list) < LAMBDA:			# extend gen 0 population for easier statistics display
+				generation_list.append(population[0])
+
+		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
+		best_in_generation = generation_list[best_in_generation_idx]
 		log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
+
+		stat.record_best(best_individual)
+		stat.record_generation(generation_list)
 
 		# save population
 		save_population_statistics(population, save_path, gen)
 		pickle_population(gen, population, save_path)
+		stat.save_to_json_file(save_path)
 
 		# keep only best as new parents
 		population = parent_list

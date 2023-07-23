@@ -482,7 +482,7 @@ class Evaluator:
 		""" calculate fitness of individual """
 		fitness = None
 		if ind.accuracy:
-			accuracy = ind.k_fold_accuracy_average if ind.k_fold_accuracy_average is not None else ind.accuracy
+			accuracy = ind.k_fold_accuracy if ind.k_fold_accuracy is not None else ind.accuracy
 			fitness = self.fitness_func(accuracy, ind.parameters)
 		return fitness
 
@@ -828,14 +828,14 @@ class Individual:
 		self.metrics_val_accuracy = None
 		self.metrics_val_loss = None
 		self.model_save_path = None
-		self.k_fold_accuracy_average = None
+		self.k_fold_accuracy = None
 		self.k_fold_accuracy_std = None
 		self.k_fold_accuracy_min = None
 		self.k_fold_accuracy_max = None
 		self.k_fold_metrics = None
 
 	def short_description(self):
-		return f"{self.id} {self.fitness:.5f} ({f'k-folds: {self.k_fold_accuracy_average:.5f} sd: {self.k_fold_accuracy_std:.5f} ' if self.k_fold_accuracy_average else ''}{f'final: {self.final_test_accuracy:.5f} ' if self.final_test_accuracy else ''}acc: {self.accuracy:.5f} p: {self.parameters})"
+		return f"{self.id} {self.fitness:.5f} ({f'k-folds: {self.k_fold_accuracy:.5f} sd: {self.k_fold_accuracy_std:.5f} ' if self.k_fold_accuracy else ''}{f'final: {self.final_test_accuracy:.5f} ' if self.final_test_accuracy else ''}acc: {self.accuracy:.5f} p: {self.parameters})"
 
 	def json_statistics(self):
 		""" return dictionary of statistics for individual to write to json file"""
@@ -845,21 +845,21 @@ class Individual:
 			'final_test_accuracy': self.final_test_accuracy,
 			'accuracy': self.accuracy,
 			'fitness': self.fitness,
-			'trainable_parameters': self.parameters,
+			'parameters': self.parameters,
 			'training_epochs': self.training_epochs,
 			'training_time': self.training_time,
 			'million_inferences_time': self.million_inferences_time,
-			'training_complete': self.training_complete,
-			'phenotype': self.phenotype,
 			'metrics_train_accuracy': self.metrics_train_accuracy,
 			'metrics_train_loss': self.metrics_train_loss,
 			'metrics_val_accuracy': self.metrics_val_accuracy,
 			'metrics_val_loss': self.metrics_val_loss,
-			'k_fold_test_accuracy_average': self.k_fold_accuracy_average,
-			'k_fold_test_accuracy_std': self.k_fold_accuracy_std,
-			'k_fold_test_accuracy_min': self.k_fold_accuracy_min,
-			'k_fold_test_accuracy_max': self.k_fold_accuracy_max,
+			'k_fold_accuracy': self.k_fold_accuracy,
+			'k_fold_accuracy_std': self.k_fold_accuracy_std,
+			'k_fold_accuracy_min': self.k_fold_accuracy_min,
+			'k_fold_accuracy_max': self.k_fold_accuracy_max,
 			'k_fold_metrics': self.k_fold_metrics,
+			'training_complete': self.training_complete,
+			'phenotype': self.phenotype,
 			'evolution_history': self.evolution_history
 		}
 
@@ -1091,14 +1091,14 @@ class Individual:
 		try:
 			metrics = k_fold_eval.evaluate_cnn_k_folds(phenotype, nfolds, max_training_time, max_training_epochs, datagen, datagen_test)
 			test_accuracy_list = metrics['test_accuracy_list']
-			self.k_fold_accuracy_average = np.average(test_accuracy_list)
+			self.k_fold_accuracy = np.average(test_accuracy_list)
 			self.k_fold_accuracy_std = np.std(test_accuracy_list)
 			self.k_fold_accuracy_min = np.min(test_accuracy_list)
 			self.k_fold_accuracy_max = np.max(test_accuracy_list)
 			self.k_fold_metrics = metrics
 			old_fitness = self.fitness
 			self.fitness = k_fold_eval.calculate_fitness(self)
-			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.accuracy:0.5f} -> {self.k_fold_accuracy_average:0.5f} sd: {self.k_fold_accuracy_std:0.5f} range: {self.k_fold_accuracy_max - self.k_fold_accuracy_min:0.5f}, fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
+			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.accuracy:0.5f} -> {self.k_fold_accuracy:0.5f} sd: {self.k_fold_accuracy_std:0.5f} range: {self.k_fold_accuracy_max - self.k_fold_accuracy_min:0.5f}, fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
 		except tf.errors.ResourceExhaustedError as e:
 			log_warning(f"{self.id} k-folds evaluation: ResourceExhaustedError {e}")
 			keras.backend.clear_session()

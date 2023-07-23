@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     //Maximum number of generations
-    "num_generations": 100,
+    "num_generations": 30,
 
     // my - number of parents
     "my" : 1,
