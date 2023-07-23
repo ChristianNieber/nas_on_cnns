@@ -19,14 +19,14 @@ class Test(unittest.TestCase):
 		# expected_output_fd = {'features': [{'ge': 0, 'ga': {}}], 'convolution': [{'ge': 0, 'ga': {'num-filters': ('int', 32.0, 256.0, 42), 'filter-shape': ('int', 2.0, 5.0, 4), 'stride': ('int', 1.0, 3.0, 3)}}],
 		# 				   'padding': [{'ge': 1, 'ga': {}}], 'activation-function': [{'ge': 1, 'ga': {}}], 'bias': [{'ge': 1, 'ga': {}}]}
 
-		grammar = grammar.Grammar('tests/utilities/example.grammar')
+		grammar = grammar.Grammar('tests/examples/example.grammar')
 		output = grammar.initialise_layer('features')
 		self.assertEqual(output, expected_output, "Error: initialise not equal")
 
 	def test_decode(self):
 		import grammar
 
-		grammar = grammar.Grammar('tests/utilities/example.grammar')
+		grammar = grammar.Grammar('tests/examples/example.grammar')
 
 		start_symbol = 'features'
 		layer = [('features', [('convolution', [('layer:conv', ''), ('num-filters', 242), ('filter-shape', 5), ('stride', 2), ('padding', 'valid'), ('act', 'sigmoid'), ('bias', 'True')])])]

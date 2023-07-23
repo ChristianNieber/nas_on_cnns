@@ -18,13 +18,13 @@
     "initial_individuals" : "lenet",
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "LeNet with gaussian ints",
+    "experiment_name" : "LeNet 5 k-folds",
+
+    // resume from saved state
+    "resume": true,
 
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 100,
-
-    // resume from saved state
-    "resume": false,
 
     //rates of the different mutations [0, 1]
     "MUTATIONS": {
@@ -80,10 +80,8 @@
     "penalty_connections_target" : 30000,
 
     // test new elite individuals with final test set
-    "best_retest_with_final_test_set" : true,
-    // re-train best individual with K folds and find average accuracy and standard deviation, 0 to disable
-    "best_k_folds" : 0,
-    // only start K folds re-training after this generation number
-    "best_k_folds_start_at_generation" : 0
+    "retest_best_with_final_test_set" : true,
+    // re-train best individual with K folds and select new parents on average K folds fitness
+    "reevaluate_best_with_k_folds" : 10
   }
 }

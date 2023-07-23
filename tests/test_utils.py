@@ -25,7 +25,7 @@ class Test(unittest.TestCase):
 		from grammar import Grammar
 
 		network_structure = [["features", 1, 3]]
-		grammar = Grammar('tests/utilities/example.grammar')
+		grammar = Grammar('tests/examples/example.grammar')
 		levels_back = {"features": 1, "classification": 1}
 		network_structure_init = {"features":[2]}
 
@@ -40,7 +40,7 @@ class Test(unittest.TestCase):
 		from grammar import Grammar
 
 		network_structure = [["features", 1, 30], ["classification", 1, 10]],
-		grammar = Grammar('tests/utilities/lenet.grammar')
+		grammar = Grammar('tests/examples/lenet.grammar')
 
 		ind = Individual(network_structure, [], 'output', 1, 0).initialise_as_lenet(grammar)
 
@@ -71,7 +71,7 @@ class Test(unittest.TestCase):
 		import random
 
 		network_structure = [["features", 1, 3]]
-		grammar = Grammar('tests/utilities/example.grammar')
+		grammar = Grammar('tests/examples/example.grammar')
 		levels_back = {"features": 1, "classification": 1}
 		network_structure_init = {"features":[2]}
 
@@ -99,7 +99,7 @@ class Test(unittest.TestCase):
 	def test_load_config(self):
 		import engine
 
-		config = engine.load_config('tests/utilities/example_config.json')
+		config = engine.load_config('tests/examples/example_config.json')
 
 		self.assertTrue(config)
 

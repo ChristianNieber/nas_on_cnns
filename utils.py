@@ -136,27 +136,9 @@ class Evaluator:
 		fitness_func : function
 			fitness_metric (y_true, y_pred)
 			y_pred are the confidences
-
-		Methods
-		-------
-		get_layers(phenotype)
-			parses the phenotype corresponding to the layers
-			auxiliary function of the assemble_network function
-		get_learning(learning)
-			parses the phenotype corresponding to the learning
-			auxiliary function of the assemble_optimiser function
-		assemble_network(keras_layers, input_size)
-			maps the layers phenotype into a keras model
-		assemble_optimiser(learning)
-			maps the learning into a keras optimiser
-		evaluate_cnn(phenotype, load_prev_weights, weights_save_path, parent_weights_path,
-							train_time, training_epochs, datagen=None, input_size=(32, 32, 3))
-			evaluates the keras model using the keras optimiser
-		testing_performance(self, model_path)
-			compute testing performance of the model
 	"""
 
-	def __init__(self, dataset, for_k_fold_validation=False, fitness_func=fitness_function_accuracy):
+	def __init__(self, dataset, fitness_func=fitness_function_accuracy, for_k_fold_validation=False):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -452,8 +434,19 @@ class Evaluator:
 
 		if LOG_MODEL_SUMMARY:
 			model.summary(line_length=120)
+			# Evaluator.calculate_model_multiplications(model)
 
 		return model
+
+	@staticmethod
+	def calculate_model_multiplications(model):
+		""" print number of multiplications per layer of a keras model"""
+		for l in model.layers:
+			weights = sum([i.size for i in l.get_weights()])
+			outputs = int(np.prod(l.output_shape[1: -1]))
+			multiplications = weights * outputs
+			print(f'output shape: {l.output_shape[1:]}, weights: {weights}, multiplications: {multiplications}, layer: {l.name}')
+			pass
 
 	@staticmethod
 	def assemble_optimiser(learning):
@@ -485,6 +478,14 @@ class Evaluator:
 											beta_1=float(learning['beta1']),
 											beta_2=float(learning['beta2']))
 
+	def calculate_fitness(self, ind):
+		""" calculate fitness of individual """
+		fitness = None
+		if ind.accuracy:
+			accuracy = ind.k_fold_accuracy_average if ind.k_fold_accuracy_average is not None else ind.accuracy
+			fitness = self.fitness_func(accuracy, ind.parameters)
+		return fitness
+
 	def evaluate_cnn_k_folds(self, phenotype, n_folds, max_training_time, max_training_epochs, datagen=None, datagen_test=None, input_size=(28, 28, 1)):  # pragma: no cover
 		random_state = random.getstate()
 		numpy_state = np.random.get_state()
@@ -493,7 +494,7 @@ class Evaluator:
 		y_combined = self.dataset['y_combined']
 
 		# log(f"evaluating {id} with {n_folds} folds:")
-		split = StratifiedShuffleSplit(n_splits=n_folds, test_size=17000)
+		split = StratifiedShuffleSplit(n_splits=n_folds, test_size=7000)
 		test_accuracy_list = []
 		accuracy_list = []
 		val_accuracy_list = []
@@ -505,7 +506,7 @@ class Evaluator:
 			evo_x_train, x_val = x_combined[train_index], x_combined[test_index]
 			evo_y_train, y_val = y_combined[train_index], y_combined[test_index]
 
-			val_test_split = StratifiedShuffleSplit(n_splits=1, test_size=17000 - 3500)
+			val_test_split = StratifiedShuffleSplit(n_splits=1, test_size=3500)
 			for train_index2, test_index2 in val_test_split.split(x_val, y_val):
 				evo_x_val, evo_x_test = x_val[train_index2], x_val[test_index2]
 				evo_y_val, evo_y_test = y_val[train_index2], y_val[test_index2]
@@ -611,24 +612,23 @@ class Evaluator:
 		# time based stopping
 		time_stop = TimedStopping(seconds=max_training_time)
 
+		callbacks_list = [time_stop]
+
 		# early stopping
-		early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
+		if not suppress_early_stopping:
+			early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
+			# early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
+			callbacks_list.append(early_stop)
 
-		callbacks_list = [early_stop, time_stop]
-
-		# experimental early stopping on validation accuracy
-		# if not suppress_early_stopping:
-		# early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
-		# callbacks_list.append(early_stop)
-
-		if not suppress_logging:
-			log_training_nolf(f"{name} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}")
-
-		training_start_time = time()
 		# save individual with the lowest validation loss - useful for when training is halted because of time
 		if SAVE_MODEL_AFTER_EACH_EPOCH:
 			monitor = ModelCheckpoint(model_save_path, monitor='val_loss', verbose=LOG_MODEL_SAVE, save_best_only=True)
 			callbacks_list.append(monitor)
+
+		training_start_time = time()
+
+		if not suppress_logging:
+			log_training_nolf(f"{name} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}")
 
 		x_train = dataset['evo_x_train']
 		y_train = dataset['evo_y_train']
@@ -682,8 +682,7 @@ class Evaluator:
 			val_accuracy = history['val_accuracy'][-1]
 			loss = history['loss'][-1]
 			if not suppress_logging:
-				log_training(
-					f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} acc: {test_accuracy:0.5f}, val: {val_accuracy:0.5f} acc0: {accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f}) fitness: {fitness} {'T' if timer_stop_triggered else ''}{'E' if early_stop_triggered else ''}")
+				log_training(f" ep:{training_epochs:2d} inf: {million_inferences_time:0.2f} acc: {test_accuracy:0.5f}, val: {val_accuracy:0.5f} acc0: {accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f}) fitness: {fitness} {'T' if timer_stop_triggered else ''}{'E' if early_stop_triggered else ''}")
 		else:
 			log_warning(f" *** no training epoch completed ***")
 
@@ -720,7 +719,7 @@ class Evaluator:
 		numpy_state = np.random.get_state()
 
 		model = keras.models.load_model(model_path)
-		accuracy = test_model_with_dataset(model, self.dataset['x_test'], self.dataset['y_test'], datagen_test)
+		accuracy = test_model_with_dataset(model, self.dataset['x_final_test'], self.dataset['y_final_test'], datagen_test)
 
 		random.setstate(random_state)
 		np.random.set_state(numpy_state)
@@ -778,13 +777,11 @@ class Individual:
 			evaluate_individual()
 				Performs the evaluation of a candidate solution
 	"""
-	k_fold_test_accuracy_max: Union[ndarray, int, float, complex]
-	k_fold_metrics: Union[dict[str, list[Any]], Any]
-	test_accuracy: None
-	k_fold_test_accuracy_average = None
-	k_fold_test_accuracy_std = None
-	k_fold_test_accuracy_min = None
-	k_fold_test_accuracy_max = None
+	is_parent: bool
+	final_test_accuracy: None	# accuracy with final test set
+	accuracy: None				# test accuracy during initial training
+	parameters: None			# number of trainable parameters
+	fitness: None				# calculated fitness
 
 	def __init__(self, network_structure, learning_rule, output_rule, gen, idx):
 		"""
@@ -817,35 +814,36 @@ class Individual:
 
 	def reset_training(self):
 		"""reset all values computed during training"""
+		self.is_parent = False
 		self.final_test_accuracy = None
-		self.test_accuracy = None
+		self.accuracy = None
 		self.parameters = None
 		self.training_time = 0
 		self.training_epochs = 0
 		self.million_inferences_time = None
 		self.fitness = None
 		self.training_complete = False
-		self.metrics_accuracy = None
-		self.metrics_loss = None
+		self.metrics_train_accuracy = None
+		self.metrics_train_loss = None
 		self.metrics_val_accuracy = None
 		self.metrics_val_loss = None
-		self.weights_save_path = None
 		self.model_save_path = None
-		self.k_fold_test_accuracy_average = None
-		self.k_fold_test_accuracy_std = None
-		self.k_fold_test_accuracy_min = None
-		self.k_fold_test_accuracy_max = None
+		self.k_fold_accuracy_average = None
+		self.k_fold_accuracy_std = None
+		self.k_fold_accuracy_min = None
+		self.k_fold_accuracy_max = None
 		self.k_fold_metrics = None
 
 	def short_description(self):
-		return f"{self.id} {self.fitness:.5f} ({f'k-folds: {self.k_fold_test_accuracy_average:.5f} sd: {self.k_fold_test_accuracy_std:.5f} ' if self.k_fold_test_accuracy_average else ''}{f'final: {self.final_test_accuracy:.5f} ' if self.final_test_accuracy else ''}acc: {self.test_accuracy:.5f} p: {self.parameters})"
+		return f"{self.id} {self.fitness:.5f} ({f'k-folds: {self.k_fold_accuracy_average:.5f} sd: {self.k_fold_accuracy_std:.5f} ' if self.k_fold_accuracy_average else ''}{f'final: {self.final_test_accuracy:.5f} ' if self.final_test_accuracy else ''}acc: {self.accuracy:.5f} p: {self.parameters})"
 
 	def json_statistics(self):
 		""" return dictionary of statistics for individual to write to json file"""
 		return {
 			'id': self.id,
+			'is_parent' : self.is_parent,
 			'final_test_accuracy': self.final_test_accuracy,
-			'test_accuracy': self.test_accuracy,
+			'accuracy': self.accuracy,
 			'fitness': self.fitness,
 			'trainable_parameters': self.parameters,
 			'training_epochs': self.training_epochs,
@@ -853,14 +851,14 @@ class Individual:
 			'million_inferences_time': self.million_inferences_time,
 			'training_complete': self.training_complete,
 			'phenotype': self.phenotype,
-			'metrics_accuracy': self.metrics_accuracy,
-			'metrics_loss': self.metrics_loss,
+			'metrics_train_accuracy': self.metrics_train_accuracy,
+			'metrics_train_loss': self.metrics_train_loss,
 			'metrics_val_accuracy': self.metrics_val_accuracy,
 			'metrics_val_loss': self.metrics_val_loss,
-			'k_fold_test_accuracy_average': self.k_fold_test_accuracy_average,
-			'k_fold_test_accuracy_std': self.k_fold_test_accuracy_std,
-			'k_fold_test_accuracy_min': self.k_fold_test_accuracy_min,
-			'k_fold_test_accuracy_max': self.k_fold_test_accuracy_max,
+			'k_fold_test_accuracy_average': self.k_fold_accuracy_average,
+			'k_fold_test_accuracy_std': self.k_fold_accuracy_std,
+			'k_fold_test_accuracy_min': self.k_fold_accuracy_min,
+			'k_fold_test_accuracy_max': self.k_fold_accuracy_max,
 			'k_fold_metrics': self.k_fold_metrics,
 			'evolution_history': self.evolution_history
 		}
@@ -1040,8 +1038,8 @@ class Individual:
 
 			if metrics is not None:
 				self.model_save_path = model_save_path
-				self.metrics_accuracy = metrics['accuracy']
-				self.metrics_loss = metrics['loss']
+				self.metrics_train_accuracy = metrics['accuracy']
+				self.metrics_train_loss = metrics['loss']
 				self.metrics_val_accuracy = metrics['val_accuracy']
 				self.metrics_val_loss = metrics['val_loss']
 				self.parameters = metrics['trainable_parameters']
@@ -1050,12 +1048,12 @@ class Individual:
 				self.million_inferences_time = metrics['million_inferences_time']
 				self.fitness = metrics['fitness']
 				if 'test_accuracy' in metrics:
-					self.test_accuracy = metrics['test_accuracy']
+					self.accuracy = metrics['test_accuracy']
 				else:
-					self.test_accuracy = -1
+					self.accuracy = -1
 			else:
 				self.fitness = None
-				self.test_accuracy = None
+				self.accuracy = None
 				self.parameters = -1
 				self.million_inferences_time = -1
 
@@ -1093,18 +1091,20 @@ class Individual:
 		try:
 			metrics = k_fold_eval.evaluate_cnn_k_folds(phenotype, nfolds, max_training_time, max_training_epochs, datagen, datagen_test)
 			test_accuracy_list = metrics['test_accuracy_list']
-			self.k_fold_test_accuracy_average = np.average(test_accuracy_list)
-			self.k_fold_test_accuracy_std = np.std(test_accuracy_list)
-			self.k_fold_test_accuracy_min = np.min(test_accuracy_list)
-			self.k_fold_test_accuracy_max = np.max(test_accuracy_list)
+			self.k_fold_accuracy_average = np.average(test_accuracy_list)
+			self.k_fold_accuracy_std = np.std(test_accuracy_list)
+			self.k_fold_accuracy_min = np.min(test_accuracy_list)
+			self.k_fold_accuracy_max = np.max(test_accuracy_list)
 			self.k_fold_metrics = metrics
-			log_bold(f"--> {self.id} with {nfolds} folds: avg acc: {self.k_fold_test_accuracy_average:0.5f} sd: {self.k_fold_test_accuracy_std:0.5f} range: {self.k_fold_test_accuracy_max - self.k_fold_test_accuracy_min:0.5f}")
-		except tf.errors.ResourceExhaustedError:
+			old_fitness = self.fitness
+			self.fitness = k_fold_eval.calculate_fitness(self)
+			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.accuracy:0.5f} -> {self.k_fold_accuracy_average:0.5f} sd: {self.k_fold_accuracy_std:0.5f} range: {self.k_fold_accuracy_max - self.k_fold_accuracy_min:0.5f}, fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
+		except tf.errors.ResourceExhaustedError as e:
+			log_warning(f"{self.id} k-folds evaluation: ResourceExhaustedError {e}")
 			keras.backend.clear_session()
-			return None
-		except TypeError:
+		except (TypeError, ValueError) as e:
+			log_warning(f"{self.id} k-folds evaluation: caught exception {e}")
 			keras.backend.clear_session()
-			return None
 
 	def calculate_final_test_accuracy(self, cnn_eval):
 		self.final_test_accuracy = cnn_eval.final_test_saved_model(self.model_save_path)

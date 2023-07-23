@@ -213,7 +213,7 @@ def select_parent(parents):
 	return parents[idx]
 
 
-def select_new_parents(population, number_of_parents):
+def select_new_parents(population, number_of_parents, after_k_folds_evaluation=False):
 	"""
 		Select the parent to seed the next generation.
 
@@ -227,11 +227,16 @@ def select_new_parents(population, number_of_parents):
 		-------
 		new_parents : list
 			individual that seeds the next generation
+			:param after_k_folds_evaluation:
 	"""
 
-	# Get best individuals ordered by fitness
-	sorted_population = sorted(population, key=lambda ind: ind.fitness, reverse=True)
-	return sorted_population[0:number_of_parents]
+	if after_k_folds_evaluation:
+		candidates = [ind for ind in population if ind.k_fold_accuracy_average]		# only individuals where k folds evaluation has been done
+	else:
+		candidates = population
+	# candidates ordered by fitness
+	sorted_candidates = sorted(candidates, key=lambda ind: ind.fitness, reverse=True)
+	return sorted_candidates[0:number_of_parents]
 
 
 def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer, gen=0, idx=0):
@@ -443,12 +448,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
 	PENALTY_CONNECTIONS_TARGET = config['TRAINING']['penalty_connections_target']
-	BEST_RETEST_WITH_FINAL_TEST_SET = config['TRAINING']['best_retest_with_final_test_set']
-	BEST_K_FOLDS = config['TRAINING']['best_k_folds']
-	BEST_K_FOLDS_START_AT_GENERATION = config['TRAINING']['best_k_folds_start_at_generation']
+	RETEST_BEST_WITH_FINAL_TEST_SET = config['TRAINING']['retest_best_with_final_test_set']
+	REEVALUATE_BEST_WITH_K_FOLDS = config['TRAINING']['reevaluate_best_with_k_folds']
 	data_generator = eval(config['TRAINING']['datagen'])
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
-	# fitness_metric = eval(config['TRAINING']['fitness_metric'])
 
 	if not experiments_directory.endswith('/'):
 		experiments_directory += '/'
@@ -458,7 +461,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	# load grammar
 	grammar = Grammar(grammar_file)
 
-	# best fitness so far
+	# init statistics
 	best_fitness = None
 
 	# load previous population content (if any)
@@ -484,7 +487,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			np.random.seed(RANDOM_SEED)
 
 		# create evaluator
-		cnn_eval = Evaluator(dataset, False, fitness_metric_with_size_penalty)
+		cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty)
 
 		# save evaluator
 		pickle_evaluator(cnn_eval, save_path)
@@ -522,8 +525,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	logger_configuration(logger_log_training=True, logger_log_mutations=True)
 
 	# evaluator for K folds
-	if BEST_K_FOLDS:
-		k_fold_eval = Evaluator(dataset, True, fitness_metric_with_size_penalty)
+	if REEVALUATE_BEST_WITH_K_FOLDS:
+		k_fold_eval = Evaluator(dataset, fitness_metric_with_size_penalty, for_k_fold_validation=True)
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
@@ -538,29 +541,38 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 						break
 				population.append(new_individual)
 
-		# select parents
-		new_parents = select_new_parents(population, MY)
-		parent = new_parents[0]
+		# select candidates for parents
+		parent_list = select_new_parents(population, MY)
 
-		# update best individual
 		log_nolf('[Gen %d] ' % gen)
-		if best_fitness is None or parent.fitness > best_fitness:
-			if BEST_RETEST_WITH_FINAL_TEST_SET and not parent.final_test_accuracy:
-				parent.calculate_final_test_accuracy(cnn_eval)
-			if best_fitness:
-				replaced_individual = population[0]
-				log_bold(f'*** New best individual {parent.short_description()} replaces  {replaced_individual.short_description()} ***')
-			if BEST_K_FOLDS and gen >= BEST_K_FOLDS_START_AT_GENERATION and not parent.k_fold_test_accuracy_average:
-				parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, BEST_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
-			best_fitness = parent.fitness
 
-			# copy best individual's weights
-			best_individual_path = Path(save_path, 'individual-%s.h5' % parent.id)
-			if os.path.isfile(best_individual_path):
-				copyfile(best_individual_path, Path(save_path, 'best.h5'))
+		# if there are new parent candidates, do K-fold validation on them
+		new_parent_candidates_count = 0
+		if REEVALUATE_BEST_WITH_K_FOLDS:
+			for parent in parent_list:
+				if not parent.is_parent:
+					log_bold(f'K-folds evaluation of new parent candidate {parent.short_description()}')
+					parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, REEVALUATE_BEST_WITH_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					new_parent_candidates_count += 1
+			if new_parent_candidates_count:
+				parent_list = select_new_parents(population, MY, after_k_folds_evaluation=True)
+				count = sum(1 for parent in parent_list if not parent.is_parent)
+				if count == 0:
+					log_bold('New parent candidate fails K-folds evaluation')
 
-			with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
-				pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
+		for parent in parent_list:
+			if not parent.is_parent:
+				parent.is_parent = True
+				if RETEST_BEST_WITH_FINAL_TEST_SET:
+					parent.calculate_final_test_accuracy(cnn_eval)
+				if best_fitness == None or parent.fitness > best_fitness:
+					log_bold(f'*** New best individual {parent.short_description()} replaces  {population[0].short_description()} ***' if best_fitness else f'first individual: {parent.short_description()}')
+					best_fitness = parent.fitness
+					# copy new best individual's weights
+					if os.path.isfile(parent.model_save_path):
+						copyfile(parent.model_save_path, Path(save_path, 'best.h5'))
+					with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
+						pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 		# remove temporary files to free disk space
 		if gen > 1:
@@ -569,9 +581,9 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				if os.path.isfile(individual_path):
 					os.remove(individual_path)
 
-		best_individual = population[0]
+		best_individual = parent_list[0]
 		population_fitness = [ind.fitness for ind in population]
-		best_in_generation_idx = np.argmax(population_fitness[MY:]) + 1 if len(population_fitness) > MY else 0
+		best_in_generation_idx = np.argmax(population_fitness[MY:]) + MY if len(population_fitness) > MY else 0
 		best_in_generation = population[best_in_generation_idx]
 		log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
 
@@ -579,12 +591,14 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		save_population_statistics(population, save_path, gen)
 		pickle_population(gen, population, save_path)
 
-		# keep only best as new parent
-		population = [parent]
+		# keep only best as new parents
+		population = parent_list
+		for parent in population:
+			parent.is_parent = True
 
 	parent = population[0]
 	log('\n\n----------------------------------------------------------------------------------------------------------------------------------------')
-	log_bold('Best fitness: %s %f final: %f acc: %f p: %d' % (parent.id, parent.fitness, parent.final_test_accuracy, parent.test_accuracy, parent.parameters))
+	log_bold('Best fitness: %s %f final: %f acc: %f p: %d' % (parent.id, parent.fitness, parent.final_test_accuracy, parent.accuracy, parent.parameters))
 	log_bold('\nPhenotype:')
 	for line in parent.phenotype:
 		log(line)
@@ -604,10 +618,10 @@ def test_saved_model(save_path, name='best.h5'):
 		save_path += '/'
 	with open(Path(save_path, 'evaluator.pkl'), 'rb') as f_data:
 		evaluator = pickle.load(f_data)
-	X_test = evaluator.dataset['x_test']
-	y_test = evaluator.dataset['y_test']
+	x_final_test = evaluator.dataset['x_final_test']
+	y_final_test = evaluator.dataset['y_final_test']
 
 	model = load_model(Path(save_path, name))
-	accuracy = test_model_with_dataset(model, X_test, y_test)
+	accuracy = test_model_with_dataset(model, x_final_test, y_final_test)
 	log('Best test accuracy: %f' % accuracy)
 	return model
