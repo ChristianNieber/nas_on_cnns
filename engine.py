@@ -14,10 +14,12 @@ from keras.models import load_model
 # from data_augmentation import augmentation
 from grammar import Grammar, mutation_dsge
 
-from utils import Evaluator, Individual, test_model_with_dataset
+from utils import Evaluator, Individual
 from logger import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
+LOG_NEW_BEST_INDIVIDUAL = True		# log long description of new best individual
 
 USE_NETWORK_SIZE_PENALTY = 0
 PENALTY_CONNECTIONS_TARGET = 0
@@ -48,6 +50,10 @@ class GenerationStatistics:
 		self.val_loss = []
 		self.k_fold_accuracy = []
 		self.k_fold_accuracy_std = []
+		self.k_fold_final_accuracy = []
+		self.k_fold_final_accuracy_std = []
+		self.k_fold_million_inferences_time = []
+		self.k_fold_million_inferences_time_std = []
 		# best of generation
 		self.generation_best_accuracy = []
 		self.generation_best_fitness = []
@@ -66,12 +72,17 @@ class GenerationStatistics:
 		self.training_epochs.append(ind.training_epochs)
 		self.million_inferences_time.append(ind.million_inferences_time)
 		self.fitness.append(ind.fitness)
-		self.train_accuracy.append(ind.metrics_train_accuracy[-1])
-		self.train_loss.append(ind.metrics_train_loss[-1])
-		self.val_accuracy.append(ind.metrics_val_accuracy[-1])
-		self.val_loss.append(ind.metrics_val_loss[-1])
 		self.k_fold_accuracy.append(ind.k_fold_accuracy)
 		self.k_fold_accuracy_std.append(ind.k_fold_accuracy_std)
+		self.k_fold_final_accuracy.append(ind.k_fold_final_accuracy)
+		self.k_fold_final_accuracy_std.append(ind.k_fold_final_accuracy_std)
+		self.k_fold_million_inferences_time.append(ind.k_fold_million_inferences_time)
+		self.k_fold_million_inferences_time_std.append(ind.k_fold_million_inferences_time_std)
+		if len(self.train_accuracy):
+			self.train_accuracy.append(ind.metrics_train_accuracy[-1])
+			self.train_loss.append(ind.metrics_train_loss[-1])
+			self.val_accuracy.append(ind.metrics_val_accuracy[-1])
+			self.val_loss.append(ind.metrics_val_loss[-1])
 
 	def record_generation(self, generation_list):
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
@@ -94,6 +105,8 @@ class GenerationStatistics:
 			f_json.write(json_dump)
 
 def read_statistics_from_json_file(save_path):
+	with open(save_path + 'statistics.json', 'r') as f_json:
+		data = json.load(f_json)
 	pass
 
 def save_population_statistics(population, save_path, gen):
@@ -173,6 +186,10 @@ def pickle_population(gen, population, save_path):
 	with open(path + 'numpy.pkl', 'wb') as handle_numpy:
 		pickle.dump(np.random.get_state(), handle_numpy, protocol=pickle.HIGHEST_PROTOCOL)
 
+def pickle_statistics(stat, save_path):
+	with open(save_path + 'statistics.pkl', 'wb') as handle_statistics:
+		pickle.dump(stat, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
+
 
 def get_total_epochs(save_path, last_gen):
 	"""
@@ -250,9 +267,10 @@ def unpickle_population(save_path):
 		with open(path + 'numpy.pkl', 'rb') as handle_numpy:
 			pickle_numpy = pickle.load(handle_numpy)
 
-		# total_epochs = get_total_epochs(save_path, last_generation)
+		with open(save_path + 'statistics.pkl', 'rb') as handle_statistics:
+			pickle_statistics = pickle.load(handle_statistics)
 
-		return last_generation, pickled_evaluator, pickled_population, pickle_random, pickle_numpy
+		return last_generation, pickled_evaluator, pickled_population, pickle_random, pickle_numpy, pickle_statistics
 
 	else:
 		return None
@@ -528,11 +546,9 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	# init statistics
 	best_fitness = None
-	stat = GenerationStatistics()
 
 	# load previous population content (if any)
 	unpickle = unpickle_population(save_path) if RESUME else None
-
 
 	# if there is not a previous population
 	if unpickle is None:
@@ -547,6 +563,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		# copy config files to path
 		copyfile(config_file, save_path + Path(config_file).name)
 		copyfile(grammar_file, save_path + Path(grammar_file).name)
+
+		stat = GenerationStatistics()
 
 		# set random seeds
 		if RANDOM_SEED != -1:
@@ -583,7 +601,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	else:
 		init_logger(log_file_path, overwrite=False)
 
-		last_gen, cnn_eval, population, pkl_random, pkl_numpy = unpickle
+		last_gen, cnn_eval, population, pkl_random, pkl_numpy, stat = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
 		log('\n========================================================================================================')
@@ -633,8 +651,15 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				if RETEST_BEST_WITH_FINAL_TEST_SET:
 					parent.calculate_final_test_accuracy(cnn_eval)
 				if best_fitness == None or parent.fitness > best_fitness:
-					log_bold(f'*** New best individual {parent.short_description()} replaces  {population[0].short_description()} ***' if best_fitness else f'first individual: {parent.short_description()}')
+					if best_fitness:
+						log_bold(f'*** New best individual replaces {population[0].short_description()} ***')
+					if LOG_NEW_BEST_INDIVIDUAL:
+						parent.log_long_description("New best" if best_fitness else "Initial")
+					else:
+						log_bold(f'*** New best: {parent.short_description()}')
+
 					best_fitness = parent.fitness
+
 					# copy new best individual's weights
 					if os.path.isfile(parent.model_save_path):
 						copyfile(parent.model_save_path, Path(save_path, 'best.h5'))
@@ -666,6 +691,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		# save population
 		save_population_statistics(population, save_path, gen)
 		pickle_population(gen, population, save_path)
+		pickle_statistics(stat, save_path)
 		stat.save_to_json_file(save_path)
 
 		# keep only best as new parents
@@ -674,17 +700,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			parent.is_parent = True
 
 	parent = population[0]
-	log('\n\n----------------------------------------------------------------------------------------------------------------------------------------')
-	log_bold('Best fitness: %s %f final: %f acc: %f p: %d' % (parent.id, parent.fitness, parent.final_test_accuracy, parent.accuracy, parent.parameters))
-	log_bold('\nPhenotype:')
-	for line in parent.phenotype:
-		log(line)
-	log()
-	model = load_model(Path(save_path, 'best.h5'))
-	model.summary(line_length=120)
-	log_bold('\nEvolution history:')
-	for line in parent.evolution_history:
-		log(line)
+	parent.log_long_description('Final Individual')
 
 
 def test_saved_model(save_path, name='best.h5'):

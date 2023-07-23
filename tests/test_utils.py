@@ -77,6 +77,9 @@ class Test(unittest.TestCase):
 
 		ind = Individual(network_structure, [], 'softmax', 0, 0)
 
+		stat = engine.GenerationStatistics()
+		stat.record_best(ind)
+
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')
 
@@ -90,6 +93,9 @@ class Test(unittest.TestCase):
 		self.assertTrue(os.path.exists('./run_0/parent.pkl'))
 		self.assertTrue(os.path.exists('./run_0/random.pkl'))
 		self.assertTrue(os.path.exists('./run_0/numpy.pkl'))
+
+		engine.pickle_statistics(stat, './run_0/')
+		self.assertTrue(os.path.exists('./run_0/statistics.pkl'))
 
 		loaded_data = engine.unpickle_population('./run_0/')
 

@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     //Maximum number of generations
-    "num_generations": 30,
+    "num_generations": 10,
 
     // my - number of parents
     "my" : 1,
@@ -18,10 +18,10 @@
     "initial_individuals" : "lenet",
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "LeNet 5 k-folds",
+    "experiment_name" : "LeNet 6",
 
     // resume from saved state
-    "resume": true,
+    "resume": false,
 
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 100,
@@ -79,9 +79,9 @@
     //fitness function parameter: roughly number of connections worth the difference of 0.02 accuracy at an accuracy of 0.98
     "penalty_connections_target" : 30000,
 
-    // test new elite individuals with final test set
-    "retest_best_with_final_test_set" : true,
     // re-train best individual with K folds and select new parents on average K folds fitness
-    "reevaluate_best_with_k_folds" : 10
+    "reevaluate_best_with_k_folds" : 10,
+    // test new elite individuals with final test set
+    "retest_best_with_final_test_set" : false
   }
 }

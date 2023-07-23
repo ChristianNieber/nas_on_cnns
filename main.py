@@ -17,7 +17,6 @@ engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
 '''
 To do
 
-DSGE mutation (optimizer)
 test: wrong symbol
 test: wrong type
 add more tests
@@ -46,6 +45,7 @@ CNN features to try
 -------------------
 - weight regularization (weight decay)
 - add noise
+- data augmentation
 
 Done
 ----

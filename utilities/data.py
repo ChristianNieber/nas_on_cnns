@@ -68,7 +68,8 @@ def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10, f
 		# x_combined = np.r_[x_train, x_test]
 		# y_combined = np.r_[y_train, y_test]
 		dataset = {
-			'x_combined': x_train, 'y_combined': y_train
+			'x_combined': x_train, 'y_combined': y_train,
+			'x_final_test': x_test, 'y_final_test': y_test
 		}
 	else:
 		evo_x_train, x_val, evo_y_train, y_val = train_test_split(x_train, y_train, test_size=7000, shuffle=True, stratify=y_train)
