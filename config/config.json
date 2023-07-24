@@ -21,7 +21,7 @@
     "experiment_name" : "LeNet 6",
 
     // resume from saved state
-    "resume": false,
+    "resume": true,
 
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 100,
