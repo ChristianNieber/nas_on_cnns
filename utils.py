@@ -855,7 +855,13 @@ class Individual:
 	def short_description(self):
 		""" return short description of individual with fitness, k-fold accuracy and final test accuracy if calculated,
 		    test accuracy and number of parameters """
-		return f"{self.id} {self.fitness:.5f} ({f'k-folds: {self.k_fold_accuracy:.5f} SD: {self.k_fold_accuracy_std:.5f} ' if self.k_fold_accuracy else ''}{f'final: {self.final_test_accuracy:.5f} ' if self.final_test_accuracy else ''}acc: {self.accuracy:.5f} p: {self.parameters})"
+		result = f"{self.id} {self.fitness:.5f} "
+		if self.k_fold_accuracy:
+			result += f"k-folds: {self.k_fold_accuracy:.5f} (SD:{self.k_fold_accuracy_std:.5f}) "
+		if self.final_test_accuracy:
+			result += f"final: {self.final_test_accuracy:.5f} "
+		result += f"acc: {self.accuracy:.5f} p: {self.parameters}"
+		return result
 
 	def log_long_description(self, title):
 		""" output long description to log, with phenotype, model summary and evolution history """
@@ -1140,7 +1146,7 @@ class Individual:
 			self.k_fold_metrics = metrics
 			old_fitness = self.fitness
 			self.fitness = k_fold_eval.calculate_fitness(self)
-			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.accuracy:0.5f} -> {self.k_fold_accuracy:0.5f} SD: {self.k_fold_accuracy_std:0.5f} range: {self.k_fold_accuracy_max - self.k_fold_accuracy_min:0.5f}, (final acc: {self.k_fold_final_accuracy:0.5f}, SD: {self.k_fold_final_accuracy_std:0.5f}, InfT: {self.k_fold_million_inferences_time:0.3f} SD: {self.k_fold_million_inferences_time_std:0.3f}) fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
+			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.accuracy:0.5f} -> {self.k_fold_accuracy:0.5f} (SD:{self.k_fold_accuracy_std:0.5f}, range:{self.k_fold_accuracy_max - self.k_fold_accuracy_min:0.5f}), final acc: {self.k_fold_final_accuracy:0.5f} (SD:{self.k_fold_final_accuracy_std:0.5f}), InfT: {self.k_fold_million_inferences_time:0.3f} (SD:{self.k_fold_million_inferences_time_std:0.3f}) fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
 		except tf.errors.ResourceExhaustedError as e:
 			log_warning(f"{self.id} k-folds evaluation: ResourceExhaustedError {e}")
 			keras.backend.clear_session()

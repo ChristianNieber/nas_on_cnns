@@ -78,13 +78,14 @@ class GenerationStatistics:
 		self.k_fold_final_accuracy_std.append(ind.k_fold_final_accuracy_std)
 		self.k_fold_million_inferences_time.append(ind.k_fold_million_inferences_time)
 		self.k_fold_million_inferences_time_std.append(ind.k_fold_million_inferences_time_std)
-		if len(self.train_accuracy):
+		if len(ind.metrics_train_accuracy):
 			self.train_accuracy.append(ind.metrics_train_accuracy[-1])
 			self.train_loss.append(ind.metrics_train_loss[-1])
 			self.val_accuracy.append(ind.metrics_val_accuracy[-1])
 			self.val_loss.append(ind.metrics_val_loss[-1])
 
 	def record_generation(self, generation_list):
+		assert len(generation_list) == 5
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
 		self.generation_best_accuracy.append(best_in_generation.accuracy)
@@ -604,6 +605,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		last_gen, cnn_eval, population, pkl_random, pkl_numpy, stat = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
+		parent_list = select_new_parents(population, MY)
+		population = parent_list
 		log('\n========================================================================================================')
 		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
 
@@ -715,6 +718,6 @@ def test_saved_model(save_path, name='best.h5'):
 	y_final_test = evaluator.dataset['y_final_test']
 
 	model = load_model(Path(save_path, name))
-	accuracy = test_model_with_dataset(model, x_final_test, y_final_test)
+	accuracy = Evaluator.test_model_with_data(model, x_final_test, y_final_test)
 	log('Best test accuracy: %f' % accuracy)
 	return model

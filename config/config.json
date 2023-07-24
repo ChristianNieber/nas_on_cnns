@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     //Maximum number of generations
-    "num_generations": 10,
+    "num_generations": 100,
 
     // my - number of parents
     "my" : 1,
@@ -15,10 +15,10 @@
     "initial_population_size" : 1,
 
     // initial population, "lenet, "perceptron" or "random"
-    "initial_individuals" : "lenet",
+    "initial_individuals" : "perceptron",
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "LeNet 6",
+    "experiment_name" : "Perceptron 6",
 
     // resume from saved state
     "resume": true,
