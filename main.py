@@ -17,13 +17,16 @@ engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
 '''
 To do
 
+add fitness to mutation log
+copy 2 layers
+
+
 test: wrong symbol
 test: wrong type
 add more tests
 
 - init_max random initialisation
 
-- tensorflow warnings engine.py
 - more activation functions and parameters?
 - Comparison with GE?
 - numeric default values
@@ -35,11 +38,10 @@ add more tests
 - stepwidth mutation, initial stepwidth
 - geometric normal distribution for some variables?
 
-EA strategies to try
+EA strategies later
 -------------------
-- verify fitness with K-fold validation
-- crossover?
-- early stopping
+- crossover
+- early stopping optimisation
 
 CNN features to try
 -------------------

@@ -821,7 +821,7 @@ class Individual:
 		self.macro = []
 		self.phenotype = []
 		self.id = f"{gen}-{idx}"
-		self.parent = None
+		self.parent_id = None
 		self.evolution_history = []
 		self.reset_training()
 
@@ -1001,10 +1001,14 @@ class Individual:
 		self.macro = default_learning_rule_adam()
 		return self
 
+	def log_mutation_summary(self, description):
+		""" log a mutation text"""
+		self.evolution_history.append(description)
+
 	def log_mutation(self, description):
-		"""log a mutation"""
-		self.evolution_history.append(f"{self.id} <- {self.parent}: {description}")
-		log_mutation(f"mutate {self.id} <- {self.parent}: {description}")
+		"""log a mutation. Prefixes with parent's id. """
+		self.evolution_history.append(f"{self.parent_id}: {description}")
+		log_mutation(f"mutate {self.parent_id}: {description}")
 
 	def log_mutation_add_to_line(self, description):
 		"""log a mutation, appending to last line"""

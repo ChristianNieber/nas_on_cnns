@@ -79,6 +79,8 @@ class Test(unittest.TestCase):
 
 		stat = engine.GenerationStatistics()
 		stat.record_best(ind)
+		stat.record_generation([ind])
+		stat.record_run_statistics(1, 0, 0.0)
 
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')

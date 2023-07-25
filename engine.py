@@ -1,6 +1,7 @@
 import numpy as np
 import random
 from copy import deepcopy
+from time import time
 from os import makedirs
 import pickle
 import os
@@ -19,16 +20,17 @@ from logger import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-LOG_NEW_BEST_INDIVIDUAL = True		# log long description of new best individual
+DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
+LOG_MUTATIONS = 0					# log all mutations
+LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
 
 USE_NETWORK_SIZE_PENALTY = 0
-PENALTY_CONNECTIONS_TARGET = 0
+PENALTY_PARAMETERS_TARGET = 0
 
 
-def fitness_metric_with_size_penalty(accuracy, trainable_parameters):
+def fitness_metric_with_size_penalty(accuracy, parameters):
 	if USE_NETWORK_SIZE_PENALTY:
-		error_measure = (1.0-accuracy)*50
-		return 3 - (error_measure ** 2 + trainable_parameters / PENALTY_CONNECTIONS_TARGET)
+		return 3 - (((1.0 - accuracy)*50) ** 3 + parameters / PENALTY_PARAMETERS_TARGET)
 	else:
 		return accuracy
 
@@ -63,6 +65,18 @@ class GenerationStatistics:
 		self.generation_accuracy = []
 		self.generation_fitness = []
 		self.generation_parameters = []
+		# run state
+		self.run_generation = -1
+		self.run_time_seconds = 0
+		self.run_time_k_fold_evaluation_seconds = 0
+		self.run_total_evaluations = 0
+		self.run_k_fold_evaluations = 0
+		self.session_start_time = time()
+		self.session_previous_runtime = 0
+
+	def init_session(self):
+		self.session_start_time = time()
+		self.session_previous_runtime = self.run_time_seconds
 
 	def record_best(self, ind):
 		self.best_individual.append(ind.id)
@@ -87,6 +101,7 @@ class GenerationStatistics:
 			self.val_loss.append(ind.metrics_val_loss[-1])
 
 	def record_generation(self, generation_list):
+		self.run_generation += 1
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
 		self.generation_best_accuracy.append(best_in_generation.accuracy)
@@ -95,6 +110,12 @@ class GenerationStatistics:
 		self.generation_accuracy.append([ind.accuracy for ind in generation_list])
 		self.generation_fitness.append([ind.fitness for ind in generation_list])
 		self.generation_parameters.append([ind.parameters for ind in generation_list])
+
+	def record_run_statistics(self, evaluations, k_fold_evaluations, k_fold_evaluation_seconds):
+		self.run_time_seconds = self.session_previous_runtime + time() - self.session_start_time
+		self.run_total_evaluations += evaluations + k_fold_evaluations
+		self.run_k_fold_evaluations += k_fold_evaluations
+		self.run_time_k_fold_evaluation_seconds += k_fold_evaluation_seconds
 
 	def to_json(self):
 		""" makes object json serializable """
@@ -249,11 +270,10 @@ def unpickle_population(save_path):
 			Numpy module random state
 	"""
 
-	json_file_paths = glob(str(Path(save_path, 'gen_*.json')))
-
-	if json_file_paths:
-		json_file_paths = [int(path.split(os.sep)[-1].replace('gen_', '').replace('.json', '')) for path in json_file_paths]
-		last_generation = max(json_file_paths)
+	if os.path.isfile(save_path + 'statistics.pkl'):
+		with open(save_path + 'statistics.pkl', 'rb') as handle_statistics:
+			pickle_statistics = pickle.load(handle_statistics)
+		last_generation = pickle_statistics.run_generation
 
 		path = save_path + 'gen_%d_' % last_generation
 
@@ -268,9 +288,6 @@ def unpickle_population(save_path):
 
 		with open(path + 'numpy.pkl', 'rb') as handle_numpy:
 			pickle_numpy = pickle.load(handle_numpy)
-
-		with open(save_path + 'statistics.pkl', 'rb') as handle_statistics:
-			pickle_statistics = pickle.load(handle_statistics)
 
 		return last_generation, pickled_evaluator, pickled_population, pickle_random, pickle_numpy, pickle_statistics
 
@@ -365,7 +382,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 
 	# deep copy parent
 	ind = deepcopy(parent)
-	ind.parent = parent.id
+	ind.parent_id = parent.id
 
 	# name for new individual
 	ind.id = f"{gen}-{idx}"
@@ -503,7 +520,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	"""
 
 	global USE_NETWORK_SIZE_PENALTY
-	global PENALTY_CONNECTIONS_TARGET
+	global PENALTY_PARAMETERS_TARGET
+
+	if DEBUG_CONFIGURATION and config_file=='config/config.json':
+		config_file = 'config/config_debug.json'
 
 	# load config file
 	config = load_config(config_file)
@@ -532,7 +552,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
-	PENALTY_CONNECTIONS_TARGET = config['TRAINING']['penalty_connections_target']
+	PENALTY_PARAMETERS_TARGET = config['TRAINING']['penalty_connections_target']
 	RETEST_BEST_WITH_FINAL_TEST_SET = config['TRAINING']['retest_best_with_final_test_set']
 	REEVALUATE_BEST_WITH_K_FOLDS = config['TRAINING']['reevaluate_best_with_k_folds']
 	data_generator = eval(config['TRAINING']['datagen'])
@@ -606,12 +626,14 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		last_gen, cnn_eval, population, pkl_random, pkl_numpy, stat = unpickle
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
-		parent_list = select_new_parents(population, MY)
-		population = parent_list
+		new_parents = select_new_parents(population, MY)
+		population = new_parents
 		log('\n========================================================================================================')
 		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
 
-	logger_configuration(logger_log_training=True, logger_log_mutations=False)
+	stat.init_session()
+
+	logger_configuration(logger_log_training=True, logger_log_mutations=LOG_MUTATIONS)
 
 	# evaluator for K folds
 	if REEVALUATE_BEST_WITH_K_FOLDS:
@@ -619,7 +641,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
-		# population = [parent] + offspring
+		k_fold_evaluations = 0
+		k_fold_evaluation_seconds = 0.0
 		generation_list = []
 		if gen:
 			for idx in range(LAMBDA):
@@ -633,29 +656,35 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 		# select candidates for parents
 		population += generation_list
-		parent_list = select_new_parents(population, MY)
+		new_parents = select_new_parents(population, MY)
 
 		log_nolf('[Gen %d] ' % gen)
 
 		# if there are new parent candidates, do K-fold validation on them
 		new_parent_candidates_count = 0
 		if REEVALUATE_BEST_WITH_K_FOLDS:
-			for idx, parent in enumerate(parent_list):
+			for idx, parent in enumerate(new_parents):
 				if not parent.is_parent:
 					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.short_description()}")
+					start_time = time()
 					parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, REEVALUATE_BEST_WITH_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					k_fold_evaluation_seconds += time() - start_time
+					k_fold_evaluations += REEVALUATE_BEST_WITH_K_FOLDS
 					new_parent_candidates_count += 1
 			if new_parent_candidates_count:
-				parent_list = select_new_parents(population, MY, after_k_folds_evaluation=True)
-				count = sum(1 for parent in parent_list if not parent.is_parent)
+				new_parents = select_new_parents(population, MY, after_k_folds_evaluation=True)
+				count = sum(1 for parent in new_parents if not parent.is_parent)
 				if count == 0:
 					log_bold('New parent candidate fails K-folds evaluation')
 
-		for idx, parent in enumerate(parent_list):
+		for idx, parent in enumerate(new_parents):
 			if not parent.is_parent:
 				parent.is_parent = True
 				if RETEST_BEST_WITH_FINAL_TEST_SET:
 					parent.calculate_final_test_accuracy(cnn_eval)
+				if parent.parent_id:
+					original_parent = next(ind for ind in population if ind.id == parent.parent_id)
+					parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.short_description()}] <- [{original_parent.short_description()}] Δfitness={parent.fitness - original_parent.fitness:.5f} Δacc={parent.accuracy - original_parent.accuracy:.5f}")
 				if best_fitness == None or parent.fitness > best_fitness:
 					if best_fitness:
 						log_bold(f'*** New best individual replaces {population[0].short_description()} ***')
@@ -682,19 +711,21 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				if os.path.isfile(individual_path):
 					os.remove(individual_path)
 
-		best_individual = parent_list[0]
+		best_individual = new_parents[0]
 
 		while len(generation_list) < LAMBDA:			# extend gen 0 population for easier statistics
 			generation_list.append(population[0])
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
 		log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
-		for idx in range(1, len(parent_list)):
-			log(f'  #{idx+1}: {parent_list[idx].short_description()}')
+		for idx in range(1, len(new_parents)):
+			log(f'  #{idx+1}: {new_parents[idx].short_description()}')
 
 		stat.record_best(best_individual)
 		assert len(generation_list) == LAMBDA
 		stat.record_generation(generation_list)
+		stat.record_run_statistics(LAMBDA if gen else INITIAL_POPULATION_SIZE, k_fold_evaluations, k_fold_evaluation_seconds)
+
 		generation_list.clear()
 
 		# save population
@@ -704,7 +735,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		stat.save_to_json_file(save_path)
 
 		# keep only best as new parents
-		population = parent_list
+		population = new_parents
 		for parent in population:
 			parent.is_parent = True
 

@@ -105,7 +105,7 @@ def log_flush():
 	global logging_overwrite
 	if len(logging_line_list):
 		if logging_file_path:
-			with open(logging_file_path, 'w' if logging_overwrite else 'a') as file:
+			with open(logging_file_path, 'w' if logging_overwrite else 'a', encoding="utf-8") as file:
 				for line in logging_line_list:
 					file.write(line + '\n')
 		logging_line_list.clear()
