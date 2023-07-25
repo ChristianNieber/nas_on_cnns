@@ -3,13 +3,13 @@
   "EVOLUTIONARY": {
 
     //Maximum number of generations
-    "num_generations": 100,
+    "num_generations": 30,
 
     // my - number of parents
-    "my" : 1,
+    "my" : 2,
 
     //lambda - number of offspring
-    "lambda": 5,
+    "lambda": 10,
 
     // popuplation size for generation 0
     "initial_population_size" : 1,
@@ -18,13 +18,13 @@
     "initial_individuals" : "perceptron",
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Perceptron 6",
+    "experiment_name" : "Perceptron 8",
 
     // resume from saved state
     "resume": true,
 
     // random seed for Random and numpy modules, -1 for none
-    "random_seed" : 100,
+    "random_seed" : 10,
 
     //rates of the different mutations [0, 1]
     "MUTATIONS": {
@@ -70,9 +70,9 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 30,
+    "max_training_time": 2,
     //maximum training epochs for each network
-    "max_training_epochs": 30,
+    "max_training_epochs": 2,
 
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,
@@ -80,7 +80,7 @@
     "penalty_connections_target" : 30000,
 
     // re-train best individual with K folds and select new parents on average K folds fitness
-    "reevaluate_best_with_k_folds" : 10,
+    "reevaluate_best_with_k_folds" : 2,
     // test new elite individuals with final test set
     "retest_best_with_final_test_set" : false
   }

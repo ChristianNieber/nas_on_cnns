@@ -3,9 +3,6 @@ __pycache__/
 *.py[cod]
 *$py.class
 
-# jupyter notebooks
-*.ipynb
-
 # C extensions
 *.so
 
@@ -16,6 +13,7 @@ run_0/
 
 # Distribution / packaging
 .Python
+other/
 build/
 develop-eggs/
 dist/

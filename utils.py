@@ -616,7 +616,7 @@ class Evaluator:
 
 		model_layers = len(model.get_config()['layers'])
 		trainable_parameters = count_params(model.trainable_weights)
-		non_trainable_parameters = count_params(model.non_trainable_weights)
+		# non_trainable_parameters = count_params(model.non_trainable_weights)
 
 		# time based stopping
 		time_stop = TimedStopping(seconds=max_training_time)
@@ -637,7 +637,7 @@ class Evaluator:
 		training_start_time = time()
 
 		if not suppress_logging:
-			log_training_nolf(f"{name} layers:{len(keras_layers):2d}/{model_layers:2d} params:{trainable_parameters:6d}/{non_trainable_parameters}")
+			log_training_nolf(f"{name} layers:{len(keras_layers):2d}/{model_layers:2d} p:{trainable_parameters:6d}")
 
 		x_train = dataset['evo_x_train']
 		y_train = dataset['evo_y_train']
@@ -693,7 +693,7 @@ class Evaluator:
 			val_accuracy = result['val_accuracy'][-1]
 			loss = result['loss'][-1]
 			if not suppress_logging:
-				log_training(f" ep:{training_epochs:2d} InfT: {million_inferences_time:0.2f} acc: {test_accuracy:0.5f}, val: {val_accuracy:0.5f} acc0: {accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f}) fitness: {fitness} {'T' if timer_stop_triggered else ''}{'E' if early_stop_triggered else ''}")
+				log_training(f" ep:{training_epochs:2d} acc: {test_accuracy:0.5f}, val: {val_accuracy:0.5f} acc0: {accuracy:0.5f} loss: {loss:0.5f} t: {training_time:0.2f}s (b{model_build_time:0.2f},t{model_test_time:0.2f}) fitness: {fitness} {'T' if timer_stop_triggered else ''}{'E' if early_stop_triggered else ''}")
 		else:
 			log_warning(f" *** no training epoch completed ***")
 
@@ -847,10 +847,14 @@ class Individual:
 		self.k_fold_accuracy_max = None
 		self.k_fold_final_accuracy = None
 		self.k_fold_final_accuracy_std = None
+		self.k_fold_fitness_std = None
 		self.k_fold_million_inferences_time = None
 		self.k_fold_million_inferences_time_std = None
 		self.k_fold_metrics = None
 		self.model_summary = []
+
+	def __repr__(self):
+		return self.short_description()
 
 	def short_description(self):
 		""" return short description of individual with fitness, k-fold accuracy and final test accuracy if calculated,
@@ -895,6 +899,7 @@ class Individual:
 			'k_fold_accuracy_max': self.k_fold_accuracy_max,
 			'k_fold_final_accuracy': self.k_fold_final_accuracy,
 			'k_fold_final_accuracy_std': self.k_fold_final_accuracy_std,
+			'k_fold_fitness_std': self.k_fold_fitness_std,
 			'k_fold_million_inferences_time': self.k_fold_million_inferences_time,
 			'k_fold_million_inferences_time_std': self.k_fold_million_inferences_time_std,
 			'k_fold_metrics': self.k_fold_metrics,
@@ -1137,6 +1142,7 @@ class Individual:
 			self.k_fold_accuracy_std = np.std(test_accuracy_list)
 			self.k_fold_accuracy_min = np.min(test_accuracy_list)
 			self.k_fold_accuracy_max = np.max(test_accuracy_list)
+			self.k_fold_fitness_std = np.std(metrics['fitness_list'])
 			final_test_accuracy_list = metrics['final_test_accuracy_list']
 			self.k_fold_final_accuracy = np.average(final_test_accuracy_list)
 			self.k_fold_final_accuracy_std = np.std(final_test_accuracy_list)
@@ -1146,7 +1152,7 @@ class Individual:
 			self.k_fold_metrics = metrics
 			old_fitness = self.fitness
 			self.fitness = k_fold_eval.calculate_fitness(self)
-			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.accuracy:0.5f} -> {self.k_fold_accuracy:0.5f} (SD:{self.k_fold_accuracy_std:0.5f}, range:{self.k_fold_accuracy_max - self.k_fold_accuracy_min:0.5f}), final acc: {self.k_fold_final_accuracy:0.5f} (SD:{self.k_fold_final_accuracy_std:0.5f}), InfT: {self.k_fold_million_inferences_time:0.3f} (SD:{self.k_fold_million_inferences_time_std:0.3f}) fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
+			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.accuracy:0.5f} -> {self.k_fold_accuracy:0.5f} (SD:{self.k_fold_accuracy_std:0.5f}, range:{self.k_fold_accuracy_max - self.k_fold_accuracy_min:0.5f}), final acc: {self.k_fold_final_accuracy:0.5f} (SD:{self.k_fold_final_accuracy_std:0.5f}), (SD:{self.k_fold_million_inferences_time_std:0.3f}) fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
 		except tf.errors.ResourceExhaustedError as e:
 			log_warning(f"{self.id} k-folds evaluation: ResourceExhaustedError {e}")
 			keras.backend.clear_session()

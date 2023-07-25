@@ -52,6 +52,7 @@ class GenerationStatistics:
 		self.k_fold_accuracy_std = []
 		self.k_fold_final_accuracy = []
 		self.k_fold_final_accuracy_std = []
+		self.k_fold_fitness_std = []
 		self.k_fold_million_inferences_time = []
 		self.k_fold_million_inferences_time_std = []
 		# best of generation
@@ -76,16 +77,16 @@ class GenerationStatistics:
 		self.k_fold_accuracy_std.append(ind.k_fold_accuracy_std)
 		self.k_fold_final_accuracy.append(ind.k_fold_final_accuracy)
 		self.k_fold_final_accuracy_std.append(ind.k_fold_final_accuracy_std)
+		self.k_fold_fitness_std.append(ind.k_fold_fitness_std)
 		self.k_fold_million_inferences_time.append(ind.k_fold_million_inferences_time)
 		self.k_fold_million_inferences_time_std.append(ind.k_fold_million_inferences_time_std)
-		if len(ind.metrics_train_accuracy):
+		if ind.metrics_train_accuracy:
 			self.train_accuracy.append(ind.metrics_train_accuracy[-1])
 			self.train_loss.append(ind.metrics_train_loss[-1])
 			self.val_accuracy.append(ind.metrics_val_accuracy[-1])
 			self.val_loss.append(ind.metrics_val_loss[-1])
 
 	def record_generation(self, generation_list):
-		assert len(generation_list) == 5
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
 		self.generation_best_accuracy.append(best_in_generation.accuracy)
@@ -610,7 +611,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		log('\n========================================================================================================')
 		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
 
-	logger_configuration(logger_log_training=True, logger_log_mutations=True)
+	logger_configuration(logger_log_training=True, logger_log_mutations=False)
 
 	# evaluator for K folds
 	if REEVALUATE_BEST_WITH_K_FOLDS:
@@ -619,6 +620,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
 		# population = [parent] + offspring
+		generation_list = []
 		if gen:
 			for idx in range(LAMBDA):
 				parent = select_parent(population[0:MY])
@@ -627,9 +629,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					fitness = new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					if fitness:
 						break
-				population.append(new_individual)
+				generation_list.append(new_individual)
 
 		# select candidates for parents
+		population += generation_list
 		parent_list = select_new_parents(population, MY)
 
 		log_nolf('[Gen %d] ' % gen)
@@ -637,9 +640,9 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		# if there are new parent candidates, do K-fold validation on them
 		new_parent_candidates_count = 0
 		if REEVALUATE_BEST_WITH_K_FOLDS:
-			for parent in parent_list:
+			for idx, parent in enumerate(parent_list):
 				if not parent.is_parent:
-					log_bold(f'K-folds evaluation of new parent candidate {parent.short_description()}')
+					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.short_description()}")
 					parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, REEVALUATE_BEST_WITH_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					new_parent_candidates_count += 1
 			if new_parent_candidates_count:
@@ -648,7 +651,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				if count == 0:
 					log_bold('New parent candidate fails K-folds evaluation')
 
-		for parent in parent_list:
+		for idx, parent in enumerate(parent_list):
 			if not parent.is_parent:
 				parent.is_parent = True
 				if RETEST_BEST_WITH_FINAL_TEST_SET:
@@ -668,6 +671,9 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 						copyfile(parent.model_save_path, Path(save_path, 'best.h5'))
 					with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 						pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
+				else:
+					log_bold(f'New individual rank {idx+1} replaces {population[idx].short_description()}')
+					log_bold(f'New rank {idx+1}: {parent.short_description()}')
 
 		# remove temporary files to free disk space
 		if gen > 1:
@@ -677,19 +683,19 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					os.remove(individual_path)
 
 		best_individual = parent_list[0]
-		if gen:
-			generation_list = population[MY:]
-		else:
-			generation_list = population
-			while len(generation_list) < LAMBDA:			# extend gen 0 population for easier statistics display
-				generation_list.append(population[0])
 
+		while len(generation_list) < LAMBDA:			# extend gen 0 population for easier statistics
+			generation_list.append(population[0])
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
 		log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
+		for idx in range(1, len(parent_list)):
+			log(f'  #{idx+1}: {parent_list[idx].short_description()}')
 
 		stat.record_best(best_individual)
+		assert len(generation_list) == LAMBDA
 		stat.record_generation(generation_list)
+		generation_list.clear()
 
 		# save population
 		save_population_statistics(population, save_path, gen)
