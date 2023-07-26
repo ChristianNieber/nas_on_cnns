@@ -21,7 +21,7 @@
     "experiment_name" : "Debug",
 
     // resume from saved state
-    "resume": true,
+    "resume": false,
 
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 100,

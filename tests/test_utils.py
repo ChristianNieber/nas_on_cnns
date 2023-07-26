@@ -64,22 +64,21 @@ class Test(unittest.TestCase):
 
 
 	def test_save_population(self):
-		from utils import Individual
+		from utils import Individual, CnnEvalResult, RunStatistics
 		from grammar import Grammar
 		import engine
 		import os
-		import random
 
 		network_structure = [["features", 1, 3]]
-		grammar = Grammar('tests/examples/example.grammar')
-		levels_back = {"features": 1, "classification": 1}
-		network_structure_init = {"features":[2]}
+		#grammar = Grammar('tests/examples/example.grammar')
+		#levels_back = {"features": 1, "classification": 1}
+		#network_structure_init = {"features":[2]}
 
 		ind = Individual(network_structure, [], 'softmax', 0, 0)
-
-		stat = engine.GenerationStatistics()
+		ind.metrics = CnnEvalResult.dummy_eval_result()
+		stat = engine.RunStatistics()
 		stat.record_best(ind)
-		stat.record_generation([ind])
+		stat.run_generation = 0
 		stat.record_run_statistics(1, 0, 0.0)
 
 		if not os.path.exists('./run_0/'):

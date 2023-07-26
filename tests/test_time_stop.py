@@ -15,20 +15,20 @@ class Test(unittest.TestCase):
 	def test_time_stop(self):
 		import utils as utils
 
-		time_stop = utils.TimedStopping(seconds=2)
-		time_stop.model = Model()
+		time_stop_triggered = utils.TimedStopping(seconds=2)
+		time_stop_triggered.model = Model()
 
-		time_stop.on_train_begin()
-
-		time.sleep(1)
-
-		self.assertEqual(time_stop.model.stop_training, False, "Error stop training")
+		time_stop_triggered.on_train_begin()
 
 		time.sleep(1)
 
-		time_stop.on_epoch_end(epoch=1)
+		self.assertEqual(time_stop_triggered.model.stop_training, False, "Error stop training")
 
-		self.assertEqual(time_stop.model.stop_training, True, "Error stop training")
+		time.sleep(1)
+
+		time_stop_triggered.on_epoch_end(epoch=1)
+
+		self.assertEqual(time_stop_triggered.model.stop_training, True, "Error stop training")
 
 
 if __name__ == '__main__':

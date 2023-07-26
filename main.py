@@ -17,9 +17,9 @@ engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
 '''
 To do
 
-add fitness to mutation log
-copy 2 layers
+store results
 
+copy 2 layers
 
 test: wrong symbol
 test: wrong type

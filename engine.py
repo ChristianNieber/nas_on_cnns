@@ -15,7 +15,7 @@ from keras.models import load_model
 # from data_augmentation import augmentation
 from grammar import Grammar, mutation_dsge
 
-from utils import Evaluator, Individual
+from utils import Evaluator, Individual, RunStatistics
 from logger import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
@@ -34,104 +34,6 @@ def fitness_metric_with_size_penalty(accuracy, parameters):
 	else:
 		return accuracy
 
-class GenerationStatistics:
-	""" keeps statistics over all generations """
-	def __init__(self):
-		# best individual
-		self.best_individual = []
-		self.final_test_accuracy = []
-		self.accuracy = []
-		self.parameters = []
-		self.training_time = []
-		self.training_epochs = []
-		self.million_inferences_time = []
-		self.fitness = []
-		self.train_accuracy = []
-		self.train_loss = []
-		self.val_accuracy = []
-		self.val_loss = []
-		self.k_fold_accuracy = []
-		self.k_fold_accuracy_std = []
-		self.k_fold_final_accuracy = []
-		self.k_fold_final_accuracy_std = []
-		self.k_fold_fitness_std = []
-		self.k_fold_million_inferences_time = []
-		self.k_fold_million_inferences_time_std = []
-		# best of generation
-		self.generation_best_accuracy = []
-		self.generation_best_fitness = []
-		self.generation_best_parameters = []
-		# generation
-		self.generation_accuracy = []
-		self.generation_fitness = []
-		self.generation_parameters = []
-		# run state
-		self.run_generation = -1
-		self.run_time_seconds = 0
-		self.run_time_k_fold_evaluation_seconds = 0
-		self.run_total_evaluations = 0
-		self.run_k_fold_evaluations = 0
-		self.session_start_time = time()
-		self.session_previous_runtime = 0
-
-	def init_session(self):
-		self.session_start_time = time()
-		self.session_previous_runtime = self.run_time_seconds
-
-	def record_best(self, ind):
-		self.best_individual.append(ind.id)
-		self.final_test_accuracy.append(ind.final_test_accuracy)
-		self.accuracy.append(ind.accuracy)
-		self.parameters.append(ind.parameters)
-		self.training_time.append(ind.training_time)
-		self.training_epochs.append(ind.training_epochs)
-		self.million_inferences_time.append(ind.million_inferences_time)
-		self.fitness.append(ind.fitness)
-		self.k_fold_accuracy.append(ind.k_fold_accuracy)
-		self.k_fold_accuracy_std.append(ind.k_fold_accuracy_std)
-		self.k_fold_final_accuracy.append(ind.k_fold_final_accuracy)
-		self.k_fold_final_accuracy_std.append(ind.k_fold_final_accuracy_std)
-		self.k_fold_fitness_std.append(ind.k_fold_fitness_std)
-		self.k_fold_million_inferences_time.append(ind.k_fold_million_inferences_time)
-		self.k_fold_million_inferences_time_std.append(ind.k_fold_million_inferences_time_std)
-		if ind.metrics_train_accuracy:
-			self.train_accuracy.append(ind.metrics_train_accuracy[-1])
-			self.train_loss.append(ind.metrics_train_loss[-1])
-			self.val_accuracy.append(ind.metrics_val_accuracy[-1])
-			self.val_loss.append(ind.metrics_val_loss[-1])
-
-	def record_generation(self, generation_list):
-		self.run_generation += 1
-		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
-		best_in_generation = generation_list[best_in_generation_idx]
-		self.generation_best_accuracy.append(best_in_generation.accuracy)
-		self.generation_best_fitness.append(best_in_generation.fitness)
-		self.generation_best_parameters.append(best_in_generation.parameters)
-		self.generation_accuracy.append([ind.accuracy for ind in generation_list])
-		self.generation_fitness.append([ind.fitness for ind in generation_list])
-		self.generation_parameters.append([ind.parameters for ind in generation_list])
-
-	def record_run_statistics(self, evaluations, k_fold_evaluations, k_fold_evaluation_seconds):
-		self.run_time_seconds = self.session_previous_runtime + time() - self.session_start_time
-		self.run_total_evaluations += evaluations + k_fold_evaluations
-		self.run_k_fold_evaluations += k_fold_evaluations
-		self.run_time_k_fold_evaluation_seconds += k_fold_evaluation_seconds
-
-	def to_json(self):
-		""" makes object json serializable """
-		return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
-
-	def save_to_json_file(self, save_path):
-		""" save statistics """
-		json_dump = self.to_json()
-		with open(save_path + 'statistics.json', 'w') as f_json:
-			f_json.write(json_dump)
-
-def read_statistics_from_json_file(save_path):
-	with open(save_path + 'statistics.json', 'r') as f_json:
-		data = json.load(f_json)
-	pass
-
 def save_population_statistics(population, save_path, gen):
 	"""
 		Save the current population statistics in json.
@@ -140,9 +42,9 @@ def save_population_statistics(population, save_path, gen):
 			.phenotype: phenotype of the individual
 			.fitness: fitness of the individual
 			.metrics: other evaluation metrics (e.g., loss, accuracy)
-			.parameters: number of network trainable parameters
-			.training_epochs: number of performed training epochs
-			.training_time: time (sec) the network took to perform training_epochs
+			.metrics.parameters: number of network trainable parameters
+			.metrics.training_epochs: number of performed training epochs
+			.metrics.training_time: time (sec) the network took to perform training_epochs
 			.million_inferences_time: measured time per million inferences
 
 		Parameters
@@ -333,7 +235,7 @@ def select_new_parents(population, number_of_parents, after_k_folds_evaluation=F
 	"""
 
 	if after_k_folds_evaluation:
-		candidates = [ind for ind in population if ind.k_fold_accuracy]		# only individuals where k folds evaluation has been done
+		candidates = [ind for ind in population if ind.k_fold_metrics]		# only individuals where k folds evaluation has been done
 	else:
 		candidates = population
 	# candidates ordered by fitness
@@ -586,7 +488,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		copyfile(config_file, save_path + Path(config_file).name)
 		copyfile(grammar_file, save_path + Path(grammar_file).name)
 
-		stat = GenerationStatistics()
+		stat = RunStatistics()
 
 		# set random seeds
 		if RANDOM_SEED != -1:
@@ -667,7 +569,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				if not parent.is_parent:
 					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.short_description()}")
 					start_time = time()
-					parent.evaluate_with_k_fold_validation(grammar, k_fold_eval, REEVALUATE_BEST_WITH_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					parent.evaluate_individual_k_folds(grammar, k_fold_eval, REEVALUATE_BEST_WITH_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					k_fold_evaluation_seconds += time() - start_time
 					k_fold_evaluations += REEVALUATE_BEST_WITH_K_FOLDS
 					new_parent_candidates_count += 1
@@ -684,7 +586,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					parent.calculate_final_test_accuracy(cnn_eval)
 				if parent.parent_id:
 					original_parent = next(ind for ind in population if ind.id == parent.parent_id)
-					parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.short_description()}] <- [{original_parent.short_description()}] Δfitness={parent.fitness - original_parent.fitness:.5f} Δacc={parent.accuracy - original_parent.accuracy:.5f}")
+					parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.short_description()}] <- [{original_parent.short_description()}] Δfitness={parent.fitness - original_parent.fitness:.5f} Δacc={parent.metrics.accuracy - original_parent.metrics.accuracy:.5f}")
 				if best_fitness == None or parent.fitness > best_fitness:
 					if best_fitness:
 						log_bold(f'*** New best individual replaces {population[0].short_description()} ***')

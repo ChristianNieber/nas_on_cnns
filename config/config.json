@@ -2,6 +2,12 @@
   //Evolutionary algorithm parameters
   "EVOLUTIONARY": {
 
+    // Experiment name is used for folder name where all files are stored
+    "experiment_name" : "Lenet 9",
+
+    // resume from saved state
+    "resume": true,
+
     //Maximum number of generations
     "num_generations": 100,
 
@@ -16,12 +22,6 @@
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "lenet",
-
-    // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Lenet 9",
-
-    // resume from saved state
-    "resume": false,
 
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 110,
@@ -82,6 +82,6 @@
     // re-train best individual with K folds and select new parents on average K folds fitness
     "reevaluate_best_with_k_folds" : 10,
     // test new elite individuals with final test set
-    "retest_best_with_final_test_set" : false
+    "retest_best_with_final_test_set" : true
   }
 }
