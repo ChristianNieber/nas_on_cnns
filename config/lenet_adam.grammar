@@ -6,7 +6,5 @@
 
 <output> ::= layer:output num-units:10 bias:True
 
-<learning> ::= <gradient-descent> [batch_size,int,50,4096] | <rmsprop> [batch_size,int,50,4096] | <adam> [batch_size,int,50,4096]
-<gradient-descent> ::= learning:gradient-descent [lr,float,0.0001,0.1] [momentum,float,0.68,0.99] [nesterov:True/False]
-<rmsprop> ::= learning:rmsprop [lr,float,0.0001,0.1] [rho,float,0.5,1]
-<adam> ::= learning:adam [lr,float,0.0001,0.1] [beta1,float,0.5,1] [beta2,float,0.5,1]
+<learning> ::= <adam> [batch_size,int,50,4096]
+<adam> ::= learning:adam lr:0.0005 beta1:0.9 beta2:0.999

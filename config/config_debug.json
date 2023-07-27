@@ -2,8 +2,17 @@
   //Evolutionary algorithm parameters
   "EVOLUTIONARY": {
 
+    // Experiment name is used for folder name where all files are stored
+    "experiment_name" : "Debug",
+
+    // resume from saved state
+    "resume": false,
+
+    // random seed for Random and numpy modules, -1 for none
+    "random_seed" : 100,
+
     //Maximum number of generations
-    "num_generations": 10,
+    "num_generations": 7,
 
     // my - number of parents
     "my" : 1,
@@ -16,15 +25,6 @@
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "lenet",
-
-    // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Debug",
-
-    // resume from saved state
-    "resume": false,
-
-    // random seed for Random and numpy modules, -1 for none
-    "random_seed" : 100,
 
     //rates of the different mutations [0, 1]
     "MUTATIONS": {
@@ -58,6 +58,10 @@
 
   //training parameters
   "TRAINING": {
+    // use cache file for storing and retrieving evaluated network configurations
+    "use_evaluation_cache": true,
+    "evaluation_cache_file": "../cache_debug.pkl",
+
     //data augmentation generator for the training data - keras interpretable
     //set to "None" if no data augmentation is to be used
     "datagen": "None",
@@ -81,7 +85,7 @@
 
     // re-train best individual with K folds and select new parents on average K folds fitness
     "reevaluate_best_with_k_folds" : 3,
-    // test new elite individuals with final test set
+    // test new best individuals with final test set
     "retest_best_with_final_test_set" : false
   }
 }

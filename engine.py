@@ -15,22 +15,23 @@ from keras.models import load_model
 # from data_augmentation import augmentation
 from grammar import Grammar, mutation_dsge
 
-from utils import Evaluator, Individual, RunStatistics
+from utils import Evaluator, Individual, stat
 from logger import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
-LOG_MUTATIONS = 0					# log all mutations
+LOG_DEBUG = 0						# log debug messages (for caching)
+LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
 
+# global variables set from config.json
 USE_NETWORK_SIZE_PENALTY = 0
 PENALTY_PARAMETERS_TARGET = 0
 
-
 def fitness_metric_with_size_penalty(accuracy, parameters):
 	if USE_NETWORK_SIZE_PENALTY:
-		return 3 - (((1.0 - accuracy)*50) ** 3 + parameters / PENALTY_PARAMETERS_TARGET)
+		return 3 - (((1.0 - accuracy)/0.02) ** 2 + parameters / PENALTY_PARAMETERS_TARGET)
 	else:
 		return accuracy
 
@@ -421,6 +422,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			path to the grammar file
 	"""
 
+	global stat
 	global USE_NETWORK_SIZE_PENALTY
 	global PENALTY_PARAMETERS_TARGET
 
@@ -429,14 +431,14 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	# load config file
 	config = load_config(config_file)
+	EXPERIMENT_NAME = config['EVOLUTIONARY']['experiment_name']
+	RESUME = config['EVOLUTIONARY']['resume']
 	RANDOM_SEED = config['EVOLUTIONARY']['random_seed']
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
 	INITIAL_POPULATION_SIZE = config['EVOLUTIONARY']['initial_population_size']
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
 	LAMBDA = config['EVOLUTIONARY']['lambda']
-	EXPERIMENT_NAME = config['EVOLUTIONARY']['experiment_name']
-	RESUME = config['EVOLUTIONARY']['resume']
 	REUSE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['reuse_layer']
 	ADD_LAYER = config['EVOLUTIONARY']['MUTATIONS']['add_layer']
 	REMOVE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['remove_layer']
@@ -451,6 +453,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	NETWORK_STRUCTURE_INIT = config['NETWORK']['network_structure_init']
 	LEVELS_BACK = config["NETWORK"]["levels_back"]
 
+	USE_EVALUATION_CACHE = config['TRAINING']['use_evaluation_cache']
+	EVALUATION_CACHE_FILE = config['TRAINING']['evaluation_cache_file']
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
@@ -463,12 +467,14 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	if not experiments_directory.endswith('/'):
 		experiments_directory += '/'
 	save_path = experiments_directory + EXPERIMENT_NAME + '/'
+
 	log_file_path = save_path + '#' + EXPERIMENT_NAME + '.log'
+	init_logger(log_file_path, overwrite=True)
+	logger_configuration(logger_log_training=True, logger_log_mutations=LOG_MUTATIONS, logger_log_debug=LOG_DEBUG)
 
 	# load grammar
 	grammar = Grammar(grammar_file)
 
-	# init statistics
 	best_fitness = None
 
 	# load previous population content (if any)
@@ -488,7 +494,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		copyfile(config_file, save_path + Path(config_file).name)
 		copyfile(grammar_file, save_path + Path(grammar_file).name)
 
-		stat = RunStatistics()
+		# stat = RunStatistics()
 
 		# set random seeds
 		if RANDOM_SEED != -1:
@@ -496,14 +502,16 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			np.random.seed(RANDOM_SEED)
 
 		# create evaluator
-		cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty)
+		evaluation_cache_path = None
+		if USE_EVALUATION_CACHE:
+			evaluation_cache_path=Path(save_path, EVALUATION_CACHE_FILE).resolve()
+		cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, for_k_fold_validation=REEVALUATE_BEST_WITH_K_FOLDS, evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME)
 
 		# save evaluator
 		pickle_evaluator(cnn_eval, save_path)
 
 		last_gen = -1
 
-		init_logger(log_file_path, overwrite=True)
 
 		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {INITIAL_POPULATION_SIZE}')
 		population = []
@@ -518,6 +526,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			else:
 				raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
 			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+			cnn_eval.flush_evaluation_cache()
 			population.append(new_individual)
 		log()
 
@@ -535,16 +544,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	stat.init_session()
 
-	logger_configuration(logger_log_training=True, logger_log_mutations=LOG_MUTATIONS)
-
-	# evaluator for K folds
-	if REEVALUATE_BEST_WITH_K_FOLDS:
-		k_fold_eval = Evaluator(dataset, fitness_metric_with_size_penalty, for_k_fold_validation=True)
-
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
-		k_fold_evaluations = 0
-		k_fold_evaluation_seconds = 0.0
 		generation_list = []
 		if gen:
 			for idx in range(LAMBDA):
@@ -569,10 +570,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				if not parent.is_parent:
 					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.short_description()}")
 					start_time = time()
-					parent.evaluate_individual_k_folds(grammar, k_fold_eval, REEVALUATE_BEST_WITH_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
-					k_fold_evaluation_seconds += time() - start_time
-					k_fold_evaluations += REEVALUATE_BEST_WITH_K_FOLDS
+					parent.evaluate_individual_k_folds(grammar, cnn_eval, REEVALUATE_BEST_WITH_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					new_parent_candidates_count += 1
+					# flush caache after every individual
+					cnn_eval.flush_evaluation_cache()
 			if new_parent_candidates_count:
 				new_parents = select_new_parents(population, MY, after_k_folds_evaluation=True)
 				count = sum(1 for parent in new_parents if not parent.is_parent)
@@ -582,7 +583,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		for idx, parent in enumerate(new_parents):
 			if not parent.is_parent:
 				parent.is_parent = True
-				if RETEST_BEST_WITH_FINAL_TEST_SET:
+				if RETEST_BEST_WITH_FINAL_TEST_SET and not parent.metrics.final_test_accuracy:
 					parent.calculate_final_test_accuracy(cnn_eval)
 				if parent.parent_id:
 					original_parent = next(ind for ind in population if ind.id == parent.parent_id)
@@ -606,6 +607,9 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					log_bold(f'New individual rank {idx+1} replaces {population[idx].short_description()}')
 					log_bold(f'New rank {idx+1}: {parent.short_description()}')
 
+		# flush evaluation cache after every generation
+		cnn_eval.flush_evaluation_cache()
+
 		# remove temporary files to free disk space
 		if gen > 1:
 			for x in range(LAMBDA):
@@ -626,7 +630,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		stat.record_best(best_individual)
 		assert len(generation_list) == LAMBDA
 		stat.record_generation(generation_list)
-		stat.record_run_statistics(LAMBDA if gen else INITIAL_POPULATION_SIZE, k_fold_evaluations, k_fold_evaluation_seconds)
 
 		generation_list.clear()
 
@@ -634,7 +637,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		save_population_statistics(population, save_path, gen)
 		pickle_population(gen, population, save_path)
 		pickle_statistics(stat, save_path)
-		stat.save_to_json_file(save_path)
+		# stat.save_to_json_file(save_path)
 
 		# keep only best as new parents
 		population = new_parents

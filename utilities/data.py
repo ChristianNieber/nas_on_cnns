@@ -64,26 +64,22 @@ def prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes=10, f
 		x_train = x_train.reshape((-1, 32, 32, 3))
 		x_test = x_test.reshape((-1, 32, 32, 3))
 
+	evo_x_train, x_val, evo_y_train, y_val = train_test_split(x_train, y_train, test_size=7000, shuffle=True, stratify=y_train)
+	evo_x_val, evo_x_test, evo_y_val, evo_y_test = train_test_split(x_val, y_val, test_size=3500, shuffle=True, stratify=y_val)
+
+	# evo_y_train = keras.utils.to_categorical(evo_y_train, n_classes)
+	# evo_y_val = keras.utils.to_categorical(evo_y_val, n_classes
+
+	dataset = {
+		'evo_x_train': evo_x_train, 'evo_y_train': evo_y_train,
+		'evo_x_val': evo_x_val, 'evo_y_val': evo_y_val,
+		'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
+		'x_final_test': x_test, 'y_final_test': y_test
+	}
 	if for_k_fold_validation:
 		# x_combined = np.r_[x_train, x_test]
 		# y_combined = np.r_[y_train, y_test]
-		dataset = {
-			'x_combined': x_train, 'y_combined': y_train,
-			'x_final_test': x_test, 'y_final_test': y_test
-		}
-	else:
-		evo_x_train, x_val, evo_y_train, y_val = train_test_split(x_train, y_train, test_size=7000, shuffle=True, stratify=y_train)
-		evo_x_val, evo_x_test, evo_y_val, evo_y_test = train_test_split(x_val, y_val, test_size=3500, shuffle=True, stratify=y_val)
-
-		# evo_y_train = keras.utils.to_categorical(evo_y_train, n_classes)
-		# evo_y_val = keras.utils.to_categorical(evo_y_val, n_classes
-
-		dataset = {
-			'evo_x_train': evo_x_train, 'evo_y_train': evo_y_train,
-			'evo_x_val': evo_x_val, 'evo_y_val': evo_y_val,
-			'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
-			'x_final_test': x_test, 'y_final_test': y_test
-		}
+		dataset.update({ 'x_combined': x_train, 'y_combined': y_train })
 
 	return dataset
 

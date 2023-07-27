@@ -64,7 +64,8 @@ class Test(unittest.TestCase):
 
 
 	def test_save_population(self):
-		from utils import Individual, CnnEvalResult, RunStatistics
+		from utils import Individual, CnnEvalResult
+		from statistics import RunStatistics
 		from grammar import Grammar
 		import engine
 		import os
@@ -76,10 +77,9 @@ class Test(unittest.TestCase):
 
 		ind = Individual(network_structure, [], 'softmax', 0, 0)
 		ind.metrics = CnnEvalResult.dummy_eval_result()
-		stat = engine.RunStatistics()
+		stat = RunStatistics()
 		stat.record_best(ind)
 		stat.run_generation = 0
-		stat.record_run_statistics(1, 0, 0.0)
 
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')

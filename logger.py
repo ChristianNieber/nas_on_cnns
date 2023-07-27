@@ -4,6 +4,7 @@ logging_overwrite = False
 logging_append_to_line = False
 logging_training = False
 logging_mutations = False
+logging_debug = False
 
 
 class TerminalColors:
@@ -31,12 +32,13 @@ def init_logger(file_path=None, overwrite=True):
 	logger_configuration()
 
 
-def logger_configuration(logger_log_training=True, logger_log_mutations=True):
+def logger_configuration(logger_log_training=True, logger_log_mutations=True, logger_log_debug=False):
 	global logging_training
 	global logging_mutations
+	global logging_debug
 	logging_training = logger_log_training
 	logging_mutations = logger_log_mutations
-
+	logging_debug = logger_log_debug
 
 def log_append(value):
 	global logging_append_to_line
@@ -100,6 +102,10 @@ def log_warning(value):
 	print(TerminalColors.FAIL + '*** ' + value + ' ***' + TerminalColors.ENDC)
 	log_append_flush(value)
 
+def log_debug(value):
+	if logging_debug:
+		print(TerminalColors.OKCYAN + value + TerminalColors.ENDC)
+		log_append(value)
 
 def log_flush():
 	global logging_overwrite

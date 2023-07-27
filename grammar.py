@@ -353,7 +353,7 @@ class Module:
 
 def default_learning_rule_adam():
 	""" default learning rule for Individual.macro initialisation """
-	return [[('learning', [('adam', [('learning:adam', ''), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)])]), ('early_stop_triggered', 8), ('batch_size', 1024)]]
+	return [[('learning', [('adam', [('learning:adam', ''), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)])]), ('batch_size', 1024)]]
 
 
 # ---------------------------------------------------------------------------
