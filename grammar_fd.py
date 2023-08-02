@@ -525,7 +525,89 @@ def default_learning_rule_adam():
 						'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
 						'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
 
-#---------------------------------------------------------------------------
+# ---------------------------------------------------------------------------
+
+def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, dsge_layer, macro_layer, gen=0, idx=0):
+	"""
+		Network mutations: add and remove layer, macro structure
+
+
+		Parameters
+		----------
+		parent : Individual
+			individual to be mutated
+
+		grammar : Grammar
+			Grammar instance, used to perform the initialisation and the genotype
+			to phenotype
+		gen : int
+			Generation count
+		idx : int
+			index in generation
+		add_layer : float
+			add layer mutation rate
+		re_use_layer : float
+			when adding a new layer, defines the mutation rate of using an already
+			existing layer, i.e., copy by reference
+		remove_layer : float
+			remove layer mutation rate
+		dsge_layer : float
+			inner lever genotype mutation rate
+		macro_layer : float
+			inner level of the macro layers (i.e., learning, data-augmentation) mutation rate
+
+		Returns
+		-------
+		ind : Individual
+			mutated individual
+	"""
+
+	# deep copy parent
+	ind = deepcopy(parent)
+	ind.parent_id = parent.id
+
+	# name for new individual
+	ind.id = f"{gen}-{idx}"
+
+	# mutation resets training results
+	ind.reset_training()
+
+	for module_idx, module in enumerate(ind.modules):
+		# add-layer (duplicate or new)
+		for _ in range(random.randint(1, 2)):
+			if len(module.layers) < module.max_expansions and random.random() <= add_layer:
+				insert_pos = random.randint(0, len(module.layers))
+				if random.random() <= re_use_layer and len(module.layers):
+					source_layer_index = random.randint(0, len(module.layers)-1)
+					new_layer = module.layers[source_layer_index]
+					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
+					ind.log_mutation(f"copy layer {module.module_name}{insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
+				else:
+					new_layer = grammar.initialise_layer(module.module_name)
+					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
+					ind.log_mutation(f"insert layer {module.module_name}{insert_pos}/{len(module.layers)} - {layer_phenotype}")
+
+				module.layers.insert(insert_pos, new_layer)
+
+		# remove-layer
+		for _ in range(random.randint(1, 2)):
+			if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
+				remove_idx = random.randint(0, len(module.layers) - 1)
+				layer_phenotype = grammar.decode_layer(module.module_name, module.layers[remove_idx])
+				ind.log_mutation(f"remove layer {module.module_name}{remove_idx}/{len(module.layers)} - {layer_phenotype}")
+				del module.layers[remove_idx]
+
+		for layer_idx, layer in enumerate(module.layers):
+			# dsge mutation
+			if random.random() <= dsge_layer:
+				mutation_dsge(ind, layer, grammar, f"{module.module_name}{layer_idx}")
+
+	# macro level mutation
+	for macro_idx, macro in enumerate(ind.macro_dummy_layer):
+		if random.random() <= macro_layer:
+			mutation_dsge(ind, macro, grammar, "learning")
+
+	return ind
 
 def mutation_dsge(ind, layer, grammar, layer_name):
 	"""

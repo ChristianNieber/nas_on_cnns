@@ -244,7 +244,7 @@ class Evaluator:
 
 
 	@staticmethod
-	def get_layers(phenotype):
+	def get_keras_layers(phenotype):
 		"""
 			Parses the phenotype corresponding to the layers.
 			Auxiliary function of the assemble_network function.
@@ -631,7 +631,7 @@ class Evaluator:
 		learning_phenotype = 'learning:' + learning_phenotype.rstrip().lstrip()
 		model_phenotype = model_phenotype.rstrip().lstrip().replace('  ', ' ')
 
-		keras_layers = self.get_layers(model_phenotype)
+		keras_layers = self.get_keras_layers(model_phenotype)
 		keras_layers_count = len(keras_layers)
 		keras_learning = self.get_learning(learning_phenotype)
 		batch_size = int(keras_learning['batch_size'])
@@ -865,7 +865,7 @@ class Individual:
 
 		Methods
 		-------
-			initialise_individual(grammar, levels_back, reuse)
+			initialise_individual(grammar, reuse)
 				Randomly creates a candidate solution
 			decode(grammar)
 				Maps the genotype to the phenotype
@@ -979,7 +979,7 @@ class Individual:
 			)
 		return result
 
-	def initialise_individual_random(self, grammar, levels_back, reuse, init_max):
+	def initialise_individual_random(self, grammar, reuse, init_max):
 		"""Randomly creates a candidate solution
 
 			Parameters
@@ -998,8 +998,8 @@ class Individual:
 		"""
 
 		for non_terminal, min_expansions, max_expansions in self.network_structure:
-			new_module = Module(non_terminal, min_expansions, max_expansions, levels_back[non_terminal])
-			new_module.initialise(grammar, reuse, init_max)
+			new_module = Module(non_terminal, min_expansions, max_expansions)
+			new_module.initialise_module(grammar, reuse, init_max)
 
 			self.modules.append(new_module)
 
@@ -1026,11 +1026,11 @@ class Individual:
 				randomly created candidate solution
 		"""
 
-		new_module = Module('features', 0, 10, 1)
+		new_module = Module('features', 0, 10)
 		new_module.initialise_module_as_lenet()
 		self.modules.append(new_module)
 
-		new_module = Module('classification', 1, 5, 1)
+		new_module = Module('classification', 1, 5)
 		new_module.initialise_module_as_lenet()
 		self.modules.append(new_module)
 
@@ -1056,11 +1056,11 @@ class Individual:
 				randomly created candidate solution
 		"""
 
-		new_module = Module('features', 0, 10, 1)
+		new_module = Module('features', 0, 10)
 		new_module.initialise_module_as_perceptron()
 		self.modules.append(new_module)
 
-		new_module = Module('classification', 1, 5, 1)
+		new_module = Module('classification', 1, 5)
 		new_module.initialise_module_as_perceptron()
 		self.modules.append(new_module)
 
@@ -1105,10 +1105,9 @@ class Individual:
 		phenotype = ''
 		layer_counter = 0
 		for module in self.modules:
-			offset = layer_counter
 			for layer_idx, layer in enumerate(module.layers):
+				phenotype += '\n' + grammar.decode_layer(module.module_name, layer) + ' input:' + str(layer_counter - 1)
 				layer_counter += 1
-				phenotype += '\n' + grammar.decode_layer(module.module_name, layer) + ' input:' + ",".join(map(str, np.array(module.connections[layer_idx]) + offset))
 
 		phenotype += '\n' + grammar.decode_layer(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
 

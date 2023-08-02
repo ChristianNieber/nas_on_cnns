@@ -26,10 +26,9 @@ class Test(unittest.TestCase):
 
 		network_structure = [["features", 1, 3]]
 		grammar = Grammar('tests/examples/example.grammar')
-		levels_back = {"features": 1, "classification": 1}
 		network_structure_init = {"features":[2]}
 
-		ind = Individual(network_structure, [], 'output', 0, 0).initialise_individual_random(grammar, levels_back, 0, network_structure_init)
+		ind = Individual(network_structure, [], 'output', 0, 0).initialise_individual_random(grammar, 0, network_structure_init)
 
 		print(ind.get_phenotype(grammar))
 
@@ -72,11 +71,10 @@ class Test(unittest.TestCase):
 
 		network_structure = [["features", 1, 3], ["classification", 1, 2]]
 		grammar = Grammar('tests/examples/example.grammar')
-		levels_back = {"features": 1, "classification": 1}
 		network_structure_init = {"features":[2], "classification":[2]}
 
 		ind = Individual(network_structure, [], 'output', 0, 0)
-		ind.initialise_individual_random(grammar, levels_back, 0, network_structure_init)
+		ind.initialise_individual_random(grammar, 0, network_structure_init)
 		ind.metrics = CnnEvalResult.dummy_eval_result()
 		stat = RunStatistics()
 		stat.record_best(ind)
@@ -120,7 +118,7 @@ class Test(unittest.TestCase):
 		
 		num_layers_before_mutation = len(ind.modules[0].layers)
 
-		new_ind = mutation(ind, grammar, 1, 0, 0, 0, 0, 0, 0)
+		new_ind = mutation(ind, grammar, 1, 0, 0, 0, 0)
 
 		self.assertEqual(self.count_unique_layers(ind.modules)+1, self.count_unique_layers(new_ind.modules), "Error: add layer wrong size")
 		self.assertEqual(self.count_layers(ind.modules)+1, self.count_layers(new_ind.modules), "Error: add layer wrong size")
@@ -134,7 +132,7 @@ class Test(unittest.TestCase):
 		
 		num_layers_before_mutation = len(ind.modules[0].layers)
 
-		new_ind = mutation(ind, grammar, 1, 1, 0, 0, 0, 0, 0)
+		new_ind = mutation(ind, grammar, 1, 1, 0, 0, 0)
 
 		self.assertEqual(self.count_unique_layers(ind.modules), self.count_unique_layers(new_ind.modules), "Error: duplicate layer wrong size")
 		self.assertEqual(self.count_layers(ind.modules)+1, self.count_layers(new_ind.modules), "Error: duplicate layer wrong size")
@@ -148,7 +146,7 @@ class Test(unittest.TestCase):
 		
 		num_layers_before_mutation = len(ind.modules[0].layers)
 
-		new_ind = mutation(ind, grammar, 0, 0, 1, 0, 0, 0, 0)
+		new_ind = mutation(ind, grammar, 0, 0, 1, 0, 0)
 
 		self.assertEqual(self.count_layers(ind.modules)-1, self.count_layers(new_ind.modules), "Error: remove layer wrong size")
 
@@ -161,7 +159,7 @@ class Test(unittest.TestCase):
 		
 		for test_number in range(0, 3):
 			num_layers_before_mutation = len(ind.modules[0].layers)
-			new_ind = mutation(ind, grammar, 0, 0, 0, 0, 0, 1, 0)
+			new_ind = mutation(ind, grammar, 0, 0,0, 1, 0)
 
 			self.assertEqual(self.count_layers(ind.modules), self.count_layers(new_ind.modules), "Error: change ge parameter")
 
@@ -191,7 +189,7 @@ class Test(unittest.TestCase):
 								"layer:fc num-units:10 bias:True input:1")
 		self.assertEqual(phenotype, expected_phenotype, "error in phenotype = ind.decode(grammar)")
 
-		keras_layers = evaluator.get_layers(phenotype)
+		keras_layers = evaluator.get_keras_layers(phenotype)
 		model = evaluator.assemble_network(keras_layers, (28, 28, 1))
 
 		model_config =  model.get_config()
@@ -217,7 +215,7 @@ class Test(unittest.TestCase):
 								"layer:output num-units:10 bias:True input:5")
 		self.assertEqual(phenotype, expected_phenotype, "error in phenotype = ind.decode(grammar)")
 
-		keras_layers = evaluator.get_layers(phenotype)
+		keras_layers = evaluator.get_keras_layers(phenotype)
 		expected_keras_layers = [('conv', {'num-filters': '6', 'filter-shape': '5', 'stride': '1', 'act': 'relu', 'padding': 'same', 'bias': 'True', 'batch-normalization': 'True', 'input': '-1'}),
 								 ('pooling', {'kernel-size': '2', 'stride': '2', 'padding': 'valid', 'pooling-type': 'max', 'input': '0'}),
 								 ('conv', {'num-filters': '16', 'filter-shape': '5', 'stride': '1', 'act': 'relu', 'padding': 'valid', 'bias': 'True', 'batch-normalization': 'True', 'input': '1'}),

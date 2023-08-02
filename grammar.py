@@ -223,20 +223,18 @@ class Module:
 			minimum expansions of the block
 		max_expansions : int
 			maximum expansions of the block
-		levels_back : dict
-			number of previous layers a given layer can receive as input
 		layers : list
 			list of layers of the module
-		connections : dict
-			list of connections of each layer
 
 		Methods
 		-------
 			initialise_module(grammar, reuse)
 				Randomly creates a module
 	"""
+	module_name: str
+	layers: list
 
-	def __init__(self, module, min_expansions, max_expansions, levels_back):
+	def __init__(self, module, min_expansions, max_expansions):
 		"""
 			Parameters
 			----------
@@ -250,9 +248,7 @@ class Module:
 				number of previous layers a given layer can receive as input
 		"""
 
-		self.connections = None
 		self.module_name = module
-		self.levels_back = levels_back
 		self.layers = []
 
 		self.min_expansions = min_expansions
@@ -281,22 +277,6 @@ class Module:
 			else:
 				self.layers.append(grammar.initialise_layer(self.module_name))
 
-		# Initialise connections: feed-forward and allowing skip-connections
-		self.connections = {}
-		for layer_idx in range(num_layers):
-			if layer_idx == 0:
-				# the -1 layer is the input
-				self.connections[layer_idx] = [-1, ]
-			else:
-				connection_possibilities = list(range(max(0, layer_idx - self.levels_back), layer_idx - 1))
-				if len(connection_possibilities) < self.levels_back - 1:
-					connection_possibilities.append(-1)
-
-				sample_size = random.randint(0, len(connection_possibilities))
-
-				self.connections[layer_idx] = [layer_idx - 1]
-				if sample_size > 0:
-					self.connections[layer_idx] += random.sample(connection_possibilities, sample_size)
 
 	def initialise_module_as_lenet(self):
 		""" Creates a pre-defined LeNet module """
@@ -318,15 +298,6 @@ class Module:
 		elif self.module_name == 'classification':
 			self.layers = classification_layers_lenet
 
-		# Initialise connections: feed-forward and allowing skip-connections
-		self.connections = {}
-		for layer_idx in range(len(self.layers)):
-			if layer_idx == 0:
-				# the -1 layer is the input
-				self.connections[layer_idx] = [-1, ]
-			else:
-				self.connections[layer_idx] = [layer_idx - 1]
-
 	def initialise_module_as_perceptron(self):
 		""" Creates a pre-defined Perceptron module """
 
@@ -341,15 +312,6 @@ class Module:
 		elif self.module_name == 'classification':
 			self.layers = classification_layers_perceptron
 
-		# Initialise connections: feed-forward and allowing skip-connections
-		self.connections = {}
-		for layer_idx in range(len(self.layers)):
-			if layer_idx == 0:
-				# the -1 layer is the input
-				self.connections[layer_idx] = [-1, ]
-			else:
-				self.connections[layer_idx] = [layer_idx - 1]
-
 
 def default_learning_rule_adam():
 	""" default learning rule for Individual.macro initialisation """
@@ -357,6 +319,89 @@ def default_learning_rule_adam():
 
 
 # ---------------------------------------------------------------------------
+
+def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, dsge_layer, macro_layer, gen=0, idx=0):
+	"""
+		Network mutations: add and remove layer, macro structure
+
+
+		Parameters
+		----------
+		parent : Individual
+			individual to be mutated
+
+		grammar : Grammar
+			Grammar instance, used to perform the initialisation and the genotype
+			to phenotype
+		gen : int
+			Generation count
+		idx : int
+			index in generation
+		add_layer : float
+			add layer mutation rate
+		re_use_layer : float
+			when adding a new layer, defines the mutation rate of using an already
+			existing layer, i.e., copy by reference
+		remove_layer : float
+			remove layer mutation rate
+		dsge_layer : float
+			inner lever genotype mutation rate
+		macro_layer : float
+			inner level of the macro layers (i.e., learning, data-augmentation) mutation rate
+
+		Returns
+		-------
+		ind : Individual
+			mutated individual
+	"""
+
+	# deep copy parent
+	ind = deepcopy(parent)
+	ind.parent_id = parent.id
+
+	# name for new individual
+	ind.id = f"{gen}-{idx}"
+
+	# mutation resets training results
+	ind.reset_training()
+
+	for module_idx, module in enumerate(ind.modules):
+		# add-layer (duplicate or new)
+		for _ in range(random.randint(1, 2)):
+			if len(module.layers) < module.max_expansions and random.random() <= add_layer:
+				insert_pos = random.randint(0, len(module.layers))
+				if random.random() <= re_use_layer and len(module.layers):
+					source_layer_index = random.randint(0, len(module.layers)-1)
+					new_layer = module.layers[source_layer_index]
+					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
+					ind.log_mutation(f"copy layer {module.module_name}{insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
+				else:
+					new_layer = grammar.initialise_layer(module.module_name)
+					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
+					ind.log_mutation(f"insert layer {module.module_name}{insert_pos}/{len(module.layers)} - {layer_phenotype}")
+
+				module.layers.insert(insert_pos, new_layer)
+
+		# remove-layer
+		for _ in range(random.randint(1, 2)):
+			if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
+				remove_idx = random.randint(0, len(module.layers) - 1)
+				layer_phenotype = grammar.decode_layer(module.module_name, module.layers[remove_idx])
+				ind.log_mutation(f"remove layer {module.module_name}{remove_idx}/{len(module.layers)} - {layer_phenotype}")
+				del module.layers[remove_idx]
+
+		for layer_idx, layer in enumerate(module.layers):
+			# dsge mutation
+			if random.random() <= dsge_layer:
+				mutation_dsge(ind, layer, grammar, f"{module.module_name}{layer_idx}")
+
+	# macro level mutation
+	for macro_idx, macro in enumerate(ind.macro_dummy_layer):
+		if random.random() <= macro_layer:
+			mutation_dsge(ind, macro, grammar, "learning")
+
+	return ind
+
 
 def mutation_dsge(ind, layer, grammar, layer_name):
 	"""

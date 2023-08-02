@@ -13,14 +13,14 @@ from pathlib import Path
 from keras.models import load_model
 # from keras.preprocessing.image import ImageDataGenerator
 # from data_augmentation import augmentation
-from grammar import Grammar, mutation_dsge
+from grammar import Grammar, mutation
 
 from utils import Evaluator, Individual, stat
 from logger import *
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
+DEBUG_CONFIGURATION = 1				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
@@ -243,143 +243,6 @@ def select_new_parents(population, number_of_parents, after_k_folds_evaluation=F
 	return sorted_candidates[0:number_of_parents]
 
 
-def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connection, remove_connection, dsge_layer, macro_layer, gen=0, idx=0):
-	"""
-		Network mutations: add and remove layer, add and remove connections, macro structure
-
-
-		Parameters
-		----------
-		parent : Individual
-			individual to be mutated
-
-		grammar : Grammar
-			Grammar instance, used to perform the initialisation and the genotype
-			to phenotype
-		gen : int
-			Generation count
-		idx : int
-			index in generation
-		add_layer : float
-			add layer mutation rate
-		re_use_layer : float
-			when adding a new layer, defines the mutation rate of using an already
-			existing layer, i.e., copy by reference
-		remove_layer : float
-			remove layer mutation rate
-		add_connection : float
-			add connection mutation rate
-		remove_connection : float
-			remove connection mutation rate
-		dsge_layer : float
-			inner lever genotype mutation rate
-		macro_layer : float
-			inner level of the macro layers (i.e., learning, data-augmentation) mutation rate
-
-		Returns
-		-------
-		ind : Individual
-			mutated individual
-	"""
-
-	# deep copy parent
-	ind = deepcopy(parent)
-	ind.parent_id = parent.id
-
-	# name for new individual
-	ind.id = f"{gen}-{idx}"
-
-	# mutation resets training results
-	ind.reset_training()
-
-	for module_idx, module in enumerate(ind.modules):
-		# add-layer (duplicate or new)
-		for _ in range(random.randint(1, 2)):
-			if len(module.layers) < module.max_expansions and random.random() <= add_layer:
-				insert_pos = random.randint(0, len(module.layers))
-				if random.random() <= re_use_layer and len(module.layers):
-					source_layer_index = random.randint(0, len(module.layers)-1)
-					new_layer = module.layers[source_layer_index]
-					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
-					ind.log_mutation(f"copy layer {module.module_name}{insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
-				else:
-					new_layer = grammar.initialise_layer(module.module_name)
-					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
-					ind.log_mutation(f"insert layer {module.module_name}{insert_pos}/{len(module.layers)} - {layer_phenotype}")
-
-				# fix connections
-				for _key_ in sorted(module.connections, reverse=True):
-					if _key_ >= insert_pos:
-						for value_idx, value in enumerate(module.connections[_key_]):
-							if value >= insert_pos - 1:
-								module.connections[_key_][value_idx] += 1
-
-						module.connections[_key_ + 1] = module.connections.pop(_key_)
-
-				module.layers.insert(insert_pos, new_layer)
-
-				# make connections of the new layer
-				if insert_pos == 0:
-					module.connections[insert_pos] = [-1]
-				else:
-					connection_possibilities = list(range(max(0, insert_pos - module.levels_back), insert_pos - 1))
-					if len(connection_possibilities) < module.levels_back - 1:
-						connection_possibilities.append(-1)
-
-					sample_size = random.randint(0, len(connection_possibilities))
-
-					module.connections[insert_pos] = [insert_pos - 1]
-					if sample_size > 0:
-						module.connections[insert_pos] += random.sample(connection_possibilities, sample_size)
-
-		# remove-layer
-		for _ in range(random.randint(1, 2)):
-			if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
-				remove_idx = random.randint(0, len(module.layers) - 1)
-				layer_phenotype = grammar.decode_layer(module.module_name, module.layers[remove_idx])
-				ind.log_mutation(f"remove layer {module.module_name}{remove_idx}/{len(module.layers)} - {layer_phenotype}")
-				del module.layers[remove_idx]
-
-				# fix connections
-				for _key_ in sorted(module.connections):
-					if _key_ > remove_idx:
-						if _key_ > remove_idx + 1 and remove_idx in module.connections[_key_]:
-							module.connections[_key_].remove(remove_idx)
-
-						for value_idx, value in enumerate(module.connections[_key_]):
-							if value >= remove_idx:
-								module.connections[_key_][value_idx] -= 1
-						module.connections[_key_ - 1] = list(set(module.connections.pop(_key_)))
-
-				if remove_idx == 0:
-					module.connections[0] = [-1]
-
-		for layer_idx, layer in enumerate(module.layers):
-			# dsge mutation
-			if random.random() <= dsge_layer:
-				mutation_dsge(ind, layer, grammar, f"{module.module_name}{layer_idx}")
-
-			# add connection
-			if layer_idx != 0 and random.random() <= add_connection:
-				connection_possibilities = list(range(max(0, layer_idx - module.levels_back), layer_idx - 1))
-				connection_possibilities = list(set(connection_possibilities) - set(module.connections[layer_idx]))
-				if len(connection_possibilities) > 0:
-					module.connections[layer_idx].append(random.choice(connection_possibilities))
-
-			# remove connection
-			r_value = random.random()
-			if layer_idx != 0 and r_value <= remove_connection:
-				connection_possibilities = list(set(module.connections[layer_idx]) - set([layer_idx - 1]))
-				if len(connection_possibilities) > 0:
-					r_connection = random.choice(connection_possibilities)
-					module.connections[layer_idx].remove(r_connection)
-
-	# macro level mutation
-	for macro_idx, macro in enumerate(ind.macro_dummy_layer):
-		if random.random() <= macro_layer:
-			mutation_dsge(ind, macro, grammar, "learning")
-
-	return ind
 
 
 def load_config(config_file):
@@ -441,8 +304,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	REUSE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['reuse_layer']
 	ADD_LAYER = config['EVOLUTIONARY']['MUTATIONS']['add_layer']
 	REMOVE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['remove_layer']
-	ADD_CONNECTION = config['EVOLUTIONARY']['MUTATIONS']['add_connection']
-	REMOVE_CONNECTION = config['EVOLUTIONARY']['MUTATIONS']['remove_connection']
 	DSGE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['dsge_layer']
 	MACRO_LAYER = config['EVOLUTIONARY']['MUTATIONS']['macro_layer']
 
@@ -450,7 +311,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	MACRO_STRUCTURE = config['NETWORK']['macro_structure']
 	OUTPUT_STRUCTURE = config['NETWORK']['output']
 	NETWORK_STRUCTURE_INIT = config['NETWORK']['network_structure_init']
-	LEVELS_BACK = config["NETWORK"]["levels_back"]
 
 	USE_EVALUATION_CACHE = config['TRAINING']['use_evaluation_cache']
 	EVALUATION_CACHE_FILE = config['TRAINING']['evaluation_cache_file']
@@ -518,7 +378,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			elif INITIAL_INDIVIDUALS == "perceptron":
 				new_individual.initialise_as_perceptron(grammar)
 			elif INITIAL_INDIVIDUALS == "random":
-				new_individual.initialise_individual_random(grammar, LEVELS_BACK, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
+				new_individual.initialise_individual_random(grammar, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
 			else:
 				raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
 			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
@@ -549,7 +409,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			for idx in range(LAMBDA):
 				parent = select_parent(population[0:MY])
 				while True:
-					new_individual = mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, ADD_CONNECTION, REMOVE_CONNECTION, DSGE_LAYER, MACRO_LAYER, gen, idx)
+					new_individual = mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, DSGE_LAYER, MACRO_LAYER, gen, idx)
 					fitness = new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					if fitness:
 						break

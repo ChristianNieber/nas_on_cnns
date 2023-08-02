@@ -13,7 +13,7 @@ class Test(unittest.TestCase):
 		random.seed(0)
 		evaluator = Evaluator('mnist')
 
-		layers = evaluator.get_layers(
+		layers = evaluator.get_keras_layers(
 			'layer:batch-norm input:-1 layer:pool-avg kernel-size:2 stride:1 input:0 padding:same layer:pool-max kernel-size:2 input:1 stride:1 padding:same layer:dropout rate:0.5 input:2 layer:fc num-units:10 input:2 act:relu bias:True')
 		network = evaluator.assemble_network(layers, input_size=(32, 32, 3))
 

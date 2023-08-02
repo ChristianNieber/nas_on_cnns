@@ -31,8 +31,6 @@
       "add_layer": 0.25,
       "reuse_layer": 0.15,
       "remove_layer": 0.25,
-      "add_connection": 0,
-      "remove_connection": 0,
       "dsge_layer": 0.15,
       "macro_layer": 0.3
     }
@@ -50,10 +48,7 @@
     "macro_structure": ["learning"],
 
     //number of layers on random initialisation
-    "network_structure_init": {"features":[2,3,4], "classification":[1]},
-
-    //number of levels back for each of the blocks
-    "levels_back": {"features": 1, "classification": 1}
+    "network_structure_init": {"features":[2,3,4], "classification":[1]}
   },
 
   //training parameters
@@ -82,6 +77,6 @@
     "use_network_size_penalty" : true,
 
     // re-train best individual with K folds and select new parents on average K folds fitness
-    "reevaluate_best_with_k_folds" : 3
+    "reevaluate_best_with_k_folds" : 0
   }
 }
