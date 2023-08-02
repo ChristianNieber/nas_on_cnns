@@ -70,12 +70,13 @@ class Test(unittest.TestCase):
 		import engine
 		import os
 
-		network_structure = [["features", 1, 3]]
-		#grammar = Grammar('tests/examples/example.grammar')
-		#levels_back = {"features": 1, "classification": 1}
-		#network_structure_init = {"features":[2]}
+		network_structure = [["features", 1, 3], ["classification", 1, 2]]
+		grammar = Grammar('tests/examples/example.grammar')
+		levels_back = {"features": 1, "classification": 1}
+		network_structure_init = {"features":[2], "classification":[2]}
 
-		ind = Individual(network_structure, [], 'softmax', 0, 0)
+		ind = Individual(network_structure, [], 'output', 0, 0)
+		ind.initialise_individual_random(grammar, levels_back, 0, network_structure_init)
 		ind.metrics = CnnEvalResult.dummy_eval_result()
 		stat = RunStatistics()
 		stat.record_best(ind)

@@ -27,11 +27,10 @@ LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
 
 # global variables set from config.json
 USE_NETWORK_SIZE_PENALTY = 0
-PENALTY_PARAMETERS_TARGET = 0
 
 def fitness_metric_with_size_penalty(accuracy, parameters):
 	if USE_NETWORK_SIZE_PENALTY:
-		return 3 - (((1.0 - accuracy)/0.02) ** 2 + parameters / PENALTY_PARAMETERS_TARGET)
+		return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
 	else:
 		return accuracy
 
@@ -302,11 +301,11 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 					source_layer_index = random.randint(0, len(module.layers)-1)
 					new_layer = module.layers[source_layer_index]
 					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
-					ind.log_mutation(f"copy layer {module_idx}#{insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
+					ind.log_mutation(f"copy layer {module.module_name}{insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
 				else:
 					new_layer = grammar.initialise_layer(module.module_name)
 					layer_phenotype = grammar.decode_layer(module.module_name, new_layer)
-					ind.log_mutation(f"insert layer {module_idx}#{insert_pos}/{len(module.layers)} - {layer_phenotype}")
+					ind.log_mutation(f"insert layer {module.module_name}{insert_pos}/{len(module.layers)} - {layer_phenotype}")
 
 				# fix connections
 				for _key_ in sorted(module.connections, reverse=True):
@@ -338,7 +337,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 			if len(module.layers) > module.min_expansions and random.random() <= remove_layer:
 				remove_idx = random.randint(0, len(module.layers) - 1)
 				layer_phenotype = grammar.decode_layer(module.module_name, module.layers[remove_idx])
-				ind.log_mutation(f"remove layer {module_idx}#{remove_idx}/{len(module.layers)} - {layer_phenotype}")
+				ind.log_mutation(f"remove layer {module.module_name}{remove_idx}/{len(module.layers)} - {layer_phenotype}")
 				del module.layers[remove_idx]
 
 				# fix connections
@@ -358,7 +357,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 		for layer_idx, layer in enumerate(module.layers):
 			# dsge mutation
 			if random.random() <= dsge_layer:
-				mutation_dsge(ind, layer, grammar, f"{module_idx}#{layer_idx}")
+				mutation_dsge(ind, layer, grammar, f"{module.module_name}{layer_idx}")
 
 			# add connection
 			if layer_idx != 0 and random.random() <= add_connection:
@@ -376,7 +375,7 @@ def mutation(parent, grammar, add_layer, re_use_layer, remove_layer, add_connect
 					module.connections[layer_idx].remove(r_connection)
 
 	# macro level mutation
-	for macro_idx, macro in enumerate(ind.macro):
+	for macro_idx, macro in enumerate(ind.macro_dummy_layer):
 		if random.random() <= macro_layer:
 			mutation_dsge(ind, macro, grammar, "learning")
 
@@ -458,8 +457,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
-	PENALTY_PARAMETERS_TARGET = config['TRAINING']['penalty_connections_target']
-	RETEST_BEST_WITH_FINAL_TEST_SET = config['TRAINING']['retest_best_with_final_test_set']
 	REEVALUATE_BEST_WITH_K_FOLDS = config['TRAINING']['reevaluate_best_with_k_folds']
 	data_generator = eval(config['TRAINING']['datagen'])
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
@@ -494,7 +491,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		copyfile(config_file, save_path + Path(config_file).name)
 		copyfile(grammar_file, save_path + Path(grammar_file).name)
 
-		# stat = RunStatistics()
+		stat.init_session()
 
 		# set random seeds
 		if RANDOM_SEED != -1:
@@ -511,7 +508,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		pickle_evaluator(cnn_eval, save_path)
 
 		last_gen = -1
-
 
 		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {INITIAL_POPULATION_SIZE}')
 		population = []
@@ -535,14 +531,16 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		init_logger(log_file_path, overwrite=False)
 
 		last_gen, cnn_eval, population, pkl_random, pkl_numpy, stat = unpickle
+		stat.init_session()
+
 		random.setstate(pkl_random)
 		np.random.set_state(pkl_numpy)
+
 		new_parents = select_new_parents(population, MY)
 		population = new_parents
 		log('\n========================================================================================================')
 		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
 
-	stat.init_session()
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
@@ -583,11 +581,13 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		for idx, parent in enumerate(new_parents):
 			if not parent.is_parent:
 				parent.is_parent = True
-				if RETEST_BEST_WITH_FINAL_TEST_SET and not parent.metrics.final_test_accuracy:
-					parent.calculate_final_test_accuracy(cnn_eval)
 				if parent.parent_id:
-					original_parent = next(ind for ind in population if ind.id == parent.parent_id)
-					parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.short_description()}] <- [{original_parent.short_description()}] Δfitness={parent.fitness - original_parent.fitness:.5f} Δacc={parent.metrics.accuracy - original_parent.metrics.accuracy:.5f}")
+					original_parent_list = [ind for ind in population if ind.id == parent.parent_id]
+					if len(original_parent_list) == 1:
+						original_parent = original_parent_list[0]
+						parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.short_description()}] <- [{original_parent.short_description()}] Δfitness={parent.fitness - original_parent.fitness:.5f} Δacc={parent.metrics.accuracy - original_parent.metrics.accuracy:.5f}")
+					else:
+						log_warning(f"parent {parent.parent_id} of {parent.id} not found in current population!")
 				if best_fitness == None or parent.fitness > best_fitness:
 					if best_fitness:
 						log_bold(f'*** New best individual replaces {population[0].short_description()} ***')

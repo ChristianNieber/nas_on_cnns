@@ -469,7 +469,7 @@ class Module:
 				r_idx = random.randint(0, idx - 1)
 				self.layers.append(self.layers[r_idx])
 			else:
-				self.layers.append(grammar.initialise(self.module_name))
+				self.layers.append(grammar.initialise_layer(self.module_name))
 
 		# Initialise connections: feed-forward and allowing skip-connections
 		self.connections = {}
@@ -523,7 +523,7 @@ def default_learning_rule_adam():
 	""" default learning rule for Individual.macro initialisation """
 	return [{'learning': [{'ge': 2, 'ga': {'batch_size': ('int', 50.0, 4096.0, 1024)}}],
 						'adam': [{'ge': 0, 'ga': {'lr': ('float', 0.0001, 0.1, 0.0005), 'beta1': ('float', 0.5, 1.0, 0.9), 'beta2': ('float', 0.5, 1.0, 0.999)}}],
-						'early-stop': [{'ge': 0, 'ga': {'early_stop_triggered': ('int', 5.0, 20.0, 8)}}]}]
+						'early-stop': [{'ge': 0, 'ga': {'early_stop': ('int', 5.0, 20.0, 8)}}]}]
 
 #---------------------------------------------------------------------------
 

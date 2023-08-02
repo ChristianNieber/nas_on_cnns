@@ -100,6 +100,7 @@ class KFoldEvalResult:
 	""" result returned by Individual.evaluate_cnn_k_folds() """
 	def __init__(self):
 		self.final_test_accuracy_list = []
+		self.folds_eval_time = []
 		self.folds_test_accuracy = []
 		self.folds_train_accuracy = []
 		self.folds_val_accuracy = []
@@ -114,10 +115,12 @@ class KFoldEvalResult:
 		self.fitness_std = None
 		self.final_accuracy = None
 		self.final_accuracy_std = None
-		self.million_inferences_time = 0
-		self.million_inferences_time_std = 0
+		self.million_inferences_time = .0
+		self.million_inferences_time_std = .0
+		self.total_eval_time = .0
 
 	def append_cnn_eval_result(self, result):
+		self.folds_eval_time.append(result.eval_time)
 		self.final_test_accuracy_list.append(result.final_test_accuracy)
 		self.folds_test_accuracy.append(result.accuracy)
 		self.folds_train_accuracy.append(result.train_accuracy)
@@ -126,6 +129,7 @@ class KFoldEvalResult:
 		self.folds_val_loss.append(result.val_loss)
 		self.folds_million_inferences_time.append(result.million_inferences_time)
 		self.parameters = result.parameters
+		self.total_eval_time += result.eval_time
 
 	def calculate_fitness_mean_std(self, k_fold_eval):
 		self.folds_fitness = []
@@ -576,8 +580,11 @@ class Evaluator:
 		fitness = self.fitness_func(accuracy, ind.metrics.parameters) if accuracy is not None else None
 		return fitness
 
+	@staticmethod
+	def cache_key(phenotype, max_training_time, max_training_epochs):
+		return f"{phenotype}#{max_training_time}#{max_training_epochs}"
 
-	def evaluate_cnn(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, datagen=None, datagen_test=None, measure_final_accuracy=False, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
+	def evaluate_cnn(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -601,8 +608,6 @@ class Evaluator:
 				Data augmentation method image data generator
 			datagen_test : keras.preprocessing.image.ImageDataGenerator
 				Image data generator without augmentation
-			measure_final_accuracy : bool
-				predict with final test set and return final test accuracy
 			for_k_folds_validation : bool
 				suppress caching, logging and early stopping for k-folds validation
 			input_size : tuple
@@ -616,11 +621,12 @@ class Evaluator:
 		# Mixed precision slows down LeNet training by 50%. Is this because it's too small?
 		# tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
+		start_time = time()
+
 		# only allocate as much GPU memory as needed
 		gpu_devices = tf.config.experimental.list_physical_devices('GPU')
 		tf.config.experimental.set_memory_growth(gpu_devices[0], True)
 
-		start_time = time()
 		model_phenotype, learning_phenotype = phenotype.split('learning:')
 		learning_phenotype = 'learning:' + learning_phenotype.rstrip().lstrip()
 		model_phenotype = model_phenotype.rstrip().lstrip().replace('  ', ' ')
@@ -707,38 +713,39 @@ class Evaluator:
 
 		fitness = self.fitness_func(test_accuracy, parameters)
 
-		result = CnnEvalResult(score.history, training_time, million_inferences_time, timer_stop_triggered, early_stop_triggered, parameters, keras_layers_count, model_layers, test_accuracy, fitness, model_summary)
-
 		# measure final accuracy
-		if measure_final_accuracy:
-			x_final_test = dataset['x_final_test']
-			y_final_test = dataset['y_final_test']
-			final_test_accuracy, model_test_time, million_inferences_time  = self.test_model_with_data(model, x_final_test, y_final_test, datagen_test)
-			result.add_final_test_result(final_test_accuracy, model_test_time)
+		x_final_test = dataset['x_final_test']
+		y_final_test = dataset['y_final_test']
+		final_test_accuracy, final_test_time, million_inferences_time  = self.test_model_with_data(model, x_final_test, y_final_test, datagen_test)
 
 		keras.backend.clear_session()
 
-		stat.record_evaluation(seconds=time()-start_time, is_k_folds=for_k_folds_validation)
+		eval_time = time() - start_time
+
+		result = CnnEvalResult(score.history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered, parameters, keras_layers_count, model_layers, test_accuracy, fitness, model_summary)
+
+		stat.record_evaluation(seconds=eval_time, is_k_folds=for_k_folds_validation)
 
 		return result
 
 
-	def evaluate_cnn_with_cache(self, phenotype, name, *args, **kwargs):
+	def evaluate_cnn_with_cache(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
 			Evaluates the keras model using the keras optimiser, using caching
 		"""
 
-		if self.evaluation_cache_path and phenotype in self.evaluation_cache:
-			cache_entry = self.evaluation_cache[phenotype]
+		cache_key = Evaluator.cache_key(phenotype, max_training_time, max_training_epochs)
+		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
+			cache_entry = self.evaluation_cache[cache_key]
 			log_debug('using cached metrics from ' + cache_entry.origin_description)
-			stat.record_evaluation(is_cache_hit=True)
+			stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
 			return cache_entry.metrics
 
-		result = self.evaluate_cnn(phenotype, name, *args, **kwargs)
+		result = self.evaluate_cnn(phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, datagen, datagen_test, for_k_folds_validation, load_prev_weights, input_size)
 
 		if self.evaluation_cache_path:
 			new_cache_entry = Evaluator.EvaluationCacheEntry(f"{self.experiment_name}:{name}", result)
-			self.evaluation_cache[phenotype] = new_cache_entry
+			self.evaluation_cache[cache_key] = new_cache_entry
 			self.evaluation_cache_changed = True
 
 		return result
@@ -763,13 +770,17 @@ class Evaluator:
 
 		return accuracy
 
+
+
 	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, max_training_time, max_training_epochs, datagen=None, datagen_test=None, input_size=(28, 28, 1)):
 		""" evaluate individual for k-folds, using cache """
 
-		if self.evaluation_cache_path and phenotype in self.evaluation_cache:
-			cache_entry = self.evaluation_cache[phenotype]
+		cache_key = Evaluator.cache_key(phenotype, max_training_time, max_training_epochs)
+		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
+			cache_entry = self.evaluation_cache[cache_key]
 			if cache_entry.k_fold_metrics is not None:
 				log_debug('k-fold cached metrics from ' + cache_entry.origin_description)
+				stat.record_evaluation(seconds=cache_entry.k_fold_metrics.total_eval_time, is_cache_hit=True, is_k_folds=True)
 				return cache_entry.k_fold_metrics
 			else:
 				log_debug('*** k-fold metrics not in cache entry ' + cache_entry.origin_description)
@@ -797,13 +808,13 @@ class Evaluator:
 				'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
 				'x_final_test': self.dataset['x_final_test'], 'y_final_test': self.dataset['y_final_test']
 			}
-			result = self.evaluate_cnn(phenotype, f"Fold #{fold_number}", max_training_time, max_training_epochs, '', fold_dataset, datagen, datagen_test, measure_final_accuracy=True, for_k_folds_validation=True, input_size=input_size)
+			result = self.evaluate_cnn(phenotype, f"Fold #{fold_number}", max_training_time, max_training_epochs, '', fold_dataset, datagen, datagen_test, for_k_folds_validation=True, input_size=input_size)
 			fold_number += 1
 			k_folds_result.append_cnn_eval_result(result)
 
 		if self.evaluation_cache_path and metrics is not None:
 			new_cache_entry = Evaluator.EvaluationCacheEntry(f"{self.experiment_name}:{name}", metrics, k_folds_result)
-			self.evaluation_cache[phenotype] = new_cache_entry
+			self.evaluation_cache[cache_key] = new_cache_entry
 			self.evaluation_cache_changed = True
 
 		return k_folds_result
@@ -833,13 +844,13 @@ class Individual:
 			[(non-terminal, min_expansions, max_expansions), ...]
 		output_rule : str
 			output non-terminal symbol
-		learning_rule : list
+		macro_symbols : list
 			list of non-terminals (str) with the marco rules (e.g., learning)
 		modules : list
 			list of Modules (genotype) of the layers
 		output : dict
 			output rule genotype
-		macro : list
+		macro_dummy_layer : list
 			list of Modules (genotype) for the macro rules
 		phenotype : str
 			phenotype of the candidate solution
@@ -888,10 +899,10 @@ class Individual:
 
 		self.network_structure = network_structure
 		self.output_rule = output_rule
-		self.learning_rule = learning_rule
+		self.macro_symbols = learning_rule
 		self.modules = []
 		self.output = None
-		self.macro = []
+		self.macro_dummy_layer = []
 		self.phenotype_lines = []
 		self.id = f"{gen}-{idx}"
 		self.parent_id = None
@@ -949,7 +960,10 @@ class Individual:
 			'training_complete': self.training_complete,
 			'phenotype': self.phenotype_lines,
 			'model_summary': self.metrics.model_summary,
-			'evolution_history': self.evolution_history
+			'evolution_history': self.evolution_history,
+			'layers_features': self.modules[0].layers.__repr__(),
+			'layers_classifier': self.modules[1].layers.__repr__(),
+			'layers_learning': self.macro_dummy_layer.__repr__(),
 		}
 		if self.k_fold_metrics:
 			result.update(
@@ -985,7 +999,7 @@ class Individual:
 
 		for non_terminal, min_expansions, max_expansions in self.network_structure:
 			new_module = Module(non_terminal, min_expansions, max_expansions, levels_back[non_terminal])
-			new_module.initialise_module(grammar, reuse, init_max)
+			new_module.initialise(grammar, reuse, init_max)
 
 			self.modules.append(new_module)
 
@@ -993,8 +1007,8 @@ class Individual:
 		self.output = grammar.initialise_layer(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		for rule in self.learning_rule:
-			self.macro.append(grammar.initialise_layer(rule))
+		for rule in self.macro_symbols:
+			self.macro_dummy_layer.append(grammar.initialise_layer(rule))
 		return self
 
 	def initialise_as_lenet(self, grammar):
@@ -1024,7 +1038,7 @@ class Individual:
 		self.output = grammar.initialise_layer(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro = default_learning_rule_adam()
+		self.macro_dummy_layer = default_learning_rule_adam()
 		return self
 
 	def initialise_as_perceptron(self, grammar):
@@ -1054,7 +1068,7 @@ class Individual:
 		self.output = grammar.initialise_layer(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro = default_learning_rule_adam()
+		self.macro_dummy_layer = default_learning_rule_adam()
 		return self
 
 	def log_mutation_summary(self, description):
@@ -1098,8 +1112,8 @@ class Individual:
 
 		phenotype += '\n' + grammar.decode_layer(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
 
-		for rule_idx, learning_rule in enumerate(self.learning_rule):
-			phenotype += '\n' + grammar.decode_layer(learning_rule, self.macro[rule_idx])
+		for rule_idx, learning_rule in enumerate(self.macro_symbols):
+			phenotype += '\n' + grammar.decode_layer(learning_rule, self.macro_dummy_layer[rule_idx])
 
 		phenotype = phenotype.lstrip('\n')
 		self.phenotype_lines = phenotype.split('\n')

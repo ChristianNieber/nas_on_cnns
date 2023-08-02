@@ -4,7 +4,7 @@ import engine
 # from pickle import load
 # import visualkeras
 
-engine.do_nas_search("D:/experiments", grammar_file='config/lenet_adam.grammar')
+engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
 
 # model = engine.test_saved_model()
 # model.summary(line_length=120)
@@ -17,13 +17,14 @@ engine.do_nas_search("D:/experiments", grammar_file='config/lenet_adam.grammar')
 '''
 To do
 
-store results
 
-copy 2 layers
+mutation operator: copy 2 layers?
 
 test: wrong symbol
 test: wrong type
 add more tests
+
+multiple runs with different random seeds
 
 - init_max random initialisation
 
@@ -45,7 +46,9 @@ EA strategies later
 
 CNN features to try
 -------------------
+- dropout
 - weight regularization (weight decay)
+- scaling of input image
 - add noise
 - data augmentation
 

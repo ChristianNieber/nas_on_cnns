@@ -3,7 +3,10 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Lenet 10",
+    "experiment_name" : "Lenet 12",
+
+    // initial population, "lenet, "perceptron" or "random"
+    "initial_individuals" : "lenet",
 
     // resume from saved state
     "resume": false,
@@ -12,7 +15,7 @@
     "random_seed" : 100,
 
     //Maximum number of generations
-    "num_generations": 50,
+    "num_generations": 100,
 
     // my - number of parents
     "my" : 1,
@@ -22,9 +25,6 @@
 
     // popuplation size for generation 0
     "initial_population_size" : 1,
-
-    // initial population, "lenet, "perceptron" or "random"
-    "initial_individuals" : "lenet",
 
     //rates of the different mutations [0, 1]
     "MUTATIONS": {
@@ -60,7 +60,7 @@
   "TRAINING": {
     // use cache file for storing and retrieving evaluated network configurations
     "use_evaluation_cache": true,
-    "evaluation_cache_file": "../cache_lenet.pkl",
+    "evaluation_cache_file": "../cache.pkl",
 
     //data augmentation generator for the training data - keras interpretable
     //set to "None" if no data augmentation is to be used
@@ -80,12 +80,8 @@
 
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,
-    //fitness function parameter: roughly number of connections worth the difference of 0.02 accuracy at an accuracy of 0.98
-    "penalty_connections_target" : 30000,
 
     // re-train best individual with K folds and select new parents on average K folds fitness
-    "reevaluate_best_with_k_folds" : 10,
-    // test new best individuals with final test set.
-    "retest_best_with_final_test_set" : false
+    "reevaluate_best_with_k_folds" : 0
   }
 }

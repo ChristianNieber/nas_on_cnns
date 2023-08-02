@@ -2,14 +2,17 @@ from time import time
 import json
 import numpy as np
 
+
 class RunStatistics:
 	""" keeps statistics over all generations """
+
 	def __init__(self):
 		# best individual
 		self.best_individual = []
 		self.final_test_accuracy = []
 		self.accuracy = []
 		self.parameters = []
+		self.evaluation_time = []
 		self.training_time = []
 		self.training_epochs = []
 		self.million_inferences_time = []
@@ -37,7 +40,9 @@ class RunStatistics:
 		self.run_generation = -1
 		self.run_time = 0
 		self.eval_time = 0
+		self.eval_time_this_run = 0
 		self.eval_time_k_folds = 0
+		self.eval_time_k_folds_this_run = 0
 		self.evaluations_total = 0
 		self.evaluations_k_folds = 0
 		self.evaluations_cache_hits = 0
@@ -55,6 +60,7 @@ class RunStatistics:
 			self.final_test_accuracy.append(ind.metrics.final_test_accuracy)
 			self.accuracy.append(ind.metrics.accuracy)
 			self.parameters.append(ind.metrics.parameters)
+			self.evaluation_time.append(ind.metrics.eval_time)
 			self.training_time.append(ind.metrics.training_time)
 			self.training_epochs.append(ind.metrics.training_epochs)
 			self.fitness.append(ind.fitness)
@@ -92,9 +98,13 @@ class RunStatistics:
 			self.eval_time += seconds
 			if is_cache_hit:
 				self.evaluations_cache_hits += 1
+			else:
+				self.eval_time_this_run += seconds
 			if is_k_folds:
 				self.evaluations_k_folds += 1
 				self.eval_time_k_folds += seconds
+				if not is_cache_hit:
+					self.eval_time_k_folds_this_run += seconds
 
 	def to_json(self):
 		""" makes object json serializable """
@@ -106,10 +116,15 @@ class RunStatistics:
 		with open(save_path + 'statistics.json', 'w') as f_json:
 			f_json.write(json_dump)
 
+
 class CnnEvalResult:
 	""" results returned by Evaluator.evaluate_cnn """
-	def __init__(self, history, training_time, million_inferences_time, timer_stop_triggered, early_stop_triggered, parameters, keras_layers, model_layers, accuracy, fitness, model_summary):
+
+	def __init__(self, history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered, parameters, keras_layers, model_layers, accuracy, fitness, model_summary):
+		self.final_test_accuracy = final_test_accuracy
+		self.eval_time = eval_time
 		self.training_time = training_time
+		self.final_test_time = final_test_time
 		self.million_inferences_time = million_inferences_time
 		self.timer_stop_triggered = timer_stop_triggered
 		self.early_stop_triggered = early_stop_triggered
@@ -144,16 +159,12 @@ class CnnEvalResult:
 		self.final_test_accuracy = 0
 		self.final_test_time = 0.0
 
-	def add_final_test_result(self, final_test_accuracy, final_test_time):
-		self.final_test_accuracy = final_test_accuracy
-		self.final_test_time = final_test_time
-
 	def __descr__(self):
 		return self.summary()
 
 	def summary(self):
-		return f"ep:{self.training_epochs:2d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} fitness: {self.fitness} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} t: {self.training_time:0.2f}s"
+		return f"ep:{self.training_epochs:2d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} t: {self.training_time:0.2f}s"
 
 	@staticmethod
 	def dummy_eval_result():
-		return CnnEvalResult(None, 0, 0, False, False, 0, 0, 0, 0, 0, [])
+		return CnnEvalResult(None, 0, 0, 0, 0, 0, False, False, 0, 0, 0, 0, 0, '')
