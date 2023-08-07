@@ -1,3 +1,4 @@
+
 import engine
 # from keras.models import load_model
 # from keras.preprocessing.image import ImageDataGenerator
@@ -9,20 +10,26 @@ engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
 # model = engine.test_saved_model()
 # model.summary(line_length=120)
 
-# print("layer:conv num-filters:26 filter-shape:4 stride:2 padding:valid act:sigmoid bias:False batch-normalization:False input:-1\nlayer:conv num-filters:4 filter-shape:5 stride:3 padding:valid act:linear bias:True batch-normalization:True input:0\nlayer:fc act:elu num-units:367 bias:True batch-normalization:False input:1\nlayer:output num-units:10 bias:True input:2\nlearning:adam lr:0.0005 beta1:0.9 beta2:0.999 batch_size:535")
+# print("layer:conv num-filters:26 filter-shape:4 stride:2 padding:valid act:sigmoid bias:False batch-norm:False input:-1\nlayer:conv num-filters:4 filter-shape:5 stride:3 padding:valid act:linear bias:True batch-norm:True input:0\nlayer:fc act:elu num-units:367 bias:True batch-norm:False input:1\nlayer:output num-units:10 bias:True input:2\nlearning:adam lr:0.0005 beta1:0.9 beta2:0.999 batch_size:535")
 # print()
 
 # visualkeras.layered_view(model, legend=True)
 
+
+# from tests.test_utils import Test
+# test = Test()
+# test.test_add_layer_random()
+
 '''
 To do
 
+MIES
+----
+initial_population_size
+step history
 
-mutation operator: copy 2 layers?
-
-test: wrong symbol
-test: wrong type
-add more tests
+random init
+add more test code
 
 multiple runs with different random seeds
 

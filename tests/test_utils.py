@@ -20,26 +20,44 @@ class Test(unittest.TestCase):
 	def count_layers(self, modules):
 		return sum([len(module.layers) for module in modules])
 
-	def create_individual(self):
+	def create_individual_fdenser(self):
 		from utils import Individual
-		from grammar import Grammar
+		from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
 		network_structure = [["features", 1, 3]]
-		grammar = Grammar('tests/examples/example.grammar')
+		nas_strategy = FDENSERStrategy()
+		grammar = FDENSERGrammar('tests/examples/example_fdenser.grammar')
+		nas_strategy.set_grammar(grammar)
 		network_structure_init = {"features":[2]}
 
-		ind = Individual(network_structure, [], 'output', 0, 0).initialise_individual_random(grammar, 0, network_structure_init)
+		ind = Individual(network_structure, [], 'output', 0, 0).initialise_random(grammar, network_structure_init)
 
 		print(ind.get_phenotype(grammar))
 
-		return ind, grammar
+		return ind, grammar, nas_strategy
+
+	def create_individual_stepper(self):
+		from utils import Individual
+		from strategy_stepper import StepperGrammar, StepperStrategy
+
+		network_structure = [["features", 1, 3]]
+		nas_strategy = StepperStrategy()
+		grammar = StepperGrammar('tests/examples/example.grammar')
+		nas_strategy.set_grammar(grammar)
+		network_structure_init = {"features":[2]}
+
+		ind = Individual(network_structure, [], 'output', 0, 0).initialise_random(grammar, network_structure_init)
+
+		print(ind.get_phenotype(grammar))
+
+		return ind, grammar, nas_strategy
 
 	def create_lenet_individual(self):
 		from utils import Individual
-		from grammar import Grammar
+		from strategy_stepper import StepperGrammar
 
 		network_structure = [["features", 1, 30], ["classification", 1, 10]],
-		grammar = Grammar('tests/examples/lenet.grammar')
+		grammar = StepperGrammar('tests/examples/lenet.grammar')
 
 		ind = Individual(network_structure, [], 'output', 1, 0).initialise_as_lenet(grammar)
 
@@ -51,7 +69,7 @@ class Test(unittest.TestCase):
 		import os
 
 		random.seed(0)
-		ind, grammar = self.create_individual()
+		ind, grammar, nas_strategy = self.create_individual_stepper()
 		evaluator = Evaluator('cifar10')
 
 		if not os.path.exists('./run_0/'):
@@ -65,16 +83,16 @@ class Test(unittest.TestCase):
 	def test_save_population(self):
 		from utils import Individual, CnnEvalResult
 		from statistics import RunStatistics
-		from grammar import Grammar
+		from strategy_stepper import StepperGrammar
 		import engine
 		import os
 
 		network_structure = [["features", 1, 3], ["classification", 1, 2]]
-		grammar = Grammar('tests/examples/example.grammar')
+		grammar = StepperGrammar('tests/examples/example.grammar')
 		network_structure_init = {"features":[2], "classification":[2]}
 
 		ind = Individual(network_structure, [], 'output', 0, 0)
-		ind.initialise_individual_random(grammar, 0, network_structure_init)
+		ind.initialise_random(grammar, network_structure_init)
 		ind.metrics = CnnEvalResult.dummy_eval_result()
 		stat = RunStatistics()
 		stat.record_best(ind)
@@ -111,55 +129,50 @@ class Test(unittest.TestCase):
 
 
 	def test_add_layer_random(self):
-		from engine import mutation
+		from strategy_fdenser import FDENSERStrategy
 
 		random.seed(0)
-		ind, grammar = self.create_individual()
+		ind, grammar, nas_strategy = self.create_individual_fdenser()
 		
-		num_layers_before_mutation = len(ind.modules[0].layers)
-
-		new_ind = mutation(ind, grammar, 1, 0, 0, 0, 0)
+		nas_strategy.set_params(1, 0, 0, 0, 0)
+		new_ind = nas_strategy.mutation(ind, grammar)
 
 		self.assertEqual(self.count_unique_layers(ind.modules)+1, self.count_unique_layers(new_ind.modules), "Error: add layer wrong size")
 		self.assertEqual(self.count_layers(ind.modules)+1, self.count_layers(new_ind.modules), "Error: add layer wrong size")
 
 
 	def test_add_layer_replicate(self):
-		from engine import mutation
 
 		random.seed(0)
-		ind, grammar = self.create_individual()
-		
-		num_layers_before_mutation = len(ind.modules[0].layers)
+		ind, grammar, nas_strategy = self.create_individual_fdenser()
 
-		new_ind = mutation(ind, grammar, 1, 1, 0, 0, 0)
+		nas_strategy.set_params(1, 1, 0, 0, 0)
+		new_ind = nas_strategy.mutation(ind, grammar)
 
 		self.assertEqual(self.count_unique_layers(ind.modules), self.count_unique_layers(new_ind.modules), "Error: duplicate layer wrong size")
 		self.assertEqual(self.count_layers(ind.modules)+1, self.count_layers(new_ind.modules), "Error: duplicate layer wrong size")
 
 
 	def test_remove_layer(self):
-		from engine import mutation
 
 		random.seed(0)
-		ind, grammar = self.create_individual()
-		
-		num_layers_before_mutation = len(ind.modules[0].layers)
+		ind, grammar, nas_strategy = self.create_individual_fdenser()
 
-		new_ind = mutation(ind, grammar, 0, 0, 1, 0, 0)
+		nas_strategy.set_params(0, 0, 1, 0, 0)
+		new_ind = nas_strategy.mutation(ind, grammar)
 
 		self.assertEqual(self.count_layers(ind.modules)-1, self.count_layers(new_ind.modules), "Error: remove layer wrong size")
 
 
 	def test_mutate_ge(self):
-		from engine import mutation
 
 		random.seed(0)
-		ind, grammar = self.create_individual()
-		
-		for test_number in range(0, 3):
-			num_layers_before_mutation = len(ind.modules[0].layers)
-			new_ind = mutation(ind, grammar, 0, 0,0, 1, 0)
+		ind, grammar, nas_strategy = self.create_individual_fdenser()
+
+		# This test will fail if a layer type changes
+		for test_number in range(0, 1):
+			nas_strategy.set_params(0, 0, 0, 1, 0)
+			new_ind = nas_strategy.mutation(ind, grammar)
 
 			self.assertEqual(self.count_layers(ind.modules), self.count_layers(new_ind.modules), "Error: change ge parameter")
 
@@ -180,7 +193,7 @@ class Test(unittest.TestCase):
 		from utils import Evaluator
 
 		random.seed(0)
-		ind, grammar = self.create_individual()
+		ind, grammar, nas_strategy = self.create_individual_stepper()
 		evaluator = Evaluator('mnist')
 
 		phenotype = ind.get_phenotype(grammar)
@@ -206,22 +219,22 @@ class Test(unittest.TestCase):
 		evaluator = Evaluator('mnist')
 
 		phenotype = ind.get_phenotype(grammar)
-		expected_phenotype = ("layer:conv num-filters:6 filter-shape:5 stride:1 act:relu padding:same bias:True batch-normalization:True input:-1\n"
-								"layer:pooling kernel-size:2 stride:2 padding:valid pooling-type:max input:0\n"
-								"layer:conv num-filters:16 filter-shape:5 stride:1 act:relu padding:valid bias:True batch-normalization:True input:1\n"
-								"layer:pooling kernel-size:2 stride:2 padding:valid pooling-type:max input:2\n"
-								"layer:fc act:relu num-units:120 bias:True batch-normalization:True input:3\n"
-								"layer:fc act:relu num-units:84 bias:True batch-normalization:True input:4\n"
+		expected_phenotype = ("layer:conv num-filters:6 filter-shape:5 stride:1 act:relu padding:same bias:True batch-norm:True input:-1\n"
+								"layer:pooling pooling-type:max kernel-size:2 stride:2 padding:valid input:0\n"
+								"layer:conv num-filters:16 filter-shape:5 stride:1 act:relu padding:valid bias:True batch-norm:True input:1\n"
+								"layer:pooling pooling-type:max kernel-size:2 stride:2 padding:valid input:2\n"
+								"layer:fc act:relu num-units:120 bias:True batch-norm:True input:3\n"
+								"layer:fc act:relu num-units:84 bias:True batch-norm:True input:4\n"
 								"layer:output num-units:10 bias:True input:5")
 		self.assertEqual(phenotype, expected_phenotype, "error in phenotype = ind.decode(grammar)")
 
 		keras_layers = evaluator.get_keras_layers(phenotype)
-		expected_keras_layers = [('conv', {'num-filters': '6', 'filter-shape': '5', 'stride': '1', 'act': 'relu', 'padding': 'same', 'bias': 'True', 'batch-normalization': 'True', 'input': '-1'}),
+		expected_keras_layers = [('conv', {'num-filters': '6', 'filter-shape': '5', 'stride': '1', 'act': 'relu', 'padding': 'same', 'bias': 'True', 'batch-norm': 'True', 'input': '-1'}),
 								 ('pooling', {'kernel-size': '2', 'stride': '2', 'padding': 'valid', 'pooling-type': 'max', 'input': '0'}),
-								 ('conv', {'num-filters': '16', 'filter-shape': '5', 'stride': '1', 'act': 'relu', 'padding': 'valid', 'bias': 'True', 'batch-normalization': 'True', 'input': '1'}),
+								 ('conv', {'num-filters': '16', 'filter-shape': '5', 'stride': '1', 'act': 'relu', 'padding': 'valid', 'bias': 'True', 'batch-norm': 'True', 'input': '1'}),
 								 ('pooling', {'kernel-size': '2', 'stride': '2', 'padding': 'valid', 'pooling-type': 'max', 'input': '2'}),
-								 ('fc', {'act': 'relu', 'num-units': '120', 'bias': 'True', 'batch-normalization': 'True', 'input': '3'}),
-								 ('fc', {'act': 'relu', 'num-units': '84', 'bias': 'True', 'batch-normalization': 'True', 'input': '4'}), ('output', {'num-units': '10', 'bias': 'True', 'input': '5'})]
+								 ('fc', {'act': 'relu', 'num-units': '120', 'bias': 'True', 'batch-norm': 'True', 'input': '3'}),
+								 ('fc', {'act': 'relu', 'num-units': '84', 'bias': 'True', 'batch-norm': 'True', 'input': '4'}), ('output', {'num-units': '10', 'bias': 'True', 'input': '5'})]
 		self.assertEqual(keras_layers, expected_keras_layers)
 
 		model = evaluator.assemble_network(keras_layers, (28, 28, 1))

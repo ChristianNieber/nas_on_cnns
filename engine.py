@@ -13,20 +13,24 @@ from pathlib import Path
 from keras.models import load_model
 # from keras.preprocessing.image import ImageDataGenerator
 # from data_augmentation import augmentation
-from grammar import Grammar, mutation
 
 from utils import Evaluator, Individual, stat
 from logger import *
 
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-DEBUG_CONFIGURATION = 1				# use config_debug.json default configuration file instead of config.json
+USE_FDENSER_STRATEGY = 0             # Use FDENSER strategy instead of Stepper
+from strategy_stepper import StepperGrammar, StepperStrategy
+from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
+
+DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
 
 # global variables set from config.json
 USE_NETWORK_SIZE_PENALTY = 0
+
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def fitness_metric_with_size_penalty(accuracy, parameters):
 	if USE_NETWORK_SIZE_PENALTY:
@@ -301,11 +305,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
 	LAMBDA = config['EVOLUTIONARY']['lambda']
-	REUSE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['reuse_layer']
-	ADD_LAYER = config['EVOLUTIONARY']['MUTATIONS']['add_layer']
-	REMOVE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['remove_layer']
-	DSGE_LAYER = config['EVOLUTIONARY']['MUTATIONS']['dsge_layer']
-	MACRO_LAYER = config['EVOLUTIONARY']['MUTATIONS']['macro_layer']
+	COMMA_STRATEGY = config['EVOLUTIONARY']['comma_strategy']
 
 	NETWORK_STRUCTURE = config['NETWORK']['network_structure']
 	MACRO_STRUCTURE = config['NETWORK']['macro_structure']
@@ -314,6 +314,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	USE_EVALUATION_CACHE = config['TRAINING']['use_evaluation_cache']
 	EVALUATION_CACHE_FILE = config['TRAINING']['evaluation_cache_file']
+	if USE_FDENSER_STRATEGY:
+		EVALUATION_CACHE_FILE = EVALUATION_CACHE_FILE.replace(".pkl", "_fdenser.pkl")
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
@@ -329,10 +331,18 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	init_logger(log_file_path, overwrite=True)
 	logger_configuration(logger_log_training=True, logger_log_mutations=LOG_MUTATIONS, logger_log_debug=LOG_DEBUG)
 
-	# load grammar
-	grammar = Grammar(grammar_file)
+	# load grammar and init strategy
+	if USE_FDENSER_STRATEGY:
+		grammar = FDENSERGrammar(grammar_file.replace(".grammar", "_fdenser.grammar"))
+		nas_strategy = FDENSERStrategy()
+	else:
+		grammar = StepperGrammar(grammar_file)
+		nas_strategy = StepperStrategy()
+
+	nas_strategy.set_grammar(grammar)
 
 	best_fitness = None
+	best_individual_overall = None
 
 	# load previous population content (if any)
 	unpickle = unpickle_population(save_path) if RESUME else None
@@ -378,7 +388,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			elif INITIAL_INDIVIDUALS == "perceptron":
 				new_individual.initialise_as_perceptron(grammar)
 			elif INITIAL_INDIVIDUALS == "random":
-				new_individual.initialise_individual_random(grammar, REUSE_LAYER, NETWORK_STRUCTURE_INIT)
+				new_individual.initialise_random(grammar, NETWORK_STRUCTURE_INIT)
 			else:
 				raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
 			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
@@ -409,7 +419,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			for idx in range(LAMBDA):
 				parent = select_parent(population[0:MY])
 				while True:
-					new_individual = mutation(parent, grammar, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, DSGE_LAYER, MACRO_LAYER, gen, idx)
+					new_individual = nas_strategy.mutation(parent, gen, idx)
 					fitness = new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					if fitness:
 						break
@@ -417,7 +427,11 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 		# select candidates for parents
 		population += generation_list
-		new_parents = select_new_parents(population, MY)
+		if gen and COMMA_STRATEGY:
+			selection_pool = generation_list
+		else:
+			selection_pool = population
+		new_parents = select_new_parents(selection_pool, MY)
 
 		log_nolf('[Gen %d] ' % gen)
 
@@ -433,7 +447,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					# flush caache after every individual
 					cnn_eval.flush_evaluation_cache()
 			if new_parent_candidates_count:
-				new_parents = select_new_parents(population, MY, after_k_folds_evaluation=True)
+				new_parents = select_new_parents(selection_pool, MY, after_k_folds_evaluation=True)
 				count = sum(1 for parent in new_parents if not parent.is_parent)
 				if count == 0:
 					log_bold('New parent candidate fails K-folds evaluation')
@@ -457,15 +471,16 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 						log_bold(f'*** New best: {parent.short_description()}')
 
 					best_fitness = parent.fitness
+					best_individual_overall = parent
 
 					# copy new best individual's weights
 					if os.path.isfile(parent.model_save_path):
 						copyfile(parent.model_save_path, Path(save_path, 'best.h5'))
 					with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 						pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
-				else:
-					log_bold(f'New individual rank {idx+1} replaces {population[idx].short_description()}')
-					log_bold(f'New rank {idx+1}: {parent.short_description()}')
+				elif not COMMA_STRATEGY:
+					log_bold(f'New individual rank {idx} replaces {population[idx].short_description()}')
+					log_bold(f'New rank {idx}: {parent.short_description()}')
 
 		# flush evaluation cache after every generation
 		cnn_eval.flush_evaluation_cache()
@@ -483,7 +498,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			generation_list.append(population[0])
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
-		log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
+		if COMMA_STRATEGY:
+			log(f'Best: {best_individual.short_description()}, overall: {best_individual_overall.short_description()}')
+		else:
+			log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
 		for idx in range(1, len(new_parents)):
 			log(f'  #{idx+1}: {new_parents[idx].short_description()}')
 
@@ -491,13 +509,14 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		assert len(generation_list) == LAMBDA
 		stat.record_generation(generation_list)
 
-		generation_list.clear()
-
 		# save population
 		save_population_statistics(population, save_path, gen)
 		pickle_population(gen, population, save_path)
 		pickle_statistics(stat, save_path)
 		# stat.save_to_json_file(save_path)
+
+		generation_list.clear()
+		selection_pool.clear()
 
 		# keep only best as new parents
 		population = new_parents

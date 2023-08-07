@@ -13,7 +13,6 @@ from utilities.data import load_dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
 
-from grammar import Module, default_learning_rule_adam
 from statistics import *
 from logger import *
 
@@ -118,6 +117,7 @@ class KFoldEvalResult:
 		self.million_inferences_time = .0
 		self.million_inferences_time_std = .0
 		self.total_eval_time = .0
+		self.n_mutable_variables = 0
 
 	def append_cnn_eval_result(self, result):
 		self.folds_eval_time.append(result.eval_time)
@@ -463,7 +463,7 @@ class Evaluator:
 
 				# conv and fc layers can have an optional batch normalisation layer, that should be inserted before the activation layer
 				if layer_type == 'conv' or layer_type == 'fc':
-					if ('batch-normalization' in layer_params) and layer_params['batch-normalization']:
+					if ('batch-norm' in layer_params) and layer_params['batch-norm']:
 						new_data_layer = tf.keras.layers.BatchNormalization()(new_data_layer)
 					if 'act' in layer_params:
 						activation_function = layer_params['act']
@@ -850,7 +850,7 @@ class Individual:
 			list of Modules (genotype) of the layers
 		output : dict
 			output rule genotype
-		macro_dummy_layer : list
+		macro_layers : list
 			list of Modules (genotype) for the macro rules
 		phenotype : str
 			phenotype of the candidate solution
@@ -897,12 +897,13 @@ class Individual:
 				index in generation
 		"""
 
+		self.macro_layer_step = None
 		self.network_structure = network_structure
 		self.output_rule = output_rule
 		self.macro_symbols = learning_rule
 		self.modules = []
 		self.output = None
-		self.macro_dummy_layer = []
+		self.macro_layers = []
 		self.phenotype_lines = []
 		self.id = f"{gen}-{idx}"
 		self.parent_id = None
@@ -912,7 +913,7 @@ class Individual:
 	def reset_training(self):
 		"""reset all values computed during training"""
 		self.is_parent = False
-		self.fitness = None
+		self.fitness = 0.0
 		self.metrics = None
 		self.k_fold_metrics = None
 		self.training_complete = False
@@ -925,11 +926,12 @@ class Individual:
 		""" return short description of individual with fitness, k-fold accuracy and final test accuracy if calculated,
 			test accuracy and number of parameters """
 		result = f"{self.id} {self.fitness:.5f} "
-		if self.k_fold_metrics is not None:
+		if self.k_fold_metrics:
 			result += f"k-folds: {self.k_fold_metrics.accuracy:.5f} (SD:{self.k_fold_metrics.accuracy_std:.5f}) "
-		if self.metrics is not None and self.metrics.final_test_accuracy:
-			result += f"final: {self.metrics.final_test_accuracy:.5f} "
-		result += f"acc: {self.metrics.accuracy:.5f} p: {self.metrics.parameters}"
+		if self.metrics:
+			if self.metrics.final_test_accuracy:
+				result += f"final: {self.metrics.final_test_accuracy:.5f} "
+			result += f"acc: {self.metrics.accuracy:.5f} p: {self.metrics.parameters}"
 		return result
 
 	def log_long_description(self, title):
@@ -963,7 +965,7 @@ class Individual:
 			'evolution_history': self.evolution_history,
 			'layers_features': self.modules[0].layers.__repr__(),
 			'layers_classifier': self.modules[1].layers.__repr__(),
-			'layers_learning': self.macro_dummy_layer.__repr__(),
+			'layers_learning': self.macro_layers.__repr__(),
 		}
 		if self.k_fold_metrics:
 			result.update(
@@ -979,7 +981,7 @@ class Individual:
 			)
 		return result
 
-	def initialise_individual_random(self, grammar, reuse, init_max):
+	def initialise_random(self, grammar, init_max):
 		"""Randomly creates a candidate solution
 
 			Parameters
@@ -998,17 +1000,17 @@ class Individual:
 		"""
 
 		for non_terminal, min_expansions, max_expansions in self.network_structure:
-			new_module = Module(non_terminal, min_expansions, max_expansions)
-			new_module.initialise_module(grammar, reuse, init_max)
+			new_module = grammar.Module(non_terminal, min_expansions, max_expansions)
+			new_module.initialise_module_random(grammar, init_max)
 
 			self.modules.append(new_module)
 
 		# Initialise output
-		self.output = grammar.initialise_layer(self.output_rule)
+		self.output = grammar.initialise_layer_random(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
 		for rule in self.macro_symbols:
-			self.macro_dummy_layer.append(grammar.initialise_layer(rule))
+			self.macro_layers.append(grammar.initialise_layer_random(rule))
 		return self
 
 	def initialise_as_lenet(self, grammar):
@@ -1026,19 +1028,19 @@ class Individual:
 				randomly created candidate solution
 		"""
 
-		new_module = Module('features', 0, 10)
+		new_module = grammar.Module('features', 0, 10)
 		new_module.initialise_module_as_lenet()
 		self.modules.append(new_module)
 
-		new_module = Module('classification', 1, 5)
+		new_module = grammar.Module('classification', 1, 5)
 		new_module.initialise_module_as_lenet()
 		self.modules.append(new_module)
 
 		# Initialise output
-		self.output = grammar.initialise_layer(self.output_rule)
+		self.output = grammar.initialise_layer_random(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro_dummy_layer = default_learning_rule_adam()
+		self.macro_layers = grammar.Module.default_learning_rule_adam()
 		return self
 
 	def initialise_as_perceptron(self, grammar):
@@ -1056,19 +1058,19 @@ class Individual:
 				randomly created candidate solution
 		"""
 
-		new_module = Module('features', 0, 10)
+		new_module = grammar.Module('features', 0, 10)
 		new_module.initialise_module_as_perceptron()
 		self.modules.append(new_module)
 
-		new_module = Module('classification', 1, 5)
+		new_module = grammar.Module('classification', 1, 5)
 		new_module.initialise_module_as_perceptron()
 		self.modules.append(new_module)
 
 		# Initialise output
-		self.output = grammar.initialise_layer(self.output_rule)
+		self.output = grammar.initialise_layer_random(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro_dummy_layer = default_learning_rule_adam()
+		self.macro_layers = grammar.Module.default_learning_rule_adam()
 		return self
 
 	def log_mutation_summary(self, description):
@@ -1112,7 +1114,7 @@ class Individual:
 		phenotype += '\n' + grammar.decode_layer(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
 
 		for rule_idx, learning_rule in enumerate(self.macro_symbols):
-			phenotype += '\n' + grammar.decode_layer(learning_rule, self.macro_dummy_layer[rule_idx])
+			phenotype += '\n' + grammar.decode_layer(learning_rule, self.macro_layers[rule_idx])
 
 		phenotype = phenotype.lstrip('\n')
 		self.phenotype_lines = phenotype.split('\n')

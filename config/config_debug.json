@@ -15,25 +15,19 @@
     "random_seed" : 100,
 
     //Maximum number of generations
-    "num_generations": 3,
+    "num_generations": 10,
 
     // my - number of parents
     "my" : 1,
 
     //lambda - number of offspring
-    "lambda": 2,
+    "lambda": 5,
+
+    //comma strategy - no parents in selection
+    "comma_strategy": false,
 
     // popuplation size for generation 0
-    "initial_population_size" : 1,
-
-    //rates of the different mutations [0, 1]
-    "MUTATIONS": {
-      "add_layer": 0.25,
-      "reuse_layer": 0.15,
-      "remove_layer": 0.25,
-      "dsge_layer": 0.15,
-      "macro_layer": 0.3
-    }
+    "initial_population_size" : 1
   },
 
   //network specific parameters

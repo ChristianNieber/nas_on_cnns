@@ -3,10 +3,10 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Lenet 12",
+    "experiment_name" : "Stepper 3 test",
 
     // initial population, "lenet, "perceptron" or "random"
-    "initial_individuals" : "lenet",
+    "initial_individuals" : "random",
 
     // resume from saved state
     "resume": false,
@@ -23,17 +23,11 @@
     //lambda - number of offspring
     "lambda": 5,
 
-    // popuplation size for generation 0
-    "initial_population_size" : 1,
+    //comma strategy - no parents in selection
+    "comma_strategy": true,
 
-    //rates of the different mutations [0, 1]
-    "MUTATIONS": {
-      "add_layer": 0.25,
-      "reuse_layer": 0.15,
-      "remove_layer": 0.25,
-      "dsge_layer": 0.15,
-      "macro_layer": 0.3
-    }
+    // popuplation size for generation 0
+    "initial_population_size" : 1
   },
 
   //network specific parameters
