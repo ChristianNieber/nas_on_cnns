@@ -264,6 +264,7 @@ class StepperGrammar:
 			self.max_expansions = max_expansions
 
 			self.step = None
+			self.step_history = []
 
 
 		def initialise_module_random(self, grammar, init_max):
@@ -427,11 +428,12 @@ class StepperStrategy(NasStrategy):
 
 	def mutate_layers(self, ind, mutation_state: MutationState):
 
-		for module_idx, module in enumerate(ind.modules):
+		for module_idx, module in enumerate(ind.modules_including_macro):
 			step = module.step
 			if step == None:
 				step = self.DEFAULT_STEPWIDTH_MODULE
 				module.step = step
+				module.step_history.append((0, step))
 			tau_random_expression = mutation_state.get_tau_random_expression()
 			step = 1.0 / (1 + ((1 - step) / step) * np.exp(-tau_random_expression))
 			step = interval_transform(step, 0.3333333 / mutation_state.nvars, 0.5)
@@ -440,6 +442,7 @@ class StepperStrategy(NasStrategy):
 			if u < step:  # mutate this layer?
 				old_step = module.step
 				module.step = step
+				module.step_history.append((ind.generation, step))
 				max_nchanges = min(2, len(module.layers) // 2) + 1  # can change 1, 2, or 3 layers, depending on the number of layers
 				nchanges = int(u * max_nchanges / step) + 1
 
@@ -460,7 +463,7 @@ class StepperStrategy(NasStrategy):
 						probabilites.append(self.CHANGE_TYPE)
 						actions.append('change')
 
-					action = random.choices(actions, weights=probabilites, k=1)[0]
+					action = actions[0] if len(actions) == 1 else random.choices(actions, weights=probabilites, k=1)[0]
 					# add layer (new or copy)
 					if action == 'add' or action == 'copy':
 						insert_pos = random.randint(0, nlayers)
@@ -484,20 +487,6 @@ class StepperStrategy(NasStrategy):
 					elif action == 'change':
 						change_idx = random.randint(0, nlayers - 1)
 						self.mutate_grammatical_type(ind, module.module_name, module.layers[change_idx], change_idx, nlayers, mutation_state)
-
-		# macro level mutation
-		step = ind.macro_layer_step
-		if step == None:
-			step = self.DEFAULT_STEPWIDTH_MODULE
-			ind.macro_layer_step = step
-		tau_random_expression = mutation_state.get_tau_random_expression()
-		step = 1.0 / (1 + ((1 - step) / step) * np.exp(-tau_random_expression))
-		step = interval_transform(step, 0.3333333 / mutation_state.nvars, 0.5)
-		u = random.uniform(0, 1)
-		if u < step:
-			ind.macro_layer_step = step
-			for macro_idx, macro_layer in enumerate(ind.macro_layers):
-				self.mutate_grammatical_type(ind, "learning", macro_layer, 0, 1, mutation_state)
 
 	def mutate_grammatical_type(self, ind, nt_symbol, layer, layer_idx, nlayers, mutation_state: MutationState):
 		mutable_vars = []
@@ -529,13 +518,10 @@ class StepperStrategy(NasStrategy):
 		# scan all layers for mutable variables
 		layer_count = 0
 		mutable_vars = []
-		for module_idx, module in enumerate(ind.modules):
+		for module_idx, module in enumerate(ind.modules_including_macro):
 			for layer_idx, layer in enumerate(module.layers):
 				layer_count += 1
 				self.scan_mutable_variables_recursive(module.module_name, layer, StepperStrategy.ScanLayerInfo(module.module_name, module_idx, len(module.layers)), mutable_vars)
-		for macro_idx, macro_layer in enumerate(ind.macro_layers):
-			layer_count += 1
-			self.scan_mutable_variables_recursive("learning", macro_layer, StepperStrategy.ScanLayerInfo("learning", macro_idx, len(ind.macro_layers)), mutable_vars)
 
 		# number of variables in individual are useful for some step width calculations
 		nvars = len(mutable_vars) + layer_count
@@ -552,11 +538,9 @@ class StepperStrategy(NasStrategy):
 
 		# write changed variables and step widths back into layers
 		index = 0
-		for module_idx, module in enumerate(ind.modules):
+		for module_idx, module in enumerate(ind.modules_including_macro):
 			for layer_idx, layer in enumerate(module.layers):
 				index = self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, index)
-		for macro_idx, macro_layer in enumerate(ind.macro_layers):
-			index = self.write_mutated_variables_recursive("learning", macro_layer, mutable_vars, index)
 		assert index==len(mutable_vars)
 
 		return ind

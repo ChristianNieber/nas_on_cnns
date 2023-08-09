@@ -22,7 +22,7 @@ USE_FDENSER_STRATEGY = 0             # Use FDENSER strategy instead of Stepper
 from strategy_stepper import StepperGrammar, StepperStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
+DEBUG_CONFIGURATION = 1				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
@@ -301,7 +301,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	RESUME = config['EVOLUTIONARY']['resume']
 	RANDOM_SEED = config['EVOLUTIONARY']['random_seed']
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
-	INITIAL_POPULATION_SIZE = config['EVOLUTIONARY']['initial_population_size']
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
 	LAMBDA = config['EVOLUTIONARY']['lambda']
@@ -379,9 +378,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 		last_gen = -1
 
-		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {INITIAL_POPULATION_SIZE}')
+		initial_population_size = LAMBDA if INITIAL_INDIVIDUALS == 'random' else 1
+		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {initial_population_size}')
 		population = []
-		for idx in range(INITIAL_POPULATION_SIZE):
+		for idx in range(initial_population_size):
 			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
 			if INITIAL_INDIVIDUALS == "lenet":
 				new_individual.initialise_as_lenet(grammar)

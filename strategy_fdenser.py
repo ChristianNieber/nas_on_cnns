@@ -623,7 +623,7 @@ class FDENSERStrategy(NasStrategy):
 					self.mutation_dsge(ind, layer, f"{module.module_name}{layer_idx}")
 
 		# macro level mutation
-		for macro_idx, macro in enumerate(ind.macro_layers):
+		for macro_idx, macro in enumerate(ind.macro_module.layers):
 			if random.random() <= self.MACRO_LAYER:
 				self.mutation_dsge(ind, macro, "learning")
 

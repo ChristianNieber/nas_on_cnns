@@ -850,8 +850,6 @@ class Individual:
 			list of Modules (genotype) of the layers
 		output : dict
 			output rule genotype
-		macro_layers : list
-			list of Modules (genotype) for the macro rules
 		phenotype : str
 			phenotype of the candidate solution
 		fitness : float
@@ -880,18 +878,18 @@ class Individual:
 	training_complete: bool
 	model_save_path: str
 
-	def __init__(self, network_structure, learning_rule, output_rule, gen, idx):
+	def __init__(self, network_structure, macro_symbols, output_rule, generation, idx):
 		"""
 			Parameters
 			----------
 			network_structure : list
 				ordered list of tuples formatted as follows
 				[(non-terminal, min_expansions, max_expansions), ...]
-			learning_rule : list
+			macro_symbols : list
 				list of non-terminals (str) with the learning_rule
 			output_rule : str
 				output non-terminal symbol
-			gen : int
+			generation : int
 				generation count
 			idx: int
 				index in generation
@@ -900,12 +898,14 @@ class Individual:
 		self.macro_layer_step = None
 		self.network_structure = network_structure
 		self.output_rule = output_rule
-		self.macro_symbols = learning_rule
+		self.macro_symbols = macro_symbols
 		self.modules = []
+		self.modules_including_macro = []   # contains references to modules + macro_module
+		self.macro_module = None
 		self.output = None
-		self.macro_layers = []
 		self.phenotype_lines = []
-		self.id = f"{gen}-{idx}"
+		self.generation = generation
+		self.id = f"{generation}-{idx}"
 		self.parent_id = None
 		self.evolution_history = []
 		self.reset_training()
@@ -965,7 +965,7 @@ class Individual:
 			'evolution_history': self.evolution_history,
 			'layers_features': self.modules[0].layers.__repr__(),
 			'layers_classifier': self.modules[1].layers.__repr__(),
-			'layers_learning': self.macro_layers.__repr__(),
+			'layers_learning': self.macro_module.layers.__repr__(),
 		}
 		if self.k_fold_metrics:
 			result.update(
@@ -988,10 +988,6 @@ class Individual:
 			----------
 			grammar : Grammar
 				grammar instances that stores the expansion rules
-			levels_back : dict
-				number of previous layers a given layer can receive as input
-			reuse : float
-				likelihood of reusing an existing layer
 
 			Returns
 			-------
@@ -1009,8 +1005,12 @@ class Individual:
 		self.output = grammar.initialise_layer_random(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
+		self.macro_module = grammar.Module("learning", 1, 1)
 		for rule in self.macro_symbols:
-			self.macro_layers.append(grammar.initialise_layer_random(rule))
+			self.macro_module.layers.append(grammar.initialise_layer_random(rule))
+		self.modules_including_macro = self.modules + [self.macro_module]
+		log_bold(f"randomly created individual:")
+		log(self.get_phenotype(grammar))
 		return self
 
 	def initialise_as_lenet(self, grammar):
@@ -1040,7 +1040,9 @@ class Individual:
 		self.output = grammar.initialise_layer_random(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro_layers = grammar.Module.default_learning_rule_adam()
+		self.macro_module = grammar.Module("learning", 1, 1)
+		self.macro_module.layers = layers = grammar.Module.default_learning_rule_adam()
+		self.modules_including_macro = self.modules + [self.macro_module]
 		return self
 
 	def initialise_as_perceptron(self, grammar):
@@ -1070,7 +1072,9 @@ class Individual:
 		self.output = grammar.initialise_layer_random(self.output_rule)
 
 		# Initialise the macro structure: learning, data augmentation, etc.
-		self.macro_layers = grammar.Module.default_learning_rule_adam()
+		self.macro_module = grammar.Module("learning", 1, 1)
+		self.macro_module.layers = layers = grammar.Module.default_learning_rule_adam()
+		self.modules_including_macro = self.modules + [self.macro_module]
 		return self
 
 	def log_mutation_summary(self, description):
@@ -1114,7 +1118,7 @@ class Individual:
 		phenotype += '\n' + grammar.decode_layer(self.output_rule, self.output) + ' input:' + str(layer_counter - 1)
 
 		for rule_idx, learning_rule in enumerate(self.macro_symbols):
-			phenotype += '\n' + grammar.decode_layer(learning_rule, self.macro_layers[rule_idx])
+			phenotype += '\n' + grammar.decode_layer(learning_rule, self.macro_module.layers[rule_idx])
 
 		phenotype = phenotype.lstrip('\n')
 		self.phenotype_lines = phenotype.split('\n')

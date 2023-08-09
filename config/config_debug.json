@@ -24,10 +24,7 @@
     "lambda": 5,
 
     //comma strategy - no parents in selection
-    "comma_strategy": false,
-
-    // popuplation size for generation 0
-    "initial_population_size" : 1
+    "comma_strategy": false
   },
 
   //network specific parameters
