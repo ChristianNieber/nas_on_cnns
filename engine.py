@@ -18,7 +18,6 @@ from statistics import *
 from logger import *
 from utils import Evaluator, Individual
 
-USE_FDENSER_STRATEGY = 1             # Use FDENSER strategy instead of Stepper
 from strategy_stepper import StepperGrammar, StepperStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
@@ -247,8 +246,6 @@ def select_new_parents(population, number_of_parents, after_k_folds_evaluation=F
 	return sorted_candidates[0:number_of_parents]
 
 
-
-
 def load_config(config_file):
 	"""
 		Load configuration json file.
@@ -307,6 +304,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	MY = config['EVOLUTIONARY']['my']
 	LAMBDA = config['EVOLUTIONARY']['lambda']
 	COMMA_STRATEGY = config['EVOLUTIONARY']['comma_strategy']
+	NAS_STRATEGY = config['EVOLUTIONARY']['nas_strategy']
 
 	NETWORK_STRUCTURE = config['NETWORK']['network_structure']
 	MACRO_STRUCTURE = config['NETWORK']['macro_structure']
@@ -315,7 +313,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	USE_EVALUATION_CACHE = config['TRAINING']['use_evaluation_cache']
 	EVALUATION_CACHE_FILE = config['TRAINING']['evaluation_cache_file']
-	if USE_FDENSER_STRATEGY:
+	if NAS_STRATEGY == "F-DENSER":
 		EVALUATION_CACHE_FILE = EVALUATION_CACHE_FILE.replace(".pkl", "_fdenser.pkl")
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
@@ -334,12 +332,14 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	logger_configuration(logger_log_training=True, logger_log_mutations=LOG_MUTATIONS, logger_log_debug=LOG_DEBUG)
 
 	# load grammar and init strategy
-	if USE_FDENSER_STRATEGY:
+	if NAS_STRATEGY == "F-DENSER":
 		grammar = FDENSERGrammar(grammar_file.replace(".grammar", "_fdenser.grammar"))
 		nas_strategy = FDENSERStrategy()
-	else:
+	elif NAS_STRATEGY == "Stepper":
 		grammar = StepperGrammar(grammar_file)
 		nas_strategy = StepperStrategy()
+	else:
+		raise TypeError("nas_strategy must be 'Stepper' or 'F-DENSER'")
 
 	nas_strategy.set_grammar(grammar)
 
@@ -519,13 +519,15 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			generation_list.append(population[0])
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
+		if NAS_STRATEGY == "Stepper":
+			best_individual.record_stepwidth_statistics(stat.stepwidth_stats)
 		if COMMA_STRATEGY:
-			stat.record_best(best_individual_overall)
-			stat.record_best_in_gen(best_individual)
+			best_individual_overall.record_statistics(stat.best)
+			best_individual.record_statistics(stat.best_in_gen)
 			log(f'Best: {best_individual.short_description()}, overall: {best_individual_overall.short_description()}')
 		else:
-			stat.record_best(best_individual)
-			stat.record_best_in_gen(best_in_generation)
+			best_individual.record_statistics(stat.best)
+			best_in_generation.record_statistics(stat.best_in_gen)
 			log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
 
 		for idx in range(1, len(new_parents)):
@@ -540,8 +542,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		pickle_statistics(stat, save_path)
 		# stat.save_to_json_file(save_path)
 
-		generation_list = []
-		selection_pool = []
+		generation_list.clear()
+		selection_pool.clear()
 
 		# keep only best as new parents
 		population = new_parents

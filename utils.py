@@ -1231,6 +1231,33 @@ class Individual:
 		random.setstate(random_state)
 		np.random.set_state(numpy_state)
 
-	def calculate_final_test_accuracy(self, cnn_eval):
-		self.metrics.final_test_accuracy = cnn_eval.final_test_saved_model(self.model_save_path)
-		return self.metrics.final_test_accuracy
+	def record_statistics(self, ind_stats: RunStatistics.IndividualStatistics):
+		ind_stats.id.append(self.id)
+		if self.metrics is not None:
+			ind_stats.final_test_accuracy.append(self.metrics.final_test_accuracy)
+			ind_stats.accuracy.append(self.metrics.accuracy)
+			ind_stats.parameters.append(self.metrics.parameters)
+			ind_stats.evaluation_time.append(self.metrics.eval_time)
+			ind_stats.training_time.append(self.metrics.training_time)
+			ind_stats.training_epochs.append(self.metrics.training_epochs)
+			ind_stats.fitness.append(self.fitness)
+			if len(self.metrics.history_train_accuracy):
+				ind_stats.train_accuracy.append(self.metrics.history_train_accuracy[-1])
+				ind_stats.train_loss.append(self.metrics.history_train_loss[-1])
+				ind_stats.val_accuracy.append(self.metrics.history_val_accuracy[-1])
+				ind_stats.val_loss.append(self.metrics.history_val_loss[-1])
+		if self.k_fold_metrics is not None:
+			ind_stats.k_fold_accuracy.append(self.k_fold_metrics.accuracy)
+			ind_stats.k_fold_accuracy_std.append(self.k_fold_metrics.accuracy_std)
+			ind_stats.k_fold_final_accuracy.append(self.k_fold_metrics.final_accuracy)
+			ind_stats.k_fold_final_accuracy_std.append(self.k_fold_metrics.final_accuracy_std)
+			ind_stats.k_fold_fitness.append(self.k_fold_metrics.fitness)
+			ind_stats.k_fold_fitness_std.append(self.k_fold_metrics.fitness_std)
+			ind_stats.k_fold_million_inferences_time.append(self.k_fold_metrics.million_inferences_time)
+			ind_stats.k_fold_million_inferences_time_std.append(self.k_fold_metrics.million_inferences_time_std)
+
+	def record_stepwidth_statistics(self, stepwidth_stats):
+		stepwidth_stats.clear()
+		for module in self.modules_including_macro:
+			if len(module.step_history):
+				stepwidth_stats.append((module.module_name, 'structure', module.step_history))

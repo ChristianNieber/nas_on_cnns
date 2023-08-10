@@ -5,9 +5,11 @@ import engine
 # from pickle import load
 # import visualkeras
 
-for run in range(0, 10):
-	print(f"***** Starting FDENSER run {run:02d} of 10, random seed {100+run} **********")
-	engine.do_nas_search("D:/experiments/FDENSER", grammar_file='config/lenet.grammar', override_experiment_name=f"FDENSER {run:02d}", override_random_seed=100+run)
+engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
+
+#for run in range(0, 10):
+#	print(f"***** Starting FDENSER 10 Ep run {run:02d} of 10, random seed {100+run} **********")
+#	engine.do_nas_search("D:/experiments/F-DENSER 10 Ep", config_file='config/config_fdenser.json', grammar_file='config/lenet.grammar', override_experiment_name=f"FDENSER {run:02d}", override_random_seed=100+run)
 
 # model = engine.test_saved_model()
 # model.summary(line_length=120)
@@ -24,18 +26,11 @@ for run in range(0, 10):
 
 '''
 To do
+save model raus
 
-MIES
-----
-initial_population_size
-step history
-
-random init
 add more test code
 
 multiple runs with different random seeds
-
-- init_max random initialisation
 
 - more activation functions and parameters?
 - Comparison with GE?
@@ -43,9 +38,7 @@ multiple runs with different random seeds
 - ES integers
 - ES categorical values
 
-- real time plots & visualisation
-
-- stepwidth mutation, initial stepwidth
+- initial stepwidth/default values for some variables?
 - geometric normal distribution for some variables?
 
 EA strategies later
