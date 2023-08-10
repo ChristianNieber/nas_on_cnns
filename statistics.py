@@ -24,6 +24,7 @@ class RunStatistics:
 			self.k_fold_accuracy_std = []
 			self.k_fold_final_accuracy = []
 			self.k_fold_final_accuracy_std = []
+			self.k_fold_fitness = []
 			self.k_fold_fitness_std = []
 			self.k_fold_million_inferences_time = []
 			self.k_fold_million_inferences_time_std = []
@@ -48,6 +49,7 @@ class RunStatistics:
 				self.k_fold_accuracy_std.append(ind.k_fold_metrics.accuracy_std)
 				self.k_fold_final_accuracy.append(ind.k_fold_metrics.final_accuracy)
 				self.k_fold_final_accuracy_std.append(ind.k_fold_metrics.final_accuracy_std)
+				self.k_fold_fitness.append(ind.k_fold_metrics.fitness)
 				self.k_fold_fitness_std.append(ind.k_fold_metrics.fitness_std)
 				self.k_fold_million_inferences_time.append(ind.k_fold_metrics.million_inferences_time)
 				self.k_fold_million_inferences_time_std.append(ind.k_fold_metrics.million_inferences_time_std)
@@ -166,14 +168,11 @@ class CnnEvalResult:
 			self.val_accuracy = self.history_val_accuracy[-1]
 			self.val_loss = self.history_val_loss[-1]
 
-		self.final_test_accuracy = 0
-		self.final_test_time = 0.0
-
 	def __descr__(self):
 		return self.summary()
 
 	def summary(self):
-		return f"ep:{self.training_epochs:2d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} t: {self.training_time:0.2f}s"
+		return f"acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness:0.5f} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} epochs: {self.training_epochs:2d} t: {self.training_time:0.2f}s"
 
 	@staticmethod
 	def dummy_eval_result():

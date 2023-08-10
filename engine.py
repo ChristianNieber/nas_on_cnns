@@ -183,8 +183,8 @@ def unpickle_population(save_path):
 
 		path = save_path + 'gen_%d_' % last_generation
 
-		with open(save_path + 'evaluator.pkl', 'rb') as handle_eval:
-			pickled_evaluator = pickle.load(handle_eval)
+#		with open(save_path + 'evaluator.pkl', 'rb') as handle_eval:
+#			pickled_evaluator = pickle.load(handle_eval)
 
 		with open(path + 'population.pkl', 'rb') as handle_pop:
 			pickled_population = pickle.load(handle_pop)
@@ -195,7 +195,7 @@ def unpickle_population(save_path):
 		with open(path + 'numpy.pkl', 'rb') as handle_numpy:
 			pickle_numpy = pickle.load(handle_numpy)
 
-		return last_generation, pickled_evaluator, pickled_population, pickle_random, pickle_numpy, pickle_statistics
+		return last_generation, pickled_population, pickle_random, pickle_numpy, pickle_statistics
 
 	else:
 		return None
@@ -320,7 +320,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
-	REEVALUATE_BEST_WITH_K_FOLDS = config['TRAINING']['reevaluate_best_with_k_folds']
+	K_FOLDS = config['TRAINING']['k_folds']
+	SELECT_BEST_WITH_K_FOLDS_ACCURACY = config['TRAINING']['select_best_with_k_folds_accuracy']
 	data_generator = eval(config['TRAINING']['datagen'])
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
 
@@ -345,6 +346,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	best_fitness = None
 	best_individual_overall = None
 
+
+
 	# load previous population content (if any)
 	unpickle = unpickle_population(save_path) if RESUME else None
 
@@ -365,19 +368,26 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		stat = RunStatistics()
 		stat.init_session()
 
-		# set random seeds
+	# set random seeds
+	if RANDOM_SEED != -1:
+		random.seed(RANDOM_SEED)
+		np.random.seed(RANDOM_SEED)
+
+	# create evaluator
+	evaluation_cache_path = None
+	if USE_EVALUATION_CACHE:
+		evaluation_cache_path = Path(save_path, EVALUATION_CACHE_FILE).resolve()
+	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY,
+							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME)
+
+	if unpickle is None:
+		# set random seeds again (Evaluator() creation may have changed it)
 		if RANDOM_SEED != -1:
 			random.seed(RANDOM_SEED)
 			np.random.seed(RANDOM_SEED)
 
-		# create evaluator
-		evaluation_cache_path = None
-		if USE_EVALUATION_CACHE:
-			evaluation_cache_path=Path(save_path, EVALUATION_CACHE_FILE).resolve()
-		cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, for_k_fold_validation=REEVALUATE_BEST_WITH_K_FOLDS, evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME)
-
 		# save evaluator
-		pickle_evaluator(cnn_eval, save_path)
+		# pickle_evaluator(cnn_eval, save_path)
 
 		last_gen = -1
 
@@ -399,15 +409,15 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				if new_individual.fitness:  # new individual could be invalid, then try again
 					break
 				log_bold("Invalid individual created, trying again")
-			cnn_eval.flush_evaluation_cache()
 			population.append(new_individual)
+			cnn_eval.flush_evaluation_cache()  # flush after every created individual
 		log()
 
 	# in case there is a previous population, load it
 	else:
 		init_logger(log_file_path, overwrite=False)
 
-		last_gen, cnn_eval, population, pkl_random, pkl_numpy, stat = unpickle
+		last_gen, population, pkl_random, pkl_numpy, stat = unpickle
 		stat.init_session()
 
 		random.setstate(pkl_random)
@@ -444,15 +454,12 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 		# if there are new parent candidates, do K-fold validation on them
 		new_parent_candidates_count = 0
-		if REEVALUATE_BEST_WITH_K_FOLDS:
+		if SELECT_BEST_WITH_K_FOLDS_ACCURACY:
 			for idx, parent in enumerate(new_parents):
 				if not parent.is_parent:
 					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.short_description()}")
-					start_time = time()
-					parent.evaluate_individual_k_folds(grammar, cnn_eval, REEVALUATE_BEST_WITH_K_FOLDS, stat, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					new_parent_candidates_count += 1
-					# flush caache after every individual
-					cnn_eval.flush_evaluation_cache()
 			if new_parent_candidates_count:
 				new_parents = select_new_parents(selection_pool, MY, after_k_folds_evaluation=True)
 				count = sum(1 for parent in new_parents if not parent.is_parent)
@@ -469,6 +476,11 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 						parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.short_description()}] <- [{original_parent.short_description()}] Δfitness={parent.fitness - original_parent.fitness:.5f} Δacc={parent.metrics.accuracy - original_parent.metrics.accuracy:.5f}")
 					else:
 						log_warning(f"parent {parent.parent_id} of {parent.id} not found in current population!")
+
+				if K_FOLDS and not parent.k_fold_metrics:
+					log_bold(f'*** Evaluating k folds for new parent {parent.short_description()} ***')
+					parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+
 				if best_fitness == None or parent.fitness > best_fitness:
 					if best_fitness:
 						log_bold(f'*** New best individual replaces {population[0].short_description()} ***')
@@ -485,9 +497,11 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 						copyfile(parent.model_save_path, Path(save_path, 'best.h5'))
 					with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 						pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
+
 				elif not COMMA_STRATEGY:
 					log_bold(f'New individual rank {idx} replaces {population[idx].short_description()}')
 					log_bold(f'New rank {idx}: {parent.short_description()}')
+
 
 		# flush evaluation cache after every generation
 		cnn_eval.flush_evaluation_cache()

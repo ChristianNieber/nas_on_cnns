@@ -6,7 +6,7 @@ import engine
 # import visualkeras
 
 for run in range(0, 10):
-	print(f"***** Starting FDENSER run {run:02d} of 10 **********", 100+run)
+	print(f"***** Starting FDENSER run {run:02d} of 10, random seed {100+run} **********")
 	engine.do_nas_search("D:/experiments/FDENSER", grammar_file='config/lenet.grammar', override_experiment_name=f"FDENSER {run:02d}", override_random_seed=100+run)
 
 # model = engine.test_saved_model()

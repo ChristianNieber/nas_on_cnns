@@ -199,7 +199,7 @@ class Evaluator:
 			self.k_fold_metrics = k_fold_metrics
 
 
-	def __init__(self, dataset, fitness_func=fitness_function_accuracy, for_k_fold_validation=False, evaluation_cache_path='', experiment_name=''):
+	def __init__(self, dataset, fitness_func=fitness_function_accuracy, for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, evaluation_cache_path='', experiment_name=''):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -217,6 +217,7 @@ class Evaluator:
 		self.early_stop_patience = EARLY_STOP_PATIENCE
 
 		self.experiment_name = experiment_name
+		self.calculate_fitness_with_k_folds = calculate_fitness_with_k_folds_accuracy
 		self.evaluation_cache_path = evaluation_cache_path
 		self.evaluation_cache = {}
 		self.evaluation_cache_changed = False
@@ -570,7 +571,7 @@ class Evaluator:
 	def calculate_fitness(self, ind):
 		""" calculate fitness of individual """
 		accuracy = None
-		if ind.k_fold_metrics is not None:
+		if self.calculate_fitness_with_k_folds and ind.k_fold_metrics is not None:
 			accuracy = ind.k_fold_metrics.accuracy
 		elif ind.metrics is not None:
 			accuracy = ind.metrics.accuracy
@@ -925,7 +926,7 @@ class Individual:
 			test accuracy and number of parameters """
 		result = f"{self.id} "
 		if self.fitness:
-			result += "{self.fitness:.5f} "
+			result += f"{self.fitness:.5f} "
 		if self.k_fold_metrics:
 			result += f"k-folds: {self.k_fold_metrics.accuracy:.5f} (SD:{self.k_fold_metrics.accuracy_std:.5f}) "
 		if self.metrics:
@@ -1009,7 +1010,7 @@ class Individual:
 		for rule in self.macro_symbols:
 			self.macro_module.layers.append(grammar.initialise_layer_random(rule))
 		self.modules_including_macro = self.modules + [self.macro_module]
-		log_bold(f"randomly created individual:")
+		log_bold(f"randomly created individual {self.id}:")
 		log(self.get_phenotype(grammar))
 		return self
 
@@ -1183,7 +1184,7 @@ class Individual:
 
 		return self.fitness
 
-	def evaluate_individual_k_folds(self, grammar, k_fold_eval, nfolds, stat, datagen, datagen_test, max_training_time, max_training_epochs):
+	def evaluate_individual_k_folds(self, grammar, cnn_eval, nfolds, stat, datagen, datagen_test, max_training_time, max_training_epochs):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1191,7 +1192,7 @@ class Individual:
 			----------
 			grammar : Grammar
 				grammar instance that stores the expansion rules
-			k_fold_eval : Evaluator
+			cnn_eval : Evaluator
 				Evaluator instance used to train the networks
 			nfolds : int
 				number of folds
@@ -1215,10 +1216,10 @@ class Individual:
 		phenotype = self.get_phenotype(grammar)
 
 		try:
-			self.k_fold_metrics = k_fold_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, max_training_time, max_training_epochs, stat, datagen, datagen_test)
-			self.k_fold_metrics.calculate_fitness_mean_std(k_fold_eval)
+			self.k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, max_training_time, max_training_epochs, stat, datagen, datagen_test)
+			self.k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
 			old_fitness = self.fitness
-			self.fitness = k_fold_eval.calculate_fitness(self)
+			self.fitness = cnn_eval.calculate_fitness(self)
 			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.metrics.accuracy:0.5f} -> {self.k_fold_metrics.accuracy:0.5f} (SD:{self.k_fold_metrics.accuracy_std:0.5f}), final acc: {self.k_fold_metrics.final_accuracy:0.5f} (SD:{self.k_fold_metrics.final_accuracy_std:0.5f}), fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
 		except tf.errors.ResourceExhaustedError as e:
 			log_warning(f"{self.id} k-folds evaluation: ResourceExhaustedError {e}")

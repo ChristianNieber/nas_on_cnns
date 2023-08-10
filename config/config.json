@@ -67,7 +67,9 @@
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,
 
-    // re-train best individual with K folds and select new parents on average K folds fitness
-    "reevaluate_best_with_k_folds" : 0
+    // find K folds accuracy for best individual, this specifies the number of folds or 0
+    "k_folds" : 10,
+    // select new parents on average K folds fitness
+    "select_best_with_k_folds_accuracy" : false
   }
 }
