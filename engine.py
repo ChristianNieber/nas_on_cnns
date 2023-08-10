@@ -21,7 +21,7 @@ from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar, StepperStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-DEBUG_CONFIGURATION = 1				# use config_debug.json default configuration file instead of config.json
+DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual

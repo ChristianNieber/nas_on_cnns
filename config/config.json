@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "",
+    "experiment_name" : "Stepper 4",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
@@ -63,9 +63,9 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 30,
+    "max_training_time": 12,
     //maximum training epochs for each network
-    "max_training_epochs": 30,
+    "max_training_epochs": 10,
 
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,

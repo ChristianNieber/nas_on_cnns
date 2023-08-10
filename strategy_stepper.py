@@ -420,7 +420,7 @@ class StepperStrategy(NasStrategy):
 			self.n_mutated_vars = 0
 		def set_nvars(self, nvars):
 			self.nvars = nvars
-		def new_tau_random_expression(self):
+		def log_normal_random(self):
 			self.n_mutated_vars += 1
 			return self.tau_global_gaussian + self.tau_local * random.gauss(0, 1)
 
@@ -430,18 +430,17 @@ class StepperStrategy(NasStrategy):
 			step = module.step
 			if step == None:
 				step = self.DEFAULT_STEPWIDTH_MODULE
-				module.step = step
 				module.step_history = [0.0] * (ind.generation-1)
 				module.step_history.append(step)
-			tau_random_expression = mutation_state.new_tau_random_expression()
+			module.previous_step = step
+			tau_random_expression = mutation_state.log_normal_random()
 			step = 1.0 / (1 + ((1 - step) / step) * np.exp(-tau_random_expression))
 			step = interval_transform(step, 0.3333333 / mutation_state.nvars, 0.5)
+			module.step = step
 			module.step_history.append(step)
 
 			u = random.uniform(0, 1)
 			if u < step:  # mutate this layer?
-				module.previous_step = module.step
-				module.step = step
 				max_nchanges = min(2, len(module.layers) // 2) + 1  # can change 1, 2, or 3 layers, depending on the number of layers
 				nchanges = int(u * max_nchanges / step) + 1
 
@@ -554,7 +553,7 @@ class StepperStrategy(NasStrategy):
 			if step == None:
 				step = self.DEFAULT_STEPWIDTH_FLOAT * (var.max_value - var.min_value)
 				mvar.step = step
-			step = step * np.exp(mutation_state.new_tau_random_expression())
+			step = step * np.exp(mutation_state.log_normal_random())
 			gauss = random.gauss(0, 1)
 			value = value + step * gauss
 			value = interval_transform(value, var.min_value, var.max_value)
@@ -563,7 +562,7 @@ class StepperStrategy(NasStrategy):
 			if step == None:
 				step = self.DEFAULT_STEPWIDTH_INT * (var.max_value - var.min_value)
 				mvar.step = step
-			step = step * np.exp(mutation_state.new_tau_random_expression())
+			step = step * np.exp(mutation_state.log_normal_random())
 			diff = int(round(step * random.gauss(0, 1)))
 			if diff:
 				value += diff
@@ -580,7 +579,7 @@ class StepperStrategy(NasStrategy):
 			if step == None:
 				step = self.DEFAULT_STEPWIDTH_CAT
 				mvar.step = step
-			step = 1.0/(1 + ((1-step)/step) * np.exp(-mutation_state.new_tau_random_expression()))
+			step = 1.0/(1 + ((1-step)/step) * np.exp(-mutation_state.log_normal_random()))
 			step = interval_transform(step, 0.3333333 / mutation_state.nvars, 0.5)
 			if random.uniform(0,1) < step:
 				list_of_choices = var.categories.copy()
@@ -596,9 +595,9 @@ class StepperStrategy(NasStrategy):
 		else:
 			raise TypeError(f"mutate() not supported for {type}")
 
+		mvar.new_step = step    # always modify step, even if value does not change!
 		if value != mvar.value:
 			mvar.new_value = value
-			mvar.new_step = step
 			return True
 		return False
 
@@ -637,7 +636,10 @@ class StepperStrategy(NasStrategy):
 				assert key == var.name
 				assert type(val) != list
 				if var.type != Type.TERMINAL and not nonterminals_only:
-					if mutable_vars[index].new_value is not None:
-						layer[layer_idx] = (key, mutable_vars[index].new_value, mutable_vars[index].new_step)
+					if mutable_vars[index].new_step is not None:
+						new_value = mutable_vars[index].new_value
+						if new_value == None:
+							new_value = mutable_vars[index].value
+						layer[layer_idx] = (key, new_value, mutable_vars[index].new_step)
 					index += 1
 		return index
