@@ -21,10 +21,11 @@ from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar, StepperStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
+DEBUG_CONFIGURATION = 1				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
+SAVE_MODELS_TO_FILE = 0             # currently not used
 
 # global variables set from config.json
 USE_NETWORK_SIZE_PENALTY = 0
@@ -405,7 +406,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					new_individual.initialise_random(grammar, NETWORK_STRUCTURE_INIT)
 				else:
 					raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
-				new_individual.evaluate_individual(grammar, cnn_eval, stat, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+				new_individual.evaluate_individual(grammar, cnn_eval, stat, data_generator, data_generator_test, save_path if SAVE_MODELS_TO_FILE else None, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 				if new_individual.fitness:  # new individual could be invalid, then try again
 					break
 				log_bold("Invalid individual created, trying again")
@@ -437,7 +438,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				parent = select_parent(population[0:MY])
 				while True:
 					new_individual = nas_strategy.mutation(parent, gen, idx)
-					fitness = new_individual.evaluate_individual(grammar, cnn_eval, stat, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					fitness = new_individual.evaluate_individual(grammar, cnn_eval, stat, data_generator, data_generator_test, save_path if SAVE_MODELS_TO_FILE else None, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					if fitness:
 						break
 				generation_list.append(new_individual)
@@ -493,7 +494,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					best_individual_overall = parent
 
 					# copy new best individual's weights
-					if os.path.isfile(parent.model_save_path):
+					if SAVE_MODELS_TO_FILE and os.path.isfile(parent.model_save_path):
 						copyfile(parent.model_save_path, Path(save_path, 'best.h5'))
 					with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
 						pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
@@ -507,7 +508,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		cnn_eval.flush_evaluation_cache()
 
 		# remove temporary files to free disk space
-		if gen > 1:
+		if gen > 1 and SAVE_MODELS_TO_FILE:
 			for x in range(LAMBDA):
 				individual_path = Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))
 				if os.path.isfile(individual_path):

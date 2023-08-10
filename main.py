@@ -26,7 +26,6 @@ engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
 
 '''
 To do
-save model raus
 
 add more test code
 

@@ -20,8 +20,8 @@ from logger import *
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
 
 # Tuning parameters
-PREDICT_BATCH_SIZE = 1024  # batch size used for model.predict()
-EARLY_STOP_DELTA = 0.001
+PREDICT_BATCH_SIZE = 1024   # batch size used for model.predict()
+EARLY_STOP_DELTA = 0.001    # currently unused
 EARLY_STOP_PATIENCE = 3
 
 LOG_MODEL_SUMMARY = 0		# keras summary of each evaluated model
@@ -353,7 +353,7 @@ class Evaluator:
 													strides=(int(layer_params['stride']), int(layer_params['stride'])),
 													padding=layer_params['padding'],
 													use_bias=eval(layer_params['bias']),
-													#                                                   activation=layer_params['act'],
+													# activation=layer_params['act'],
 													kernel_initializer='he_normal',
 													kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(conv_layer)
@@ -598,7 +598,7 @@ class Evaluator:
 			max_training_epochs : int
 				maximum number of epochs
 			model_save_path : str
-				path where model and its weights are saved
+				path where model and its weights are saved, or empty
 			name : str
 				id string (<generation>-<number>)
 			dataset : dict
@@ -1153,7 +1153,7 @@ class Individual:
 
 			phenotype = self.get_phenotype(grammar)
 
-			model_save_path = save_path + 'individual-' + self.id + '.h5'
+			model_save_path = save_path + 'individual-' + self.id + '.h5' if save_path else None
 
 			metrics = None
 			try:
