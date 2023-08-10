@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Stepper 3 test",
+    "experiment_name" : "FDENSER 00",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
@@ -24,7 +24,7 @@
     "lambda": 5,
 
     //comma strategy - no parents in selection
-    "comma_strategy": true
+    "comma_strategy": false
   },
 
   //network specific parameters
@@ -46,7 +46,7 @@
   "TRAINING": {
     // use cache file for storing and retrieving evaluated network configurations
     "use_evaluation_cache": true,
-    "evaluation_cache_file": "../cache.pkl",
+    "evaluation_cache_file": "../../cache.pkl",
 
     //data augmentation generator for the training data - keras interpretable
     //set to "None" if no data augmentation is to be used

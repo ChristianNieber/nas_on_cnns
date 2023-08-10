@@ -96,6 +96,7 @@ class Test(unittest.TestCase):
 		ind.metrics = CnnEvalResult.dummy_eval_result()
 		stat = RunStatistics()
 		stat.record_best(ind)
+		stat.record_best_in_gen(ind)
 		stat.run_generation = 0
 
 		if not os.path.exists('./run_0/'):

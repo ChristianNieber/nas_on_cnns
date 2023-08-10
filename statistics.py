@@ -2,32 +2,60 @@ from time import time
 import json
 import numpy as np
 
-
 class RunStatistics:
 	""" keeps statistics over all generations """
 
+	class IndividualStatistics:
+		def __init__(self):
+			self.id = []
+			self.final_test_accuracy = []
+			self.accuracy = []
+			self.parameters = []
+			self.evaluation_time = []
+			self.training_time = []
+			self.training_epochs = []
+			self.million_inferences_time = []
+			self.fitness = []
+			self.train_accuracy = []
+			self.train_loss = []
+			self.val_accuracy = []
+			self.val_loss = []
+			self.k_fold_accuracy = []
+			self.k_fold_accuracy_std = []
+			self.k_fold_final_accuracy = []
+			self.k_fold_final_accuracy_std = []
+			self.k_fold_fitness_std = []
+			self.k_fold_million_inferences_time = []
+			self.k_fold_million_inferences_time_std = []
+
+		def record_individual(self, ind):
+			self.id.append(ind.id)
+			if ind.metrics is not None:
+				self.final_test_accuracy.append(ind.metrics.final_test_accuracy)
+				self.accuracy.append(ind.metrics.accuracy)
+				self.parameters.append(ind.metrics.parameters)
+				self.evaluation_time.append(ind.metrics.eval_time)
+				self.training_time.append(ind.metrics.training_time)
+				self.training_epochs.append(ind.metrics.training_epochs)
+				self.fitness.append(ind.fitness)
+				if len(ind.metrics.history_train_accuracy):
+					self.train_accuracy.append(ind.metrics.history_train_accuracy[-1])
+					self.train_loss.append(ind.metrics.history_train_loss[-1])
+					self.val_accuracy.append(ind.metrics.history_val_accuracy[-1])
+					self.val_loss.append(ind.metrics.history_val_loss[-1])
+			if ind.k_fold_metrics is not None:
+				self.k_fold_accuracy.append(ind.k_fold_metrics.accuracy)
+				self.k_fold_accuracy_std.append(ind.k_fold_metrics.accuracy_std)
+				self.k_fold_final_accuracy.append(ind.k_fold_metrics.final_accuracy)
+				self.k_fold_final_accuracy_std.append(ind.k_fold_metrics.final_accuracy_std)
+				self.k_fold_fitness_std.append(ind.k_fold_metrics.fitness_std)
+				self.k_fold_million_inferences_time.append(ind.k_fold_metrics.million_inferences_time)
+				self.k_fold_million_inferences_time_std.append(ind.k_fold_metrics.million_inferences_time_std)
 	def __init__(self):
 		# best individual
-		self.best_individual = []
-		self.final_test_accuracy = []
-		self.accuracy = []
-		self.parameters = []
-		self.evaluation_time = []
-		self.training_time = []
-		self.training_epochs = []
-		self.million_inferences_time = []
-		self.fitness = []
-		self.train_accuracy = []
-		self.train_loss = []
-		self.val_accuracy = []
-		self.val_loss = []
-		self.k_fold_accuracy = []
-		self.k_fold_accuracy_std = []
-		self.k_fold_final_accuracy = []
-		self.k_fold_final_accuracy_std = []
-		self.k_fold_fitness_std = []
-		self.k_fold_million_inferences_time = []
-		self.k_fold_million_inferences_time_std = []
+		self.best = self.IndividualStatistics()
+		self.best_in_gen = self.IndividualStatistics()
+
 		# best of generation
 		self.generation_best_accuracy = []
 		self.generation_best_fitness = []
@@ -55,28 +83,10 @@ class RunStatistics:
 		self.session_previous_runtime = self.run_time
 
 	def record_best(self, ind):
-		self.best_individual.append(ind.id)
-		if ind.metrics is not None:
-			self.final_test_accuracy.append(ind.metrics.final_test_accuracy)
-			self.accuracy.append(ind.metrics.accuracy)
-			self.parameters.append(ind.metrics.parameters)
-			self.evaluation_time.append(ind.metrics.eval_time)
-			self.training_time.append(ind.metrics.training_time)
-			self.training_epochs.append(ind.metrics.training_epochs)
-			self.fitness.append(ind.fitness)
-			if len(ind.metrics.history_train_accuracy):
-				self.train_accuracy.append(ind.metrics.history_train_accuracy[-1])
-				self.train_loss.append(ind.metrics.history_train_loss[-1])
-				self.val_accuracy.append(ind.metrics.history_val_accuracy[-1])
-				self.val_loss.append(ind.metrics.history_val_loss[-1])
-		if ind.k_fold_metrics is not None:
-			self.k_fold_accuracy.append(ind.k_fold_metrics.accuracy)
-			self.k_fold_accuracy_std.append(ind.k_fold_metrics.accuracy_std)
-			self.k_fold_final_accuracy.append(ind.k_fold_metrics.final_accuracy)
-			self.k_fold_final_accuracy_std.append(ind.k_fold_metrics.final_accuracy_std)
-			self.k_fold_fitness_std.append(ind.k_fold_metrics.fitness_std)
-			self.k_fold_million_inferences_time.append(ind.k_fold_metrics.million_inferences_time)
-			self.k_fold_million_inferences_time_std.append(ind.k_fold_metrics.million_inferences_time_std)
+		self.best.record_individual(ind)
+
+	def record_best_in_gen(self, ind):
+		self.best_in_gen.record_individual(ind)
 
 	def record_generation(self, generation_list):
 		self.run_generation += 1

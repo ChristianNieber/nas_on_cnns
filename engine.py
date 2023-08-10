@@ -14,15 +14,15 @@ from keras.models import load_model
 # from keras.preprocessing.image import ImageDataGenerator
 # from data_augmentation import augmentation
 
-from utils import Evaluator, Individual, stat
+from statistics import *
 from logger import *
+from utils import Evaluator, Individual
 
-
-USE_FDENSER_STRATEGY = 0             # Use FDENSER strategy instead of Stepper
+USE_FDENSER_STRATEGY = 1             # Use FDENSER strategy instead of Stepper
 from strategy_stepper import StepperGrammar, StepperStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-DEBUG_CONFIGURATION = 1				# use config_debug.json default configuration file instead of config.json
+DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
@@ -272,9 +272,9 @@ def load_config(config_file):
 	return config
 
 
-def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar'):
+def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar', override_experiment_name=None, override_random_seed = None):
 	"""
-		(1+lambda)-ES
+		do (my+/,lambda)-ES for NAS search
 
 		Parameters
 		----------
@@ -288,9 +288,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			path to the grammar file
 	"""
 
-	global stat
 	global USE_NETWORK_SIZE_PENALTY
-	global PENALTY_PARAMETERS_TARGET
 
 	if DEBUG_CONFIGURATION and config_file=='config/config.json':
 		config_file = 'config/config_debug.json'
@@ -298,8 +296,12 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	# load config file
 	config = load_config(config_file)
 	EXPERIMENT_NAME = config['EVOLUTIONARY']['experiment_name']
+	if override_experiment_name != None:
+		EXPERIMENT_NAME = override_experiment_name
 	RESUME = config['EVOLUTIONARY']['resume']
 	RANDOM_SEED = config['EVOLUTIONARY']['random_seed']
+	if override_random_seed != None:
+		RANDOM_SEED = override_random_seed
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
@@ -360,6 +362,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		copyfile(config_file, save_path + Path(config_file).name)
 		copyfile(grammar_file, save_path + Path(grammar_file).name)
 
+		stat = RunStatistics()
 		stat.init_session()
 
 		# set random seeds
@@ -382,16 +385,20 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {initial_population_size}')
 		population = []
 		for idx in range(initial_population_size):
-			new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
-			if INITIAL_INDIVIDUALS == "lenet":
-				new_individual.initialise_as_lenet(grammar)
-			elif INITIAL_INDIVIDUALS == "perceptron":
-				new_individual.initialise_as_perceptron(grammar)
-			elif INITIAL_INDIVIDUALS == "random":
-				new_individual.initialise_random(grammar, NETWORK_STRUCTURE_INIT)
-			else:
-				raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
-			new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+			while True:
+				new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
+				if INITIAL_INDIVIDUALS == "lenet":
+					new_individual.initialise_as_lenet(grammar)
+				elif INITIAL_INDIVIDUALS == "perceptron":
+					new_individual.initialise_as_perceptron(grammar)
+				elif INITIAL_INDIVIDUALS == "random":
+					new_individual.initialise_random(grammar, NETWORK_STRUCTURE_INIT)
+				else:
+					raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
+				new_individual.evaluate_individual(grammar, cnn_eval, stat, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+				if new_individual.fitness:  # new individual could be invalid, then try again
+					break
+				log_bold("Invalid individual created, trying again")
 			cnn_eval.flush_evaluation_cache()
 			population.append(new_individual)
 		log()
@@ -420,7 +427,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				parent = select_parent(population[0:MY])
 				while True:
 					new_individual = nas_strategy.mutation(parent, gen, idx)
-					fitness = new_individual.evaluate_individual(grammar, cnn_eval, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					fitness = new_individual.evaluate_individual(grammar, cnn_eval, stat, data_generator, data_generator_test, save_path, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					if fitness:
 						break
 				generation_list.append(new_individual)
@@ -442,7 +449,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				if not parent.is_parent:
 					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.short_description()}")
 					start_time = time()
-					parent.evaluate_individual_k_folds(grammar, cnn_eval, REEVALUATE_BEST_WITH_K_FOLDS, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					parent.evaluate_individual_k_folds(grammar, cnn_eval, REEVALUATE_BEST_WITH_K_FOLDS, stat, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					new_parent_candidates_count += 1
 					# flush caache after every individual
 					cnn_eval.flush_evaluation_cache()
@@ -499,13 +506,17 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
 		if COMMA_STRATEGY:
+			stat.record_best(best_individual_overall)
+			stat.record_best_in_gen(best_individual)
 			log(f'Best: {best_individual.short_description()}, overall: {best_individual_overall.short_description()}')
 		else:
+			stat.record_best(best_individual)
+			stat.record_best_in_gen(best_in_generation)
 			log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
+
 		for idx in range(1, len(new_parents)):
 			log(f'  #{idx+1}: {new_parents[idx].short_description()}')
 
-		stat.record_best(best_individual)
 		assert len(generation_list) == LAMBDA
 		stat.record_generation(generation_list)
 
@@ -515,8 +526,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		pickle_statistics(stat, save_path)
 		# stat.save_to_json_file(save_path)
 
-		generation_list.clear()
-		selection_pool.clear()
+		generation_list = []
+		selection_pool = []
 
 		# keep only best as new parents
 		population = new_parents

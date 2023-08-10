@@ -16,8 +16,6 @@ from sklearn.model_selection import StratifiedShuffleSplit
 from statistics import *
 from logger import *
 
-stat = RunStatistics()
-
 # possible test: impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
 
@@ -584,7 +582,7 @@ class Evaluator:
 	def cache_key(phenotype, max_training_time, max_training_epochs):
 		return f"{phenotype}#{max_training_time}#{max_training_epochs}"
 
-	def evaluate_cnn(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
+	def evaluate_cnn(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, stat, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -729,7 +727,7 @@ class Evaluator:
 		return result
 
 
-	def evaluate_cnn_with_cache(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
+	def evaluate_cnn_with_cache(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, stat, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
 			Evaluates the keras model using the keras optimiser, using caching
 		"""
@@ -741,7 +739,7 @@ class Evaluator:
 			stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
 			return cache_entry.metrics
 
-		result = self.evaluate_cnn(phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, datagen, datagen_test, for_k_folds_validation, load_prev_weights, input_size)
+		result = self.evaluate_cnn(phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, stat, datagen, datagen_test, for_k_folds_validation, load_prev_weights, input_size)
 
 		if self.evaluation_cache_path:
 			new_cache_entry = Evaluator.EvaluationCacheEntry(f"{self.experiment_name}:{name}", result)
@@ -772,7 +770,7 @@ class Evaluator:
 
 
 
-	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, max_training_time, max_training_epochs, datagen=None, datagen_test=None, input_size=(28, 28, 1)):
+	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, max_training_time, max_training_epochs, stat, datagen=None, datagen_test=None, input_size=(28, 28, 1)):
 		""" evaluate individual for k-folds, using cache """
 
 		cache_key = Evaluator.cache_key(phenotype, max_training_time, max_training_epochs)
@@ -808,7 +806,7 @@ class Evaluator:
 				'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
 				'x_final_test': self.dataset['x_final_test'], 'y_final_test': self.dataset['y_final_test']
 			}
-			result = self.evaluate_cnn(phenotype, f"Fold #{fold_number}", max_training_time, max_training_epochs, '', fold_dataset, datagen, datagen_test, for_k_folds_validation=True, input_size=input_size)
+			result = self.evaluate_cnn(phenotype, f"Fold #{fold_number}", max_training_time, max_training_epochs, '', fold_dataset, stat, datagen, datagen_test, for_k_folds_validation=True, input_size=input_size)
 			fold_number += 1
 			k_folds_result.append_cnn_eval_result(result)
 
@@ -925,7 +923,9 @@ class Individual:
 	def short_description(self):
 		""" return short description of individual with fitness, k-fold accuracy and final test accuracy if calculated,
 			test accuracy and number of parameters """
-		result = f"{self.id} {self.fitness:.5f} "
+		result = f"{self.id} "
+		if self.fitness:
+			result += "{self.fitness:.5f} "
 		if self.k_fold_metrics:
 			result += f"k-folds: {self.k_fold_metrics.accuracy:.5f} (SD:{self.k_fold_metrics.accuracy_std:.5f}) "
 		if self.metrics:
@@ -1124,7 +1124,7 @@ class Individual:
 		self.phenotype_lines = phenotype.split('\n')
 		return phenotype
 
-	def evaluate_individual(self, grammar, cnn_eval, datagen, datagen_test, save_path, max_training_time, max_training_epochs):
+	def evaluate_individual(self, grammar, cnn_eval, stat, datagen, datagen_test, save_path, max_training_time, max_training_epochs):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1156,7 +1156,7 @@ class Individual:
 
 			metrics = None
 			try:
-				metrics = cnn_eval.evaluate_cnn_with_cache(phenotype, self.id, max_training_time, max_training_epochs, model_save_path, cnn_eval.dataset, datagen, datagen_test)
+				metrics = cnn_eval.evaluate_cnn_with_cache(phenotype, self.id, max_training_time, max_training_epochs, model_save_path, cnn_eval.dataset, stat, datagen, datagen_test)
 			except tf.errors.ResourceExhaustedError as e:
 				log_warning(f"{self.id} : ResourceExhaustedError {e}")
 				keras.backend.clear_session()
@@ -1183,7 +1183,7 @@ class Individual:
 
 		return self.fitness
 
-	def evaluate_individual_k_folds(self, grammar, k_fold_eval, nfolds, datagen, datagen_test, max_training_time, max_training_epochs):
+	def evaluate_individual_k_folds(self, grammar, k_fold_eval, nfolds, stat, datagen, datagen_test, max_training_time, max_training_epochs):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1215,7 +1215,7 @@ class Individual:
 		phenotype = self.get_phenotype(grammar)
 
 		try:
-			self.k_fold_metrics = k_fold_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, max_training_time, max_training_epochs, datagen, datagen_test)
+			self.k_fold_metrics = k_fold_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, max_training_time, max_training_epochs, stat, datagen, datagen_test)
 			self.k_fold_metrics.calculate_fitness_mean_std(k_fold_eval)
 			old_fitness = self.fitness
 			self.fitness = k_fold_eval.calculate_fitness(self)
