@@ -389,20 +389,17 @@ class StepperStrategy(NasStrategy):
 
 	def __init__(self):
 		# strategy parameters
-		self.EXPECTED_NUMBER_OF_PARAMETERS = 40
+		self.EXPECTED_NUMBER_OF_PARAMETERS = 25
 
-		self.DEFAULT_STEPWIDTH_FLOAT = 0.1
-		self.DEFAULT_STEPWIDTH_INT = 0.1
-		self.DEFAULT_STEPWIDTH_CAT = 0.1
-		self.DEFAULT_STEPWIDTH_MODULE = 0.3
-		self.DEFAULT_STEPWIDTH_MACRO = 0.3
+		self.DEFAULT_STEPWIDTH_FLOAT = 0.2
+		self.DEFAULT_STEPWIDTH_INT = 0.2
+		self.DEFAULT_STEPWIDTH_CAT = 0.2
+		self.DEFAULT_STEPWIDTH_MODULE = 0.2
 
-		self.ADD_LAYER = 0.175
-		self.COPY_LAYER = 0.175
-		self.REMOVE_LAYER = 0.35
-		self.CHANGE_TYPE = 0.3
-
-		self.MACRO_LAYER = 0.1
+		self.ADD_LAYER = 0.15
+		self.COPY_LAYER = 0.3
+		self.REMOVE_LAYER = 0.4
+		self.CHANGE_TYPE = 0.15
 
 	class ScanLayerInfo():
 		def __init__(self, module_name, layer_index, nlayers, nonterminals_only = False):

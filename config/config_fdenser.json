@@ -71,7 +71,7 @@
     "use_network_size_penalty" : true,
 
     // find K folds accuracy for best individual, this specifies the number of folds or 0
-    "k_folds" : 10,
+    "k_folds" : 0,
     // select new parents on average K folds fitness
     "select_best_with_k_folds_accuracy" : false
   }

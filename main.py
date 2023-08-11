@@ -1,24 +1,11 @@
 
 import engine
-# from keras.models import load_model
-# from keras.preprocessing.image import ImageDataGenerator
-# from pickle import load
-# import visualkeras
 
-# engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
+engine.do_nas_search("D:/experiments", grammar_file='config/lenet.grammar')
 
-for run in range(0, 10):
-	print(f"***** Starting FDENSER10 Ep run {run:02d} of 10, random seed {100+run} **********")
-	engine.do_nas_search("D:/experiments/FDENSER10", config_file='config/config_fdenser.json', grammar_file='config/lenet.grammar', override_experiment_name=f"FDENSER {run:02d}", override_random_seed=100+run)
-
-# model = engine.test_saved_model()
-# model.summary(line_length=120)
-
-# print("layer:conv num-filters:26 filter-shape:4 stride:2 padding:valid act:sigmoid bias:False batch-norm:False input:-1\nlayer:conv num-filters:4 filter-shape:5 stride:3 padding:valid act:linear bias:True batch-norm:True input:0\nlayer:fc act:elu num-units:367 bias:True batch-norm:False input:1\nlayer:output num-units:10 bias:True input:2\nlearning:adam lr:0.0005 beta1:0.9 beta2:0.999 batch_size:535")
-# print()
-
-# visualkeras.layered_view(model, legend=True)
-
+#for run in range(0, 10):
+#	print(f"***** Starting FDENSER{run:02d} of 10, random seed {100+run} **********")
+#	engine.do_nas_search("D:/experiments/FDENSER10", config_file='config/config_fdenser.json', grammar_file='config/lenet.grammar', override_experiment_name=f"FDENSER{run:02d}", override_random_seed=100+run)
 
 # from tests.test_utils import Test
 # test = Test()

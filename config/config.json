@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Stepper 4",
+    "experiment_name" : "Stepper 5",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",

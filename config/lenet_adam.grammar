@@ -1,10 +1,10 @@
 <features> ::= <convolution> | <pooling>
-<convolution> ::= layer:conv [num-filters,int,2,64] [filter-shape,int,2,5] [stride,int,1,3] [padding:same/valid] [act:linear/relu/elu/sigmoid] [bias:True/False] [batch-norm:True/False]
+<convolution> ::= layer:conv [num-filters,int,2,32] [filter-shape,int,2,5] [stride,int,1,3] [act:linear/relu/elu/sigmoid] [padding:same/valid] [bias:True/False] [batch-norm:True/False]
 <pooling> ::= layer:pooling [pooling-type:avg/max] [kernel-size,int,2,5] [stride,int,1,3] [padding:same/valid]
 
-<classification> ::= layer:fc [act:linear/relu/elu/sigmoid] [num-units,int,64,1024] [bias:True/False] [batch-norm:True/False]
+<classification> ::= layer:fc [act:linear/relu/elu/sigmoid] [num-units,int,64,256] [bias:True/False] [batch-norm:True/False]
 
 <output> ::= layer:output num-units:10 bias:True
 
-<learning> ::= <adam> [batch_size,int,50,4096]
+<learning> ::= <adam> [batch_size,int,50,2048]
 <adam> ::= learning:adam lr:0.0005 beta1:0.9 beta2:0.999
