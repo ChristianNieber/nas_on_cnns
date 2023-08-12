@@ -384,7 +384,9 @@ class StepperStrategy(NasStrategy):
 		self.EXPECTED_NUMBER_OF_PARAMETERS = 25
 
 		self.MUTATE_STEP = False
-		self.RANDOM_RESET_INTS = False
+		self.RANDOM_RESET_INTS = True
+		self.SIGMA_DECAY_START_GENERATION = 1
+		self.SIGMA_DECAY_RATE = 1/50
 
 		self.DEFAULT_STEPWIDTH_FLOAT = 0.15
 		self.DEFAULT_STEPWIDTH_INT = 0.15
@@ -405,8 +407,13 @@ class StepperStrategy(NasStrategy):
 			self.nonterminals_only = nonterminals_only
 
 	class MutationState:
-		def __init__(self, nvars):
+		def __init__(self, generation, nvars, sigma_decay_start_generation=0, sigma_decay_rate=None):
+			self.generation = generation
 			self.nvars = nvars
+
+			self.sigma_decay_start_generation = sigma_decay_start_generation
+			self.sigma_decay_rate = sigma_decay_rate
+
 			self.tau_global = 1.0 / np.sqrt(2 * nvars)
 			self.tau_global_gaussian = self.tau_global * random.gauss(0, 1)
 			self.tau_local = 1.0 / np.sqrt(2 * np.sqrt(nvars))
@@ -418,6 +425,12 @@ class StepperStrategy(NasStrategy):
 		def log_normal_random(self):
 			self.n_mutated_vars += 1
 			return self.tau_global_gaussian + self.tau_local * random.gauss(0, 1)
+
+		def step_sigma(self):
+			if self.sigma_decay_start_generation and self.generation >= self.sigma_decay_start_generation:
+				return 1 / (1 + self.sigma_decay_rate * (self.generation - self.sigma_decay_start_generation)) * 0.5
+			else:
+				return 0
 
 	def mutate_layers(self, ind, mutation_state: MutationState):
 		for module in ind.modules_including_macro:
@@ -505,7 +518,7 @@ class StepperStrategy(NasStrategy):
 		ind.reset_training()
 
 		# calculate τ, τ' and Nc that are used for mutating all variables of this individual
-		mutation_state = StepperStrategy.MutationState(self.EXPECTED_NUMBER_OF_PARAMETERS)
+		mutation_state = StepperStrategy.MutationState(generation, self.EXPECTED_NUMBER_OF_PARAMETERS, self.SIGMA_DECAY_START_GENERATION, self.SIGMA_DECAY_RATE)
 
 		# add/copy/remove/change layers first
 		self.mutate_layers(ind, mutation_state)
@@ -527,7 +540,7 @@ class StepperStrategy(NasStrategy):
 			if self.MUTATE_STEP:
 				self.mutate_variable(mvar, mutation_state)
 			else:
-				self.mutate_variable_nostep(mvar, mutation_state)
+				self.mutate_variable_simple(mvar, mutation_state)
 
 		# log changed variables
 		for mvar in mutable_vars:
@@ -598,24 +611,31 @@ class StepperStrategy(NasStrategy):
 			return True
 		return False
 
-	def mutate_variable_nostep(self, mvar: MutableVar, mutation_state: MutationState):
+
+	def mutate_variable_simple(self, mvar: MutableVar, mutation_state: MutationState):
 		value = mvar.value
 		var = mvar.var
-		SIGMA = 0.15        # TODO
+
 		if mvar.type == Type.FLOAT:
 			if random.uniform(0, 1) < self.DEFAULT_STEPWIDTH_FLOAT:
-				value += random.gauss(0, 1) * SIGMA * (var.max_value - var.min_value)
+				sigma = mutation_state.step_sigma()
+				# sigma *= 0.15 / 0.5
+				if not sigma:
+					sigma = 0.15
+				mvar.new_step = sigma
+				value += random.gauss(0, 1) * sigma * (var.max_value - var.min_value)
 				value = interval_transform(value, var.min_value, var.max_value)
 
 		elif mvar.type == Type.INT:
 			if random.uniform(0, 1) < self.DEFAULT_STEPWIDTH_INT:
-				if self.RANDOM_RESET_INTS:
+				mvar.new_step = sigma = mutation_state.step_sigma()
+				if not sigma:
 					while True:
 						value = random.randint(var.min_value, var.max_value)
 						if value != mvar.value or var.min_value == var.max_value:
 							break
 				else:
-					float_diff = random.gauss(0, 1) * SIGMA * (var.max_value - var.min_value)
+					float_diff = random.gauss(0, 1) * sigma * (var.max_value - var.min_value)
 					diff = int(round(float_diff))
 					if diff == 0:
 						diff = 1 if float_diff > 0 else -1

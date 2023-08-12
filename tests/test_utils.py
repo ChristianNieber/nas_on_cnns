@@ -105,16 +105,12 @@ class Test(unittest.TestCase):
 
 		self.assertTrue(os.path.exists('./run_0/gen_0.json'))
 
-		engine.pickle_population(0, [ind], './run_0/')
+		engine.pickle_population_and_statistics('./run_0/', [ind], stat)
 
-		self.assertTrue(os.path.exists('./run_0/gen_0_population.pkl'))
-		self.assertTrue(os.path.exists('./run_0/gen_0_random.pkl'))
-		self.assertTrue(os.path.exists('./run_0/gen_0_numpy.pkl'))
-
-		engine.pickle_statistics(stat, './run_0/')
+		self.assertTrue(os.path.exists('./run_0/population.pkl'))
 		self.assertTrue(os.path.exists('./run_0/statistics.pkl'))
 
-		loaded_data = engine.unpickle_population('./run_0/')
+		loaded_data = engine.unpickle_population_and_statistics('./run_0/')
 
 		self.assertTrue(loaded_data)
 

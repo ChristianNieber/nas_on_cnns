@@ -1,7 +1,7 @@
 from time import time
 import json
 import numpy as np
-
+import random
 
 class RunStatistics:
 	""" keeps statistics over all generations """
@@ -30,7 +30,9 @@ class RunStatistics:
 			self.k_fold_million_inferences_time = []
 			self.k_fold_million_inferences_time_std = []
 
-	def __init__(self):
+	def __init__(self, random_seed=-1):
+		self.random_seed = random_seed
+
 		# best individual (the best overall for comma strategy)
 		self.best = self.IndividualStatistics()
 		# best in generation
@@ -59,6 +61,8 @@ class RunStatistics:
 		self.evaluations_invalid = 0
 		self.session_start_time = time()
 		self.session_previous_runtime = 0
+		self.random_state = random.getstate()
+		self.random_state_numpy = np.random.get_state()
 
 	def init_session(self):
 		self.session_start_time = time()

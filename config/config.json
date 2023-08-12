@@ -3,16 +3,19 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "IntStep 1",
+    "experiment_name" : "IntReset 2",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
 
     // resume from saved state
-    "resume": true,
+    "resume": false,
+
+    // can resume at a certain generation (10, 20, ...)
+    "resume_generation": 0,
 
     // random seed for Random and numpy modules, -1 for none
-    "random_seed" : 100,
+    "random_seed" : 101,
 
     //Maximum number of generations
     "num_generations": 100,
@@ -71,7 +74,7 @@
     "use_network_size_penalty" : true,
 
     // find K folds accuracy for best individual, this specifies the number of folds or 0
-    "k_folds" : 0,
+    "k_folds" : 10,
     // select new parents on average K folds fitness
     "select_best_with_k_folds_accuracy" : false
   }

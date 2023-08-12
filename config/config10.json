@@ -3,13 +3,16 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "StepperXX",
+    "experiment_name" : "XXXXXX",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
 
     // resume from saved state
     "resume": false,
+
+    // can resume at a certain generation (10, 20, ...)
+    "resume_generation": 0,
 
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 100,

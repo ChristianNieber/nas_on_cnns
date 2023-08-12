@@ -24,6 +24,7 @@ LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
 SAVE_MODELS_TO_FILE = 0             # currently not used
+SAVE_MILESTONE_GENERATIONS = 10     # save milestone every 10 generations
 
 # global variables set from config.json
 USE_NETWORK_SIZE_PENALTY = 0
@@ -86,40 +87,33 @@ def pickle_evaluator(evaluator, save_path):
 		pickle.dump(evaluator, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def pickle_population(gen, population, save_path):
+def pickle_population_and_statistics(path, population, stat: RunStatistics):
 	"""
 		Save the objects (pickle) necessary to later resume evolution:
 		Pickled objects:
 			.population
-			.random states: numpy and random
-		Useful for later conducting more generations.
+			.statistics, containing random states: numpy and random
+		Useful for resuming later
 		Replaces the objects of the previous generation.
 
 		Parameters
 		----------
-		gen : int
-			generation
 		population : list
 			a list of Individuals
-		save_path: str
+		path: str
 			path to the json file
 	"""
 
-	path = save_path + 'gen_%d_' % gen
+	stat.random_state = random.getstate()
+	stat.random_state_numpy = np.random.get_state()
+	with open(path + 'statistics.pkl', 'wb') as handle_statistics:
+		pickle.dump(stat, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
+
 	with open(path + 'population.pkl', 'wb') as handle_pop:
 		pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
-	with open(path + 'random.pkl', 'wb') as handle_random:
-		pickle.dump(random.getstate(), handle_random, protocol=pickle.HIGHEST_PROTOCOL)
-
-	with open(path + 'numpy.pkl', 'wb') as handle_numpy:
-		pickle.dump(np.random.get_state(), handle_numpy, protocol=pickle.HIGHEST_PROTOCOL)
-
-
-def pickle_statistics(stat, save_path):
-	with open(save_path + 'statistics.pkl', 'wb') as handle_statistics:
-		pickle.dump(stat, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
-
+def pickle_population_and_statistics_milestone(save_path, generation, population, stat : RunStatistics):
+	pickle_population_and_statistics(save_path + 'gen_%d_' % generation, population, stat)
 
 def get_total_epochs(save_path, last_gen):
 	"""
@@ -148,7 +142,7 @@ def get_total_epochs(save_path, last_gen):
 	return total_epochs
 
 
-def unpickle_population(save_path):
+def unpickle_population_and_statistics(path, resume_generation=0):
 	"""
 		Save the objects (pickle) necessary to later resume evolution.
 		Useful for later conducting more generations.
@@ -158,7 +152,7 @@ def unpickle_population(save_path):
 
 		Parameters
 		----------
-		save_path: str
+		path: str
 			path where the objects needed to resume evolution are stored.
 
 
@@ -177,26 +171,19 @@ def unpickle_population(save_path):
 			Numpy module random state
 	"""
 
-	if os.path.isfile(save_path + 'statistics.pkl'):
-		with open(save_path + 'statistics.pkl', 'rb') as handle_statistics:
+	prefix = f"gen_{resume_generation}_" if resume_generation else ''
+	if os.path.isfile(path + prefix + 'statistics.pkl'):
+		with open(path + prefix + 'statistics.pkl', 'rb') as handle_statistics:
 			pickled_statistics = pickle.load(handle_statistics)
 		last_generation = pickled_statistics.run_generation
-
-		path = save_path + 'gen_%d_' % last_generation
 
 		# with open(save_path + 'evaluator.pkl', 'rb') as handle_eval:
 		# pickled_evaluator = pickle.load(handle_eval)
 
-		with open(path + 'population.pkl', 'rb') as handle_pop:
+		with open(path + prefix + 'population.pkl', 'rb') as handle_pop:
 			pickled_population = pickle.load(handle_pop)
 
-		with open(path + 'random.pkl', 'rb') as handle_random:
-			pickle_random = pickle.load(handle_random)
-
-		with open(path + 'numpy.pkl', 'rb') as handle_numpy:
-			pickle_numpy = pickle.load(handle_numpy)
-
-		return last_generation, pickled_population, pickle_random, pickle_numpy, pickled_statistics
+		return last_generation, pickled_population, pickled_statistics
 
 	else:
 		return None
@@ -304,6 +291,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	if override_experiment_name is not None:
 		EXPERIMENT_NAME = override_experiment_name
 	RESUME = config['EVOLUTIONARY']['resume']
+	RESUME_GENERATION = config['EVOLUTIONARY']['resume_generation']
 	RANDOM_SEED = config['EVOLUTIONARY']['random_seed']
 	if override_random_seed is not None:
 		RANDOM_SEED = override_random_seed
@@ -355,8 +343,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	best_individual_overall = None
 
 	# load previous population content (if any)
-	unpickle = unpickle_population(save_path) if RESUME else None
-	# if there is not a previous population
+	unpickle = unpickle_population_and_statistics(save_path, RESUME_GENERATION) if RESUME else None
+	# if there is not a previous population/statistics file
 	if unpickle is None:
 		# create directories
 		makedirs(save_path, exist_ok=True)
@@ -369,7 +357,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		copyfile(config_file, save_path + Path(config_file).name)
 		copyfile(grammar_file, save_path + Path(grammar_file).name)
 
-		stat = RunStatistics()
+		stat = RunStatistics(RANDOM_SEED)
 		stat.init_session()
 
 		log_bold(f"[Experiment {EXPERIMENT_NAME} in folder {save_path}]")
@@ -424,11 +412,11 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	# in case there is a previous population, load it
 	else:
-		last_gen, population, pkl_random, pkl_numpy, stat = unpickle
+		last_gen, population, stat = unpickle
 		stat.init_session()
 
-		random.setstate(pkl_random)
-		np.random.set_state(pkl_numpy)
+		random.setstate(stat.random_state)
+		np.random.set_state(stat.random_state_numpy)
 
 		new_parents = select_new_parents(population, MY)
 		population = new_parents
@@ -456,7 +444,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			selection_pool = population
 		new_parents = select_new_parents(selection_pool, MY)
 
-		log_nolf('[Gen %d] ' % gen)
+		log_nolf(f'[Generation %d in {EXPERIMENT_NAME}] ' % gen)
 
 		# if there are new parent candidates, do K-fold validation on them
 		new_parent_candidates_count = 0
@@ -541,10 +529,11 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		assert len(generation_list) == LAMBDA
 		stat.record_generation(generation_list)
 
-		# save population
-		save_population_statistics(population, save_path, gen)
-		pickle_population(gen, population, save_path)
-		pickle_statistics(stat, save_path)
+		# save population and statistics
+		pickle_population_and_statistics(save_path, population, stat)
+		if (gen + 1) % SAVE_MILESTONE_GENERATIONS == 0:
+			pickle_population_and_statistics_milestone(save_path, gen + 1, population, stat)
+		# save_population_statistics(population, save_path, gen)
 		# stat.save_to_json_file(save_path)
 
 		generation_list.clear()

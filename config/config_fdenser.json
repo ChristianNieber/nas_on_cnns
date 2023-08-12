@@ -11,6 +11,9 @@
     // resume from saved state
     "resume": true,
 
+    // can resume at a certain generation (10, 20, ...)
+    "resume_generation": 0,
+
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 100,
 
