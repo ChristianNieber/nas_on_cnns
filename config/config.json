@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Stepper 5",
+    "experiment_name" : "NoStepper 1",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
@@ -24,9 +24,9 @@
     "lambda": 5,
 
     //comma strategy - no parents in selection
-    "comma_strategy": true,
+    "comma_strategy": false,
 
-    // NAS strategy to use
+    // NAS strategy to use: "Stepper" or "F-DENSER"
     "nas_strategy": "Stepper"
   },
 
@@ -63,7 +63,7 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 12,
+    "max_training_time": 15,
     //maximum training epochs for each network
     "max_training_epochs": 10,
 

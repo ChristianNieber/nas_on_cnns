@@ -19,7 +19,7 @@ class TerminalColors:
 	UNDERLINE = '\033[4m'
 
 
-def init_logger(file_path=None, overwrite=True):
+def init_logger(file_path=None):
 	global logging_file_path
 	global logging_line_list
 	global logging_overwrite
@@ -27,10 +27,13 @@ def init_logger(file_path=None, overwrite=True):
 
 	logging_file_path = file_path
 	logging_line_list = []
-	logging_overwrite = overwrite
+	logging_overwrite = True
 	logging_append_to_line = False
 	logger_configuration()
 
+def logger_configure_overwrite(overwrite):
+	global logging_overwrite
+	logging_overwrite = overwrite
 
 def logger_configuration(logger_log_training=True, logger_log_mutations=True, logger_log_debug=False):
 	global logging_training

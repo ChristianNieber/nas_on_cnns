@@ -669,9 +669,6 @@ class Evaluator:
 
 		training_start_time = time()
 
-		if not for_k_folds_validation:
-			log_training_nolf(f"{name} layers:{keras_layers_count:2d}/{model_layers:2d} p:{parameters:6d} ")
-
 		x_train = dataset['evo_x_train']
 		y_train = dataset['evo_y_train']
 		x_val = dataset['evo_x_val']
@@ -1156,6 +1153,8 @@ class Individual:
 			model_save_path = save_path + 'individual-' + self.id + '.h5' if save_path else None
 
 			metrics = None
+			log_training_nolf(f"{self.id} layers: {len(self.modules_including_macro[0].layers)}+{len(self.modules_including_macro[1].layers)} ")
+
 			try:
 				metrics = cnn_eval.evaluate_cnn_with_cache(phenotype, self.id, max_training_time, max_training_epochs, model_save_path, cnn_eval.dataset, stat, datagen, datagen_test)
 			except tf.errors.ResourceExhaustedError as e:

@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Debug",
+    "experiment_name" : "StepperXX",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
@@ -15,7 +15,7 @@
     "random_seed" : 100,
 
     //Maximum number of generations
-    "num_generations": 10,
+    "num_generations": 100,
 
     // my - number of parents
     "my" : 1,
@@ -49,7 +49,7 @@
   "TRAINING": {
     // use cache file for storing and retrieving evaluated network configurations
     "use_evaluation_cache": true,
-    "evaluation_cache_file": "../cache_debug.pkl",
+    "evaluation_cache_file": "../../cache.pkl",
 
     //data augmentation generator for the training data - keras interpretable
     //set to "None" if no data augmentation is to be used
@@ -63,9 +63,9 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 2,
+    "max_training_time": 15,
     //maximum training epochs for each network
-    "max_training_epochs": 2,
+    "max_training_epochs": 10,
 
     //fitness function parameter: use penalty for large network
     "use_network_size_penalty" : true,

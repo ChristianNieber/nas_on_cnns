@@ -3,13 +3,13 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "FDENSERXX",
+    "experiment_name" : "FDENSER XX",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
 
     // resume from saved state
-    "resume": false,
+    "resume": true,
 
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 100,
@@ -24,9 +24,9 @@
     "lambda": 5,
 
     //comma strategy - no parents in selection
-    "comma_strategy": true,
+    "comma_strategy": false,
 
-    // NAS strategy to use
+    // NAS strategy to use: "Stepper" or "F-DENSER"
     "nas_strategy": "F-DENSER"
   },
 

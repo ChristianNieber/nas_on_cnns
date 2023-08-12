@@ -10,6 +10,7 @@ __pycache__/
 
 # test run data
 run_0/
+run_statistics*.ipynb
 
 # Distribution / packaging
 .Python

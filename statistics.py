@@ -145,7 +145,7 @@ class CnnEvalResult:
 		return self.summary()
 
 	def summary(self):
-		return f"acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness:0.5f} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} epochs: {self.training_epochs:2d} t: {self.training_time:0.2f}s"
+		return f"p: {self.parameters:6d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness:0.5f} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} epochs: {self.training_epochs:2d} t: {self.training_time:0.2f}s"
 
 	@staticmethod
 	def dummy_eval_result():

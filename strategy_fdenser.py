@@ -539,17 +539,28 @@ class FDENSERStrategy(NasStrategy):
 	def __init__(self):
 		# strategy parameters
 		self.ADD_LAYER = 0.25
-		self.REUSE_LAYER = 0.15
+		self.COPY_LAYER = 0.15
 		self.REMOVE_LAYER = 0.25
 		self.DSGE_LAYER = 0.15
 		self.MACRO_LAYER = 0.3
 
-	def set_params(self, ADD_LAYER, REUSE_LAYER, REMOVE_LAYER, DSGE_LAYER, MACRO_LAYER):
+		self.mutated_variables = {}
+
+	def set_params(self, ADD_LAYER, COPY_LAYER, REMOVE_LAYER, DSGE_LAYER, MACRO_LAYER):
 		self.ADD_LAYER = ADD_LAYER
-		self.REUSE_LAYER = REUSE_LAYER
+		self.COPY_LAYER = COPY_LAYER
 		self.REMOVE_LAYER = REMOVE_LAYER
 		self.DSGE_LAYER = DSGE_LAYER
 		self.MACRO_LAYER = MACRO_LAYER
+
+	def count_mutated_variable(self, name):
+		count = self.mutated_variables[name] if name in self.mutated_variables else 0
+		self.mutated_variables[name] = count + 1
+
+	def dump_mutated_variables(self, evaluations):
+		log_bold(f"{evaluations=}")
+		for name in sorted(self.mutated_variables):
+			log(f"{name: <40}{self.mutated_variables[name] / evaluations:.3f}")
 
 	def mutation(self, parent, gen=0, idx=0):
 		"""
@@ -597,15 +608,17 @@ class FDENSERStrategy(NasStrategy):
 			for _ in range(random.randint(1, 2)):
 				if len(module.layers) < module.max_expansions and random.random() <= self.ADD_LAYER:
 					insert_pos = random.randint(0, len(module.layers))
-					if random.random() <= self.REUSE_LAYER and len(module.layers):
+					if random.random() <= self.COPY_LAYER and len(module.layers):
 						source_layer_index = random.randint(0, len(module.layers) - 1)
 						new_layer = module.layers[source_layer_index]
 						layer_phenotype = self.grammar.decode_layer(module.module_name, new_layer)
 						ind.log_mutation(f"copy layer {module.module_name}{insert_pos}/{len(module.layers)} from {source_layer_index} - {layer_phenotype}")
+						self.count_mutated_variable(f"layer {module.module_name}{insert_pos} copy")
 					else:
 						new_layer = self.grammar.initialise_layer_random(module.module_name)
 						layer_phenotype = self.grammar.decode_layer(module.module_name, new_layer)
 						ind.log_mutation(f"insert layer {module.module_name}{insert_pos}/{len(module.layers)} - {layer_phenotype}")
+						self.count_mutated_variable(f"layer {module.module_name}{insert_pos} insert")
 
 					module.layers.insert(insert_pos, new_layer)
 
@@ -615,6 +628,7 @@ class FDENSERStrategy(NasStrategy):
 					remove_idx = random.randint(0, len(module.layers) - 1)
 					layer_phenotype = self.grammar.decode_layer(module.module_name, module.layers[remove_idx])
 					ind.log_mutation(f"remove layer {module.module_name}{remove_idx}/{len(module.layers)} - {layer_phenotype}")
+					self.count_mutated_variable(f"layer {module.module_name}{remove_idx} remove")
 					del module.layers[remove_idx]
 
 			for layer_idx, layer in enumerate(module.layers):
@@ -664,7 +678,8 @@ class FDENSERStrategy(NasStrategy):
 			mt_type = random.choice(random_possibilities)
 
 			if mt_type == 'ga':
-				var_name = random.choice(sorted(list(layer[nt_key][nt_idx]['ga'].keys())))
+				var_name_list = sorted(list(layer[nt_key][nt_idx]['ga'].keys()))
+				var_name = random.choice(var_name_list)
 				var_type, min_val, max_val, value = layer[nt_key][nt_idx]['ga'][var_name]
 
 				if var_type == 'int':
@@ -673,10 +688,12 @@ class FDENSERStrategy(NasStrategy):
 						if new_val != value or min_val == max_val:
 							break
 					ind.log_mutation(f"{layer_name}: int {nt_key}/{var_name} {value} -> {new_val}")
+					self.count_mutated_variable(f"int {layer_name}/{nt_key}")
 				elif var_type == 'float':
 					new_val = value + random.gauss(0, 0.15)
 					new_val = np.clip(new_val, min_val, max_val)
 					ind.log_mutation(f"{layer_name}: float {nt_key}/{var_name} {value} -> {new_val}")
+					self.count_mutated_variable(f"float {layer_name}/{nt_key}")
 
 				layer[nt_key][nt_idx]['ga'][var_name] = (var_type, min_val, max_val, new_val)
 
@@ -684,6 +701,7 @@ class FDENSERStrategy(NasStrategy):
 				new_val = random.choice(sge_possibilities)
 				old_val = layer[nt_key][nt_idx]['ge']
 				ind.log_mutation(f"{layer_name}: ge {nt_key} {old_val} -> {new_val}")
+				self.count_mutated_variable(f"ge {layer_name}/{nt_key}")
 				layer[nt_key][nt_idx]['ge'] = new_val
 				old_layer_value = deepcopy(layer)
 				self.grammar.fix_layer_after_change(nt_key, layer)

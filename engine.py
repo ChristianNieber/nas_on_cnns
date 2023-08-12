@@ -329,7 +329,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	save_path = experiments_directory + EXPERIMENT_NAME + '/'
 
 	log_file_path = save_path + '#' + EXPERIMENT_NAME + '.log'
-	init_logger(log_file_path, overwrite=True)
+	init_logger(log_file_path)
 	logger_configuration(logger_log_training=True, logger_log_mutations=LOG_MUTATIONS, logger_log_debug=LOG_DEBUG)
 
 	# load grammar and init strategy
@@ -347,11 +347,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	best_fitness = None
 	best_individual_overall = None
 
-
-
 	# load previous population content (if any)
 	unpickle = unpickle_population(save_path) if RESUME else None
-
 	# if there is not a previous population
 	if unpickle is None:
 		# create directories
@@ -369,6 +366,9 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		stat = RunStatistics()
 		stat.init_session()
 
+	else:
+		logger_configure_overwrite(False)
+
 	# set random seeds
 	if RANDOM_SEED != -1:
 		random.seed(RANDOM_SEED)
@@ -382,15 +382,15 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME)
 
 	if unpickle is None:
-		# set random seeds again (Evaluator() creation may have changed it)
-		if RANDOM_SEED != -1:
-			random.seed(RANDOM_SEED)
-			np.random.seed(RANDOM_SEED)
-
 		# save evaluator
 		# pickle_evaluator(cnn_eval, save_path)
 
 		last_gen = -1
+
+		# set random seeds
+		if RANDOM_SEED != -1:
+			random.seed(RANDOM_SEED)
+			np.random.seed(RANDOM_SEED)
 
 		initial_population_size = LAMBDA if INITIAL_INDIVIDUALS == 'random' else 1
 		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {initial_population_size}')
@@ -416,8 +416,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	# in case there is a previous population, load it
 	else:
-		init_logger(log_file_path, overwrite=False)
-
 		last_gen, population, pkl_random, pkl_numpy, stat = unpickle
 		stat.init_session()
 
@@ -428,7 +426,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		population = new_parents
 		log('\n========================================================================================================')
 		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
-
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
@@ -503,7 +500,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					log_bold(f'New individual rank {idx} replaces {population[idx].short_description()}')
 					log_bold(f'New rank {idx}: {parent.short_description()}')
 
-
 		# flush evaluation cache after every generation
 		cnn_eval.flush_evaluation_cache()
 
@@ -521,7 +517,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
 		if NAS_STRATEGY == "Stepper":
-			best_individual.record_stepwidth_statistics(stat.stepwidth_stats)
+			best_in_generation.record_stepwidth_statistics(stat.stepwidth_stats)
 		if COMMA_STRATEGY:
 			best_individual_overall.record_statistics(stat.best)
 			best_individual.record_statistics(stat.best_in_gen)
@@ -553,6 +549,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	parent = population[0]
 	parent.log_long_description('Final Individual')
+
+	if NAS_STRATEGY == "F-DENSER":
+		nas_strategy.dump_mutated_variables(stat.evaluations_total)
+
 
 
 def test_saved_model(save_path, name='best.h5'):
