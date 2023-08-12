@@ -1,7 +1,5 @@
 import numpy as np
 import random
-from copy import deepcopy
-from time import time
 from os import makedirs
 import pickle
 import os
@@ -14,7 +12,7 @@ from keras.models import load_model
 # from keras.preprocessing.image import ImageDataGenerator
 # from data_augmentation import augmentation
 
-from statistics import *
+from runstatistics import RunStatistics
 from logger import *
 from utils import Evaluator, Individual
 
@@ -32,11 +30,13 @@ USE_NETWORK_SIZE_PENALTY = 0
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
+
 def fitness_metric_with_size_penalty(accuracy, parameters):
 	if USE_NETWORK_SIZE_PENALTY:
 		return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
 	else:
 		return accuracy
+
 
 def save_population_statistics(population, save_path, gen):
 	"""
@@ -115,6 +115,7 @@ def pickle_population(gen, population, save_path):
 	with open(path + 'numpy.pkl', 'wb') as handle_numpy:
 		pickle.dump(np.random.get_state(), handle_numpy, protocol=pickle.HIGHEST_PROTOCOL)
 
+
 def pickle_statistics(stat, save_path):
 	with open(save_path + 'statistics.pkl', 'wb') as handle_statistics:
 		pickle.dump(stat, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
@@ -178,13 +179,13 @@ def unpickle_population(save_path):
 
 	if os.path.isfile(save_path + 'statistics.pkl'):
 		with open(save_path + 'statistics.pkl', 'rb') as handle_statistics:
-			pickle_statistics = pickle.load(handle_statistics)
-		last_generation = pickle_statistics.run_generation
+			pickled_statistics = pickle.load(handle_statistics)
+		last_generation = pickled_statistics.run_generation
 
 		path = save_path + 'gen_%d_' % last_generation
 
-#		with open(save_path + 'evaluator.pkl', 'rb') as handle_eval:
-#			pickled_evaluator = pickle.load(handle_eval)
+		# with open(save_path + 'evaluator.pkl', 'rb') as handle_eval:
+		# pickled_evaluator = pickle.load(handle_eval)
 
 		with open(path + 'population.pkl', 'rb') as handle_pop:
 			pickled_population = pickle.load(handle_pop)
@@ -195,7 +196,7 @@ def unpickle_population(save_path):
 		with open(path + 'numpy.pkl', 'rb') as handle_numpy:
 			pickle_numpy = pickle.load(handle_numpy)
 
-		return last_generation, pickled_population, pickle_random, pickle_numpy, pickle_statistics
+		return last_generation, pickled_population, pickle_random, pickle_numpy, pickled_statistics
 
 	else:
 		return None
@@ -216,7 +217,7 @@ def select_parent(parents):
 			individual that seeds the next generation
 	"""
 
-	# Get best individual just according to fitness
+	# Get the best individual just according to fitness
 	idx = random.randint(0, len(parents) - 1)
 	return parents[idx]
 
@@ -230,12 +231,14 @@ def select_new_parents(population, number_of_parents, after_k_folds_evaluation=F
 		population : list
 			list of instances of Individual
 		number_of_parents : int
+			number of parents
+		after_k_folds_evaluation : bool
+			select only from candidates with k_fold_metrics
 
 		Returns
 		-------
 		new_parents : list
 			individual that seeds the next generation
-			:param after_k_folds_evaluation:
 	"""
 
 	if after_k_folds_evaluation:
@@ -270,7 +273,7 @@ def load_config(config_file):
 	return config
 
 
-def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar', override_experiment_name=None, override_random_seed = None):
+def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar', override_experiment_name=None, override_random_seed=None):
 	"""
 		do (my+/,lambda)-ES for NAS search
 
@@ -284,21 +287,25 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			path to the configuration file
 		grammar_file : str
 			path to the grammar file
+		override_experiment_name : bool
+			overrides EXPERIMENT_NAME from config file if set
+		override_random_seed : bool
+			overrides RANDOM_SEED from config file if set
 	"""
 
 	global USE_NETWORK_SIZE_PENALTY
 
-	if DEBUG_CONFIGURATION and config_file=='config/config.json':
+	if DEBUG_CONFIGURATION and config_file == 'config/config.json':
 		config_file = 'config/config_debug.json'
 
 	# load config file
 	config = load_config(config_file)
 	EXPERIMENT_NAME = config['EVOLUTIONARY']['experiment_name']
-	if override_experiment_name != None:
+	if override_experiment_name is not None:
 		EXPERIMENT_NAME = override_experiment_name
 	RESUME = config['EVOLUTIONARY']['resume']
 	RANDOM_SEED = config['EVOLUTIONARY']['random_seed']
-	if override_random_seed != None:
+	if override_random_seed is not None:
 		RANDOM_SEED = override_random_seed
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
@@ -353,7 +360,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	if unpickle is None:
 		# create directories
 		makedirs(save_path, exist_ok=True)
-
 		# delete old files
 		if not RESUME:
 			for f in glob(str(Path(save_path, '*'))):
@@ -365,6 +371,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 		stat = RunStatistics()
 		stat.init_session()
+
+		log_bold(f"[Experiment {EXPERIMENT_NAME} in folder {save_path}]")
 
 	else:
 		logger_configure_overwrite(False)
@@ -393,7 +401,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			np.random.seed(RANDOM_SEED)
 
 		initial_population_size = LAMBDA if INITIAL_INDIVIDUALS == 'random' else 1
-		log(f'[Experiment {EXPERIMENT_NAME}] Creating the initial population of {initial_population_size}')
+		log(f'Creating the initial population of {initial_population_size}')
 		population = []
 		for idx in range(initial_population_size):
 			while True:
@@ -425,7 +433,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		new_parents = select_new_parents(population, MY)
 		population = new_parents
 		log('\n========================================================================================================')
-		log(f'[Experiment {EXPERIMENT_NAME}] Resuming evaluation after generation {last_gen}:')
+		log(f'Resuming experiment {EXPERIMENT_NAME} in folder {save_path} after generation {last_gen}')
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
@@ -455,7 +463,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		if SELECT_BEST_WITH_K_FOLDS_ACCURACY:
 			for idx, parent in enumerate(new_parents):
 				if not parent.is_parent:
-					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.short_description()}")
+					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.description()}")
 					parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					new_parent_candidates_count += 1
 			if new_parent_candidates_count:
@@ -468,24 +476,24 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			if not parent.is_parent:
 				parent.is_parent = True
 				if parent.parent_id:
-					original_parent_list = [ind for ind in population if ind.id == parent.parent_id]
-					if len(original_parent_list) == 1:
-						original_parent = original_parent_list[0]
-						parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.short_description()}] <- [{original_parent.short_description()}] Δfitness={parent.fitness - original_parent.fitness:.5f} Δacc={parent.metrics.accuracy - original_parent.metrics.accuracy:.5f}")
+					orig_parent_list = [ind for ind in population if ind.id == parent.parent_id]
+					if len(orig_parent_list) == 1:
+						orig_parent = orig_parent_list[0]
+						parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.description()}] <- [{orig_parent.description()}] Δfitness={parent.fitness - orig_parent.fitness:.5f} Δacc={parent.metrics.accuracy - orig_parent.metrics.accuracy:.5f}")
 					else:
 						log_warning(f"parent {parent.parent_id} of {parent.id} not found in current population!")
 
 				if K_FOLDS and not parent.k_fold_metrics:
-					log_bold(f'*** Evaluating k folds for new parent {parent.short_description()} ***')
+					log_bold(f'*** Evaluating k folds for new parent {parent.description()} ***')
 					parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 
-				if best_fitness == None or parent.fitness > best_fitness:
+				if best_fitness is None or parent.fitness > best_fitness:
 					if best_fitness:
-						log_bold(f'*** New best individual replaces {population[0].short_description()} ***')
+						log_bold(f'*** New best individual replaces {population[0].description()} ***')
 					if LOG_NEW_BEST_INDIVIDUAL:
 						parent.log_long_description("New best" if best_fitness else "Initial")
 					else:
-						log_bold(f'*** New best: {parent.short_description()}')
+						log_bold(f'*** New best: {parent.description()}')
 
 					best_fitness = parent.fitness
 					best_individual_overall = parent
@@ -497,8 +505,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 						pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 				elif not COMMA_STRATEGY:
-					log_bold(f'New individual rank {idx} replaces {population[idx].short_description()}')
-					log_bold(f'New rank {idx}: {parent.short_description()}')
+					log_bold(f'New individual rank {idx} replaces {population[idx].description()}')
+					log_bold(f'New rank {idx}: {parent.description()}')
 
 		# flush evaluation cache after every generation
 		cnn_eval.flush_evaluation_cache()
@@ -521,14 +529,14 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		if COMMA_STRATEGY:
 			best_individual_overall.record_statistics(stat.best)
 			best_individual.record_statistics(stat.best_in_gen)
-			log(f'Best: {best_individual.short_description()}, overall: {best_individual_overall.short_description()}')
+			log(f'Best: {best_individual.description()}, overall: {best_individual_overall.short_description()}')
 		else:
 			best_individual.record_statistics(stat.best)
 			best_in_generation.record_statistics(stat.best_in_gen)
-			log(f'Best: {best_individual.short_description()}, in generation: {best_in_generation.short_description()}')
+			log(f'Best: {best_individual.description()}, in generation: {best_in_generation.description()}')
 
 		for idx in range(1, len(new_parents)):
-			log(f'  #{idx+1}: {new_parents[idx].short_description()}')
+			log(f'  #{idx+1}: {new_parents[idx].description()}')
 
 		assert len(generation_list) == LAMBDA
 		stat.record_generation(generation_list)
@@ -552,7 +560,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	if NAS_STRATEGY == "F-DENSER":
 		nas_strategy.dump_mutated_variables(stat.evaluations_total)
-
 
 
 def test_saved_model(save_path, name='best.h5'):

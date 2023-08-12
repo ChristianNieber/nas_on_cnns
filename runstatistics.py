@@ -2,6 +2,7 @@ from time import time
 import json
 import numpy as np
 
+
 class RunStatistics:
 	""" keeps statistics over all generations """
 
@@ -30,7 +31,7 @@ class RunStatistics:
 			self.k_fold_million_inferences_time_std = []
 
 	def __init__(self):
-		# best individual (best overall for comma strategy)
+		# best individual (the best overall for comma strategy)
 		self.best = self.IndividualStatistics()
 		# best in generation
 		self.best_in_gen = self.IndividualStatistics()

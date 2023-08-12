@@ -82,7 +82,7 @@ class Test(unittest.TestCase):
 
 	def test_save_population(self):
 		from utils import Individual, CnnEvalResult
-		from statistics import RunStatistics
+		from runstatistics import RunStatistics
 		from strategy_stepper import StepperGrammar
 		import engine
 		import os
@@ -107,10 +107,9 @@ class Test(unittest.TestCase):
 
 		engine.pickle_population(0, [ind], './run_0/')
 
-		self.assertTrue(os.path.exists('./run_0/population.pkl'))
-		self.assertTrue(os.path.exists('./run_0/parent.pkl'))
-		self.assertTrue(os.path.exists('./run_0/random.pkl'))
-		self.assertTrue(os.path.exists('./run_0/numpy.pkl'))
+		self.assertTrue(os.path.exists('./run_0/gen_0_population.pkl'))
+		self.assertTrue(os.path.exists('./run_0/gen_0_random.pkl'))
+		self.assertTrue(os.path.exists('./run_0/gen_0_numpy.pkl'))
 
 		engine.pickle_statistics(stat, './run_0/')
 		self.assertTrue(os.path.exists('./run_0/statistics.pkl'))

@@ -2,7 +2,7 @@ import random
 import tensorflow as tf
 import keras
 from keras import backend
-from keras.callbacks import Callback, ModelCheckpoint
+from keras.callbacks import Callback
 from keras.utils.layer_utils import count_params
 from time import time
 import numpy as np
@@ -13,7 +13,7 @@ from utilities.data import load_dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
 
-from statistics import *
+from runstatistics import RunStatistics, CnnEvalResult
 from logger import *
 
 # possible test: impose memory constraints
@@ -198,7 +198,6 @@ class Evaluator:
 		def set_k_fold_metrics(self, k_fold_metrics):
 			self.k_fold_metrics = k_fold_metrics
 
-
 	def __init__(self, dataset, fitness_func=fitness_function_accuracy, for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, evaluation_cache_path='', experiment_name=''):
 		"""
 			Creates the Evaluator instance and loads the dataset.
@@ -223,7 +222,7 @@ class Evaluator:
 		self.evaluation_cache_changed = False
 
 		if self.evaluation_cache_path:
-			if  os.path.isfile(self.evaluation_cache_path):
+			if os.path.isfile(self.evaluation_cache_path):
 				with open(self.evaluation_cache_path, 'rb') as fh:
 					self.evaluation_cache = pickle.load(fh)
 				log_bold(f"loaded {len(self.evaluation_cache)} cache entries from {self.evaluation_cache_path}")
@@ -240,7 +239,6 @@ class Evaluator:
 			self.evaluation_cache_changed = False
 			with open(self.evaluation_cache_path, 'wb') as fh:
 				pickle.dump(self.evaluation_cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
-
 
 	@staticmethod
 	def get_keras_layers(phenotype):
@@ -519,11 +517,11 @@ class Evaluator:
 	@staticmethod
 	def calculate_model_multiplications(model):
 		""" print number of multiplications per layer of a keras model"""
-		for l in model.layers:
-			weights = sum([i.size for i in l.get_weights()])
-			outputs = int(np.prod(l.output_shape[1: -1]))
+		for layer in model.layers:
+			weights = sum([i.size for i in layer.get_weights()])
+			outputs = int(np.prod(layer.output_shape[1: -1]))
 			multiplications = weights * outputs
-			print(f'output shape: {l.output_shape[1:]}, weights: {weights}, multiplications: {multiplications}, layer: {l.name}')
+			print(f'output shape: {layer.output_shape[1:]}, weights: {weights}, multiplications: {multiplications}, layer: {layer.name}')
 			pass
 
 	@staticmethod
@@ -583,7 +581,7 @@ class Evaluator:
 	def cache_key(phenotype, max_training_time, max_training_epochs):
 		return f"{phenotype}#{max_training_time}#{max_training_epochs}"
 
-	def evaluate_cnn(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, stat, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
+	def evaluate_cnn(self, phenotype, max_training_time, max_training_epochs, model_save_path, dataset, stat, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -599,10 +597,10 @@ class Evaluator:
 				maximum number of epochs
 			model_save_path : str
 				path where model and its weights are saved, or empty
-			name : str
-				id string (<generation>-<number>)
 			dataset : dict
 				train and test datasets
+			stat : RunStatistics
+				for recording statistics
 			datagen : keras.preprocessing.image.ImageDataGenerator
 				Data augmentation method image data generator
 			datagen_test : keras.preprocessing.image.ImageDataGenerator
@@ -705,25 +703,25 @@ class Evaluator:
 		# measure test performance
 		x_test = dataset['evo_x_test']
 		y_test = dataset['evo_y_test']
-		test_accuracy, model_test_time, million_inferences_time  = self.test_model_with_data(model, x_test, y_test, datagen_test)
+		test_accuracy, model_test_time, million_inferences_time = self.test_model_with_data(model, x_test, y_test, datagen_test)
 
 		fitness = self.fitness_func(test_accuracy, parameters)
 
 		# measure final accuracy
 		x_final_test = dataset['x_final_test']
 		y_final_test = dataset['y_final_test']
-		final_test_accuracy, final_test_time, million_inferences_time  = self.test_model_with_data(model, x_final_test, y_final_test, datagen_test)
+		final_test_accuracy, final_test_time, million_inferences_time = self.test_model_with_data(model, x_final_test, y_final_test, datagen_test)
 
 		keras.backend.clear_session()
 
 		eval_time = time() - start_time
 
-		result = CnnEvalResult(score.history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered, parameters, keras_layers_count, model_layers, test_accuracy, fitness, model_summary)
+		result = CnnEvalResult(score.history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered,
+		                       parameters, keras_layers_count, model_layers, test_accuracy, fitness, model_summary)
 
 		stat.record_evaluation(seconds=eval_time, is_k_folds=for_k_folds_validation)
 
 		return result
-
 
 	def evaluate_cnn_with_cache(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, stat, datagen=None, datagen_test=None, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
@@ -737,7 +735,7 @@ class Evaluator:
 			stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
 			return cache_entry.metrics
 
-		result = self.evaluate_cnn(phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, stat, datagen, datagen_test, for_k_folds_validation, load_prev_weights, input_size)
+		result = self.evaluate_cnn(phenotype, max_training_time, max_training_epochs, model_save_path, dataset, stat, datagen, datagen_test, for_k_folds_validation, load_prev_weights, input_size)
 
 		if self.evaluation_cache_path:
 			new_cache_entry = Evaluator.EvaluationCacheEntry(f"{self.experiment_name}:{name}", result)
@@ -765,8 +763,6 @@ class Evaluator:
 		accuracy, model_test_time, million_inferences_time = Evaluator.test_model_with_data(model, self.dataset['x_final_test'], self.dataset['y_final_test'], datagen_test)
 
 		return accuracy
-
-
 
 	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, max_training_time, max_training_epochs, stat, datagen=None, datagen_test=None, input_size=(28, 28, 1)):
 		""" evaluate individual for k-folds, using cache """
@@ -804,7 +800,7 @@ class Evaluator:
 				'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
 				'x_final_test': self.dataset['x_final_test'], 'y_final_test': self.dataset['y_final_test']
 			}
-			result = self.evaluate_cnn(phenotype, f"Fold #{fold_number}", max_training_time, max_training_epochs, '', fold_dataset, stat, datagen, datagen_test, for_k_folds_validation=True, input_size=input_size)
+			result = self.evaluate_cnn(phenotype, max_training_time, max_training_epochs, '', fold_dataset, stat, datagen, datagen_test, for_k_folds_validation=True, input_size=input_size)
 			fold_number += 1
 			k_folds_result.append_cnn_eval_result(result)
 
@@ -816,7 +812,7 @@ class Evaluator:
 		return k_folds_result
 
 	@staticmethod
-	def test_model_with_data(model, x_test, y_test, datagen_test):
+	def test_model_with_data(model, x_test, y_test, datagen_test=None):
 		model_test_start_time = time()
 		if datagen_test is None:
 			y_pred = model.predict(x_test, batch_size=PREDICT_BATCH_SIZE, verbose=0)
@@ -826,7 +822,6 @@ class Evaluator:
 		model_test_time = time() - model_test_start_time
 		million_inferences_time = 1000000.0 * model_test_time / len(y_pred)
 		return accuracy, model_test_time, million_inferences_time
-
 
 
 class Individual:
@@ -846,14 +841,10 @@ class Individual:
 			list of Modules (genotype) of the layers
 		output : dict
 			output rule genotype
-		phenotype : str
+		phenotype_lines : list of str
 			phenotype of the candidate solution
 		fitness : float
 			fitness value of the candidate solution
-		training_epochs : int
-			number of performed epochs during training
-		parameters : int
-			number of trainable parameters of the network
 		id : str
 			string <generation>-<index>
 
@@ -909,16 +900,16 @@ class Individual:
 	def reset_training(self):
 		"""reset all values computed during training"""
 		self.is_parent = False
-		self.fitness = 0.0
+		self.fitness = None
 		self.metrics = None
 		self.k_fold_metrics = None
 		self.training_complete = False
 		self.model_save_path = None
 
 	def __repr__(self):
-		return self.short_description()
+		return self.description()
 
-	def short_description(self):
+	def description(self):
 		""" return short description of individual with fitness, k-fold accuracy and final test accuracy if calculated,
 			test accuracy and number of parameters """
 		result = f"{self.id} "
@@ -935,7 +926,7 @@ class Individual:
 	def log_long_description(self, title):
 		""" output long description to log, with phenotype, model summary and evolution history """
 		log('\n----------------------------------------------------------------------------------------------------------------------------------------')
-		log_bold(f"{title}: {self.short_description()}\nPhenotype:")
+		log_bold(f"{title}: {self.description()}\nPhenotype:")
 		log('\n'.join(self.phenotype_lines) + '\n')
 		log(self.metrics.model_summary)
 		log_bold('\nEvolution history:')
@@ -946,7 +937,7 @@ class Individual:
 		""" return dictionary of statistics for individual to write to json file"""
 		result = {
 			'id': self.id,
-			'is_parent' : self.is_parent,
+			'is_parent': self.is_parent,
 			'final_test_accuracy': self.metrics.final_test_accuracy,
 			'accuracy': self.metrics.accuracy,
 			'fitness': self.fitness,
@@ -986,6 +977,8 @@ class Individual:
 			----------
 			grammar : Grammar
 				grammar instances that stores the expansion rules
+			init_max : dict
+				number of layers per module for random initialisation
 
 			Returns
 			-------
@@ -1007,8 +1000,8 @@ class Individual:
 		for rule in self.macro_symbols:
 			self.macro_module.layers.append(grammar.initialise_layer_random(rule))
 		self.modules_including_macro = self.modules + [self.macro_module]
-		log_bold(f"randomly created individual {self.id}:")
-		log(self.get_phenotype(grammar))
+		# log_bold(f"randomly created individual {self.id}:")
+		# log(self.get_phenotype(grammar))
 		return self
 
 	def initialise_as_lenet(self, grammar):
@@ -1071,7 +1064,7 @@ class Individual:
 
 		# Initialise the macro structure: learning, data augmentation, etc.
 		self.macro_module = grammar.Module("learning", 1, 1)
-		self.macro_module.layers = layers = grammar.Module.default_learning_rule_adam()
+		self.macro_module.layers = grammar.Module.default_learning_rule_adam()
 		self.modules_including_macro = self.modules + [self.macro_module]
 		return self
 
@@ -1130,6 +1123,8 @@ class Individual:
 			----------
 			grammar : Grammar
 				grammar instance that stores the expansion rules
+			stat : RunStatistics
+				for recording statistics
 			cnn_eval : Evaluator
 				Evaluator instance used to train the networks
 			datagen : keras.preprocessing.image.ImageDataGenerator

@@ -1,13 +1,12 @@
 import numpy as np
 import random
 from enum import Enum
-from abc import ABC
-from copy import copy, deepcopy
-from logger import *
+from copy import deepcopy
+
 
 def format_val(val):
 	"""format value for log"""
-	if val == None:
+	if val is None:
 		result = "None"
 	elif isinstance(val, float):
 		result = f"{val:.5f}"
@@ -219,7 +218,6 @@ class StepperGrammar:
 				phenotype += f"{name}:{value}"
 		return phenotype
 
-
 	class Module:
 		"""
 			Each of the units of the outer-level genotype
@@ -253,8 +251,6 @@ class StepperGrammar:
 					minimum expansions of the block
 						max_expansions : int
 					maximum expansions of the block
-				levels_back : int
-					number of previous layers a given layer can receive as input
 			"""
 
 			self.module_name = module
@@ -275,9 +271,6 @@ class StepperGrammar:
 				----------
 				grammar : StepperGrammar
 					grammar instance that stores the expansion rules
-
-				REUSE_LAYER : float
-					likelihood of reusing an existing layer
 			"""
 			REUSE_LAYER = 0.15
 
@@ -334,9 +327,9 @@ class StepperGrammar:
 class MutableVar:
 	type: Type
 	var: Var
-	info_nt_key : str
+	info_nt_key: str
 
-	def __init__(self, type, value, step, var = None, info_module_name='', info_layer_index=0, info_nlayers=0, info_nt_key='', value_list=None):
+	def __init__(self, type, value, step, var=None, info_module_name='', info_layer_index=0, info_nlayers=0, info_nt_key='', value_list=None):
 		self.type = type
 		self.value = value
 		self.step = step
@@ -361,9 +354,8 @@ class MutableVar:
 		return result
 
 	def info_string(self):
-		return self.info_module_name + (f"-{self.info_layer_index}/{self.info_nlayers}" if self.info_nlayers>1 else "") + ' ' + self.info_nt_key
+		return self.info_module_name + (f"-{self.info_layer_index}/{self.info_nlayers}" if self.info_nlayers > 1 else "") + ' ' + self.info_nt_key
 
-# ---------------------------------------------------------------------------
 
 def interval_transform(value, a, b):
 	if value < a or value > b:
@@ -377,7 +369,7 @@ def interval_transform(value, a, b):
 	return value
 
 
-class NasStrategy():
+class NasStrategy:
 	def __init__(self):
 		self.grammar = None
 
@@ -392,6 +384,7 @@ class StepperStrategy(NasStrategy):
 		self.EXPECTED_NUMBER_OF_PARAMETERS = 25
 
 		self.MUTATE_STEP = False
+		self.RANDOM_RESET_INTS = False
 
 		self.DEFAULT_STEPWIDTH_FLOAT = 0.15
 		self.DEFAULT_STEPWIDTH_INT = 0.15
@@ -404,31 +397,32 @@ class StepperStrategy(NasStrategy):
 		self.REMOVE_LAYER = 0.25
 		self.CHANGE_TYPE = 0.1
 
-	class ScanLayerInfo():
-		def __init__(self, module_name, layer_index, nlayers, nonterminals_only = False):
+	class ScanLayerInfo:
+		def __init__(self, module_name, layer_index, nlayers, nonterminals_only=False):
 			self.module_name = module_name
 			self.layer_index = layer_index
 			self.nlayers = nlayers
 			self.nonterminals_only = nonterminals_only
 
-	class MutationState():
+	class MutationState:
 		def __init__(self, nvars):
 			self.nvars = nvars
 			self.tau_global = 1.0 / np.sqrt(2 * nvars)
 			self.tau_global_gaussian = self.tau_global * random.gauss(0, 1)
 			self.tau_local = 1.0 / np.sqrt(2 * np.sqrt(nvars))
 			self.n_mutated_vars = 0
+
 		def set_nvars(self, nvars):
 			self.nvars = nvars
+
 		def log_normal_random(self):
 			self.n_mutated_vars += 1
 			return self.tau_global_gaussian + self.tau_local * random.gauss(0, 1)
 
-
 	def mutate_layers(self, ind, mutation_state: MutationState):
 		for module in ind.modules_including_macro:
 			step = module.step
-			if step == None:
+			if step is None:
 				step = self.DEFAULT_STEPWIDTH_LEARNING if module.module_name == 'learning' else self.DEFAULT_STEPWIDTH_MODULE
 				module.step_history = [0.0] * (ind.generation-1)
 				module.step_history.append(step)
@@ -447,23 +441,23 @@ class StepperStrategy(NasStrategy):
 				nchanges = int(u * max_nchanges / step) + 1
 
 				for i in range(0, nchanges):
-					probabilites = []
+					probabilities = []
 					actions = []
 					nlayers = len(module.layers)
 					if nlayers < module.max_expansions:
-						probabilites.append(self.ADD_LAYER)
+						probabilities.append(self.ADD_LAYER)
 						actions.append('add')
 						if nlayers:
-							probabilites.append(self.COPY_LAYER)
+							probabilities.append(self.COPY_LAYER)
 							actions.append('copy')
 					if nlayers > module.min_expansions:
-						probabilites.append(self.REMOVE_LAYER)
+						probabilities.append(self.REMOVE_LAYER)
 						actions.append('remove')
 					if nlayers:
-						probabilites.append(self.CHANGE_TYPE)
+						probabilities.append(self.CHANGE_TYPE)
 						actions.append('change')
 
-					action = actions[0] if len(actions) == 1 else random.choices(actions, weights=probabilites, k=1)[0]
+					action = actions[0] if len(actions) == 1 else random.choices(actions, weights=probabilities, k=1)[0]
 					# add layer (new or copy)
 					if action == 'add' or action == 'copy':
 						insert_pos = random.randint(0, nlayers)
@@ -490,12 +484,12 @@ class StepperStrategy(NasStrategy):
 
 	def mutate_grammatical_type(self, ind, module, layer, layer_idx, nlayers, mutation_state: MutationState):
 		mutable_vars = []
-		self.scan_mutable_variables_recursive(module.module_name, layer, StepperStrategy.ScanLayerInfo(module.module_name, 0, nlayers, nonterminals_only=True), mutable_vars)
+		self.scan_mutable_variables_recursive(module.module_name, layer, StepperStrategy.ScanLayerInfo(module.module_name, layer_idx, nlayers, nonterminals_only=True), mutable_vars)
 		if len(mutable_vars):
 			assert len(mutable_vars) == 1   # can currently mutate only one type
 			mvar = mutable_vars[0]
 			self.mutate_variable(mvar, mutation_state)
-			index = self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, 0, nonterminals_only=True)
+			self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, 0, nonterminals_only=True)
 			ind.log_mutation(f"{mvar.info_string(): <34} {mvar.type: <25} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}, step: {format_val(module.previous_step)} -> {format_val(module.step)} : {layer}")
 
 	def mutation(self, parent, generation=0, idx=0):
@@ -537,7 +531,7 @@ class StepperStrategy(NasStrategy):
 
 		# log changed variables
 		for mvar in mutable_vars:
-			if mvar.new_value != None:
+			if mvar.new_value is not None:
 				ind.log_mutation(f"{mvar.info_string(): <34} {mvar.var.name: <12} {mvar.type: <12} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}, step: {format_val(mvar.step)} -> {format_val(mvar.new_step)}")
 
 		# write changed variables and step widths back into layers
@@ -545,7 +539,7 @@ class StepperStrategy(NasStrategy):
 		for module in ind.modules_including_macro:
 			for layer_idx, layer in enumerate(module.layers):
 				index = self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, index)
-		assert index==len(mutable_vars)
+		assert index == len(mutable_vars)
 
 		return ind
 
@@ -553,17 +547,16 @@ class StepperStrategy(NasStrategy):
 		value = mvar.value
 		step = mvar.step
 		var = mvar.var
-		type = mvar.type
-		if type == Type.FLOAT:
-			if step == None:
+		if mvar.type == Type.FLOAT:
+			if step is None:
 				step = self.DEFAULT_STEPWIDTH_FLOAT * (var.max_value - var.min_value)
 				mvar.step = step
 			step *= np.exp(mutation_state.log_normal_random())
 			value += step * random.gauss(0, 1)
 			value = interval_transform(value, var.min_value, var.max_value)
 
-		elif type == Type.INT:
-			if step == None:
+		elif mvar.type == Type.INT:
+			if step is None:
 				step = self.DEFAULT_STEPWIDTH_INT * (var.max_value - var.min_value)
 				mvar.step = step
 			step *= np.exp(mutation_state.log_normal_random())
@@ -579,25 +572,25 @@ class StepperStrategy(NasStrategy):
 			if diff:
 				value = interval_transform(value + diff, var.min_value, var.max_value)
 
-		elif type == Type.CAT:
-			if step == None:
+		elif mvar.type == Type.CAT:
+			if step is None:
 				step = self.DEFAULT_STEPWIDTH_CAT
 				mvar.step = step
 			step = 1.0/(1 + ((1-step)/step) * np.exp(-mutation_state.log_normal_random()))
 			step = interval_transform(step, 0.3333333 / mutation_state.nvars, 0.5)
-			if random.uniform(0,1) < step:
+			if random.uniform(0, 1) < step:
 				list_of_choices = var.categories.copy()
 				list_of_choices.remove(value)
 				value = random.choice(list_of_choices)
 
-		elif type == Type.NONTERMINAL:
+		elif mvar.type == Type.NONTERMINAL:
 			# does not have its own step, this uses the module's step
 			list_of_choices = mvar.value_list
 			list_of_choices.remove(value)
 			value = random.choice(list_of_choices)
 
 		else:
-			raise TypeError(f"mutate() not supported for {type}")
+			raise TypeError(f"mutate() not supported for {mvar.type}")
 
 		mvar.new_step = step    # always modify step, even if value does not change!
 		if value != mvar.value:
@@ -607,42 +600,41 @@ class StepperStrategy(NasStrategy):
 
 	def mutate_variable_nostep(self, mvar: MutableVar, mutation_state: MutationState):
 		value = mvar.value
-		step = mvar.step
 		var = mvar.var
-		type = mvar.type
-		if type == Type.FLOAT:
+		SIGMA = 0.15        # TODO
+		if mvar.type == Type.FLOAT:
 			if random.uniform(0, 1) < self.DEFAULT_STEPWIDTH_FLOAT:
-				value += random.gauss(0, 1) * 0.15 * (var.max_value - var.min_value)
+				value += random.gauss(0, 1) * SIGMA * (var.max_value - var.min_value)
 				value = interval_transform(value, var.min_value, var.max_value)
 
-		elif type == Type.INT:
+		elif mvar.type == Type.INT:
 			if random.uniform(0, 1) < self.DEFAULT_STEPWIDTH_INT:
-				if 1:
+				if self.RANDOM_RESET_INTS:
 					while True:
 						value = random.randint(var.min_value, var.max_value)
 						if value != mvar.value or var.min_value == var.max_value:
 							break
 				else:
-					float_diff = random.gauss(0, 1) * 0.15 * (var.max_value - var.min_value)
+					float_diff = random.gauss(0, 1) * SIGMA * (var.max_value - var.min_value)
 					diff = int(round(float_diff))
 					if diff == 0:
 						diff = 1 if float_diff > 0 else -1
 					value = interval_transform(value + diff, var.min_value, var.max_value)
 
-		elif type == Type.CAT:
+		elif mvar.type == Type.CAT:
 			if random.uniform(0, 1) < self.DEFAULT_STEPWIDTH_CAT:
 				list_of_choices = var.categories.copy()
 				list_of_choices.remove(value)
 				value = random.choice(list_of_choices)
 
-		elif type == Type.NONTERMINAL:
+		elif mvar.type == Type.NONTERMINAL:
 			# does not have its own step, this uses the module's step
 			list_of_choices = mvar.value_list
 			list_of_choices.remove(value)
 			value = random.choice(list_of_choices)
 
 		else:
-			raise TypeError(f"mutate() not supported for {type}")
+			raise TypeError(f"mutate() not supported for {mvar.type}")
 
 		if value != mvar.value:
 			mvar.new_value = value
@@ -686,7 +678,7 @@ class StepperStrategy(NasStrategy):
 				if var.type != Type.TERMINAL and not nonterminals_only:
 					if mutable_vars[index].new_step is not None or mutable_vars[index].new_value is not None:
 						new_value = mutable_vars[index].new_value
-						if new_value == None:
+						if new_value is None:
 							new_value = mutable_vars[index].value
 						layer[layer_idx] = (key, new_value, mutable_vars[index].new_step)
 					index += 1
