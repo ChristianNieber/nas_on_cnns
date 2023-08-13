@@ -9,26 +9,56 @@ class RunStatistics:
 	class IndividualStatistics:
 		def __init__(self):
 			self.id = []
-			self.final_test_accuracy = []
 			self.accuracy = []
 			self.parameters = []
+			self.fitness = []
+
 			self.evaluation_time = []
 			self.training_time = []
 			self.training_epochs = []
 			self.million_inferences_time = []
-			self.fitness = []
+
+			self.final_test_accuracy = []
 			self.train_accuracy = []
 			self.train_loss = []
 			self.val_accuracy = []
 			self.val_loss = []
+
 			self.k_fold_accuracy = []
 			self.k_fold_accuracy_std = []
-			self.k_fold_final_accuracy = []
-			self.k_fold_final_accuracy_std = []
 			self.k_fold_fitness = []
 			self.k_fold_fitness_std = []
+			self.k_fold_final_accuracy = []
+			self.k_fold_final_accuracy_std = []
 			self.k_fold_million_inferences_time = []
 			self.k_fold_million_inferences_time_std = []
+
+		def metric(self, index):
+			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
+			if index == 0:
+				return self.accuracy
+			elif index == 1:
+				return self.parameters
+			elif index == 2:
+				return self.fitness
+
+		def metric_k_fold(self, index):
+			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
+			if index == 0:
+				return self.k_fold_accuracy
+			elif index == 1:
+				return []
+			elif index == 2:
+				return self.k_fold_fitness
+
+		def metric_k_fold_std(self, index):
+			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
+			if index == 0:
+				return self.k_fold_accuracy_std
+			elif index == 1:
+				return []
+			elif index == 2:
+				return self.k_fold_fitness_std
 
 	def __init__(self, random_seed=-1):
 		self.random_seed = random_seed
@@ -42,12 +72,12 @@ class RunStatistics:
 
 		# best of generation
 		self.generation_best_accuracy = []
-		self.generation_best_fitness = []
 		self.generation_best_parameters = []
+		self.generation_best_fitness = []
 		# generation
 		self.generation_accuracy = []
-		self.generation_fitness = []
 		self.generation_parameters = []
+		self.generation_fitness = []
 		# run state
 		self.run_generation = -1
 		self.run_time = 0
@@ -63,6 +93,34 @@ class RunStatistics:
 		self.session_previous_runtime = 0
 		self.random_state = random.getstate()
 		self.random_state_numpy = np.random.get_state()
+
+	def metric_generation(self, index):
+		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
+		if index == 0:
+			return self.generation_accuracy
+		elif index == 1:
+			return self.generation_parameters
+		elif index == 2:
+			return self.generation_fitness
+
+	@staticmethod
+	def metric_name(index):
+		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
+		if index == 0:
+			return "Accuracy"
+		elif index == 1:
+			return "Parameters"
+		elif index == 2:
+			return "Fitness"
+
+	@staticmethod
+	def metric_ylimits(index):
+		if index == 0:
+			return (0.96, 1.0)
+		elif index == 1:
+			return (0, 100000)
+		elif index == 2:
+			return (-2, 3)
 
 	def init_session(self):
 		self.session_start_time = time()
