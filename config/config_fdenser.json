@@ -9,7 +9,7 @@
     "initial_individuals" : "random",
 
     // resume from saved state
-    "resume": true,
+    "resume": false,
 
     // can resume at a certain generation (10, 20, ...)
     "resume_generation": 0,

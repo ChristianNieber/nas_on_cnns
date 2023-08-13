@@ -329,7 +329,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	# load grammar and init strategy
 	if NAS_STRATEGY == "F-DENSER":
-		grammar = FDENSERGrammar(grammar_file.replace(".grammar", "_fdenser.grammar"))
+		grammar = FDENSERGrammar(grammar_file)
 		nas_strategy = FDENSERStrategy()
 	elif NAS_STRATEGY == "Stepper":
 		grammar = StepperGrammar(grammar_file)
