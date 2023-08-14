@@ -386,18 +386,20 @@ class StepperStrategy(NasStrategy):
 		self.MUTATE_STEP = False
 		self.RANDOM_RESET_INTS = True
 		self.SIGMA_DECAY_START_GENERATION = 1
-		self.SIGMA_DECAY_RATE = 1/50
+		self.SIGMA_DECAY_RATE = 1/30    # was 1/50
 
-		self.DEFAULT_STEPWIDTH_FLOAT = 0.15
-		self.DEFAULT_STEPWIDTH_INT = 0.15
-		self.DEFAULT_STEPWIDTH_CAT = 0.15
-		self.DEFAULT_STEPWIDTH_MODULE = 0.15
-		self.DEFAULT_STEPWIDTH_LEARNING = 0.15
+		# mutation probabilities
+		self.MUTATION_PROBABILITY_FLOAT = 0.15
+		self.MUTATION_PROBABILITY_INT = 0.15
+		self.MUTATION_PROBABILITY_CAT = 0.15
+		self.MUTATION_PROBABILITY_LAYER_IN_MODULE = 0.15
+		self.MUTATION_PROBABILITY_LEARNING = 0.15
 
-		self.ADD_LAYER = 0.25*0.85
-		self.COPY_LAYER = 0.25*0.15
-		self.REMOVE_LAYER = 0.25
-		self.CHANGE_TYPE = 0.1
+		# for layer mutation, relative probabilities
+		self.ADD_LAYER_PROBABILITY = 0.25 * 0.85 * 1.5  # will be modified with decaying SIGMA
+		self.CHANGE_TYPE_PROBABILITY = 0.1 * 1.5        # will be modified with decaying SIGMA
+		self.COPY_LAYER_PROBABILITY = 0.25 * 0.15
+		self.REMOVE_LAYER_PROBABILITY = 0.25
 
 	class ScanLayerInfo:
 		def __init__(self, module_name, layer_index, nlayers, nonterminals_only=False):
@@ -407,12 +409,12 @@ class StepperStrategy(NasStrategy):
 			self.nonterminals_only = nonterminals_only
 
 	class MutationState:
-		def __init__(self, generation, nvars, sigma_decay_start_generation=0, sigma_decay_rate=None):
+		def __init__(self, generation, nvars, SIGMA_DECAY_START_GENERATION=0, SIGMA_DECAY_RATE=None):
 			self.generation = generation
 			self.nvars = nvars
 
-			self.sigma_decay_start_generation = sigma_decay_start_generation
-			self.sigma_decay_rate = sigma_decay_rate
+			self.sigma_decay_start_generation = SIGMA_DECAY_START_GENERATION
+			self.sigma_decay_rate = SIGMA_DECAY_RATE
 
 			self.tau_global = 1.0 / np.sqrt(2 * nvars)
 			self.tau_global_gaussian = self.tau_global * random.gauss(0, 1)
@@ -432,11 +434,17 @@ class StepperStrategy(NasStrategy):
 			else:
 				return 0
 
+		def transform_with_decay(self, probability):
+			sigma = self.step_sigma()
+			if sigma:
+				probability *= sigma / 0.5
+			return probability
+
 	def mutate_layers(self, ind, mutation_state: MutationState):
 		for module in ind.modules_including_macro:
 			step = module.step
 			if step is None:
-				step = self.DEFAULT_STEPWIDTH_LEARNING if module.module_name == 'learning' else self.DEFAULT_STEPWIDTH_MODULE
+				step = self.MUTATION_PROBABILITY_LEARNING if module.module_name == 'learning' else self.MUTATION_PROBABILITY_LAYER_IN_MODULE
 				module.step_history = [0.0] * (ind.generation-1)
 				module.step_history.append(step)
 			module.previous_step = step
@@ -458,16 +466,16 @@ class StepperStrategy(NasStrategy):
 					actions = []
 					nlayers = len(module.layers)
 					if nlayers < module.max_expansions:
-						probabilities.append(self.ADD_LAYER)
+						probabilities.append(mutation_state.transform_with_decay(self.ADD_LAYER_PROBABILITY))
 						actions.append('add')
 						if nlayers:
-							probabilities.append(self.COPY_LAYER)
+							probabilities.append(self.COPY_LAYER_PROBABILITY)
 							actions.append('copy')
 					if nlayers > module.min_expansions:
-						probabilities.append(self.REMOVE_LAYER)
+						probabilities.append(self.REMOVE_LAYER_PROBABILITY)
 						actions.append('remove')
 					if nlayers:
-						probabilities.append(self.CHANGE_TYPE)
+						probabilities.append(mutation_state.transform_with_decay(self.CHANGE_TYPE_PROBABILITY))
 						actions.append('change')
 
 					action = actions[0] if len(actions) == 1 else random.choices(actions, weights=probabilities, k=1)[0]
@@ -562,7 +570,7 @@ class StepperStrategy(NasStrategy):
 		var = mvar.var
 		if mvar.type == Type.FLOAT:
 			if step is None:
-				step = self.DEFAULT_STEPWIDTH_FLOAT * (var.max_value - var.min_value)
+				step = self.MUTATION_PROBABILITY_FLOAT * (var.max_value - var.min_value)
 				mvar.step = step
 			step *= np.exp(mutation_state.log_normal_random())
 			value += step * random.gauss(0, 1)
@@ -570,24 +578,16 @@ class StepperStrategy(NasStrategy):
 
 		elif mvar.type == Type.INT:
 			if step is None:
-				step = self.DEFAULT_STEPWIDTH_INT * (var.max_value - var.min_value)
+				step = self.MUTATION_PROBABILITY_INT * (var.max_value - var.min_value)
 				mvar.step = step
 			step *= np.exp(mutation_state.log_normal_random())
-			if 0:
-				phi = 1 - (step / mutation_state.nvars) / (1 + np.sqrt(1 + (step / mutation_state.nvars) ** 2))
-				u1 = random.uniform(0.0, 1.0)
-				u2 = random.uniform(0.0, 1.0)
-				G1 = int(np.floor(np.log(1 - u1) / np.log(1 - phi)))
-				G2 = int(np.floor(np.log(1 - u2) / np.log(1 - phi)))
-				diff = G2 - G1
-			else:
-				diff = int(round(step * random.gauss(0, 1)))
+			diff = int(round(step * random.gauss(0, 1)))
 			if diff:
 				value = interval_transform(value + diff, var.min_value, var.max_value)
 
 		elif mvar.type == Type.CAT:
 			if step is None:
-				step = self.DEFAULT_STEPWIDTH_CAT
+				step = self.MUTATION_PROBABILITY_CAT
 				mvar.step = step
 			step = 1.0/(1 + ((1-step)/step) * np.exp(-mutation_state.log_normal_random()))
 			step = interval_transform(step, 0.3333333 / mutation_state.nvars, 0.5)
@@ -617,7 +617,7 @@ class StepperStrategy(NasStrategy):
 		var = mvar.var
 
 		if mvar.type == Type.FLOAT:
-			if random.uniform(0, 1) < self.DEFAULT_STEPWIDTH_FLOAT:
+			if random.uniform(0, 1) < self.MUTATION_PROBABILITY_FLOAT:
 				sigma = mutation_state.step_sigma()
 				# sigma *= 0.15 / 0.5
 				if not sigma:
@@ -627,7 +627,7 @@ class StepperStrategy(NasStrategy):
 				value = interval_transform(value, var.min_value, var.max_value)
 
 		elif mvar.type == Type.INT:
-			if random.uniform(0, 1) < self.DEFAULT_STEPWIDTH_INT:
+			if random.uniform(0, 1) < self.MUTATION_PROBABILITY_INT:
 				mvar.new_step = sigma = mutation_state.step_sigma()
 				if not sigma:
 					while True:
@@ -642,7 +642,7 @@ class StepperStrategy(NasStrategy):
 					value = interval_transform(value + diff, var.min_value, var.max_value)
 
 		elif mvar.type == Type.CAT:
-			if random.uniform(0, 1) < self.DEFAULT_STEPWIDTH_CAT:
+			if random.uniform(0, 1) < self.MUTATION_PROBABILITY_CAT:
 				list_of_choices = var.categories.copy()
 				list_of_choices.remove(value)
 				value = random.choice(list_of_choices)

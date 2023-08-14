@@ -11,6 +11,9 @@
     // resume from saved state
     "resume": false,
 
+    // can resume at a certain generation (10, 20, ...)
+    "resume_generation": 0,
+
     // random seed for Random and numpy modules, -1 for none
     "random_seed" : 100,
 
@@ -66,9 +69,6 @@
     "max_training_time": 2,
     //maximum training epochs for each network
     "max_training_epochs": 2,
-
-    //fitness function parameter: use penalty for large network
-    "use_network_size_penalty" : true,
 
     // find K folds accuracy for best individual, this specifies the number of folds or 0
     "k_folds" : 0,

@@ -9,7 +9,7 @@
     "initial_individuals" : "random",
 
     // resume from saved state
-    "resume": false,
+    "resume": true,
 
     // can resume at a certain generation (10, 20, ...)
     "resume_generation": 0,
@@ -69,9 +69,6 @@
     "max_training_time": 15,
     //maximum training epochs for each network
     "max_training_epochs": 10,
-
-    //fitness function parameter: use penalty for large network
-    "use_network_size_penalty" : true,
 
     // find K folds accuracy for best individual, this specifies the number of folds or 0
     "k_folds" : 0,

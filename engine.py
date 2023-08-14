@@ -19,7 +19,7 @@ from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar, StepperStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
+DEBUG_CONFIGURATION = 1				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
@@ -27,16 +27,12 @@ SAVE_MODELS_TO_FILE = 0             # currently not used
 SAVE_MILESTONE_GENERATIONS = 10     # save milestone every 10 generations
 
 # global variables set from config.json
-USE_NETWORK_SIZE_PENALTY = 0
 
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 
 def fitness_metric_with_size_penalty(accuracy, parameters):
-	if USE_NETWORK_SIZE_PENALTY:
-		return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
-	else:
-		return accuracy
+	return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
 
 
 def save_population_statistics(population, save_path, gen):
@@ -280,8 +276,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			overrides RANDOM_SEED from config file if set
 	"""
 
-	global USE_NETWORK_SIZE_PENALTY
-
 	if DEBUG_CONFIGURATION and config_file == 'config/config.json':
 		config_file = 'config/config_debug.json'
 
@@ -313,7 +307,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		EVALUATION_CACHE_FILE = EVALUATION_CACHE_FILE.replace(".pkl", "_fdenser.pkl")
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
-	USE_NETWORK_SIZE_PENALTY = config['TRAINING']['use_network_size_penalty']
 	K_FOLDS = config['TRAINING']['k_folds']
 	SELECT_BEST_WITH_K_FOLDS_ACCURACY = config['TRAINING']['select_best_with_k_folds_accuracy']
 	data_generator = eval(config['TRAINING']['datagen'])
@@ -364,6 +357,10 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	else:
 		logger_configure_overwrite(False)
+		last_gen, population, stat = unpickle
+		if last_gen + 1 >= NUM_GENERATIONS:
+			print(f'{EXPERIMENT_NAME} in folder {save_path} is already complete, generation {last_gen}')
+			return
 
 	# set random seeds
 	if RANDOM_SEED != -1:
@@ -380,7 +377,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	if unpickle is None:
 		# save evaluator
 		# pickle_evaluator(cnn_eval, save_path)
-
 		last_gen = -1
 
 		# set random seeds
@@ -412,7 +408,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	# in case there is a previous population, load it
 	else:
-		last_gen, population, stat = unpickle
 		stat.init_session()
 
 		random.setstate(stat.random_state)
@@ -420,6 +415,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 		new_parents = select_new_parents(population, MY)
 		population = new_parents
+
 		log('\n========================================================================================================')
 		log(f'Resuming experiment {EXPERIMENT_NAME} in folder {save_path} after generation {last_gen}')
 
@@ -547,8 +543,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	parent = population[0]
 	parent.log_long_description('Final Individual')
 
-	if NAS_STRATEGY == "F-DENSER":
-		nas_strategy.dump_mutated_variables(stat.evaluations_total)
+	#if NAS_STRATEGY == "F-DENSER":
+	#	nas_strategy.dump_mutated_variables(stat.evaluations_total)
 
 
 def test_saved_model(save_path, name='best.h5'):
