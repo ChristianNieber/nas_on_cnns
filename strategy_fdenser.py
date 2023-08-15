@@ -648,7 +648,6 @@ class FDENSERStrategy(NasStrategy):
 		"""
 			DSGE mutations (check DSGE for further details)
 
-
 			Parameters
 			----------
 			ind : Individual
@@ -688,12 +687,12 @@ class FDENSERStrategy(NasStrategy):
 						if new_val != value or min_val == max_val:
 							break
 					ind.log_mutation(f"{layer_name}: int {nt_key}/{var_name} {value} -> {new_val}")
-					self.count_mutated_variable(f"int {layer_name}/{nt_key}")
+					self.count_mutated_variable(f"int {layer_name}/{var_name}")
 				elif var_type == 'float':
 					new_val = value + random.gauss(0, 0.15)
 					new_val = np.clip(new_val, min_val, max_val)
 					ind.log_mutation(f"{layer_name}: float {nt_key}/{var_name} {value} -> {new_val}")
-					self.count_mutated_variable(f"float {layer_name}/{nt_key}")
+					self.count_mutated_variable(f"float {layer_name}/{var_name}")
 
 				layer[nt_key][nt_idx]['ga'][var_name] = (var_type, min_val, max_val, new_val)
 

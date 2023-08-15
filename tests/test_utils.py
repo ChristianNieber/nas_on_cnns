@@ -70,7 +70,7 @@ class Test(unittest.TestCase):
 
 		random.seed(0)
 		ind, grammar, nas_strategy = self.create_individual_stepper()
-		evaluator = Evaluator('cifar10')
+		evaluator = Evaluator('mnist')
 
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')

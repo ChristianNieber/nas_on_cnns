@@ -36,20 +36,20 @@ class RunStatistics:
 		def metric(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 			if index == 0:
-				return self.accuracy
+				return 100.0 - np.array(self.accuracy) * 100.0
 			elif index == 1:
 				return self.parameters
 			elif index == 2:
-				return self.fitness
+				return np.array(self.fitness)
 
 		def metric_k_fold(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 			if index == 0:
-				return self.k_fold_accuracy
+				return 100.0 - np.array(self.k_fold_accuracy) * 100.0
 			elif index == 1:
 				return []
 			elif index == 2:
-				return self.k_fold_fitness
+				return np.array(self.k_fold_fitness)
 
 		def metric_k_fold_std(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
@@ -97,17 +97,17 @@ class RunStatistics:
 	def metric_generation(self, index):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 		if index == 0:
-			return self.generation_accuracy
+			return 100.0 - np.array(self.generation_accuracy) * 100.0
 		elif index == 1:
 			return self.generation_parameters
 		elif index == 2:
-			return self.generation_fitness
+			return np.array(self.generation_fitness)
 
 	@staticmethod
 	def metric_name(index):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 		if index == 0:
-			return "Accuracy"
+			return "Error rate"
 		elif index == 1:
 			return "Parameters"
 		elif index == 2:
@@ -116,11 +116,22 @@ class RunStatistics:
 	@staticmethod
 	def metric_ylimits(index):
 		if index == 0:
-			return (0.96, 1.0)
+			return (0.0, 10.0)
 		elif index == 1:
 			return (0, 100000)
 		elif index == 2:
-			return (-2, 3)
+			return (-5, 2.1)
+		elif index == -1:
+			return (0.0, 5.0)
+
+	@staticmethod
+	def metric_ticks(index):
+		if index <= 0:
+			return 1
+		elif index == 1:
+			return 10000
+		elif index == 2:
+			return 0.5
 
 	def init_session(self):
 		self.session_start_time = time()

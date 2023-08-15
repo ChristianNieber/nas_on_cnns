@@ -18,7 +18,7 @@
     "random_seed" : 100,
 
     //Maximum number of generations
-    "num_generations": 10,
+    "num_generations": 20,
 
     // my - number of parents
     "my" : 1,
@@ -30,7 +30,7 @@
     "comma_strategy": false,
 
     // NAS strategy to use: "Stepper" or "F-DENSER"
-    "nas_strategy": "Stepper"
+    "nas_strategy": "F-DENSER"
   },
 
   //network specific parameters

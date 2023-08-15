@@ -2,7 +2,9 @@ import engine
 
 experiments_path = "D:/experiments"
 
-engine.do_nas_search(experiments_path, config_file='config/config.json', grammar_file='config/lenet.grammar')
+# engine.do_nas_search(experiments_path, config_file='config/config.json', grammar_file='config/lenet.grammar')
+
+engine.do_nas_search(experiments_path, config_file='config/config.json', grammar_file='config/lenet_fdenser.grammar')
 
 #for run in range(0, 10):
 #	print(f"***** Starting FDENSER{run:02d} of 10, random seed {100+run} **********")
@@ -27,7 +29,6 @@ add more test code
 multiple runs with different random seeds
 
 - more activation functions and parameters?
-- Comparison with GE?
 - numeric default values
 - ES integers
 - ES categorical values
@@ -44,7 +45,7 @@ CNN features to try
 -------------------
 - dropout
 - weight regularization (weight decay)
-- scaling of input image
+- scaling/brightness of input image
 - add noise
 - data augmentation
 

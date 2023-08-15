@@ -19,7 +19,7 @@ from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar, StepperStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-DEBUG_CONFIGURATION = 1				# use config_debug.json default configuration file instead of config.json
+DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (for caching)
 LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
@@ -543,8 +543,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	parent = population[0]
 	parent.log_long_description('Final Individual')
 
-	#if NAS_STRATEGY == "F-DENSER":
-	#	nas_strategy.dump_mutated_variables(stat.evaluations_total)
+	if NAS_STRATEGY == "F-DENSER":
+		nas_strategy.dump_mutated_variables(stat.evaluations_total)
 
 
 def test_saved_model(save_path, name='best.h5'):
