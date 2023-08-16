@@ -389,11 +389,11 @@ class StepperStrategy(NasStrategy):
 		self.SIGMA_DECAY_RATE = 1/30    # was 1/50
 
 		# mutation probabilities
-		self.MUTATION_PROBABILITY_FLOAT = 0.12
-		self.MUTATION_PROBABILITY_INT = 0.12
-		self.MUTATION_PROBABILITY_CAT = 0.12
+		self.MUTATION_PROBABILITY_FLOAT = 0.15
+		self.MUTATION_PROBABILITY_INT = 0.15
+		self.MUTATION_PROBABILITY_CAT = 0.15
 		self.MUTATION_PROBABILITY_LAYER_IN_MODULE = 0.15
-		self.MUTATION_PROBABILITY_LEARNING = 0.043
+		self.MUTATION_PROBABILITY_LEARNING = 0.15
 
 		# for layer mutation, relative probabilities
 		self.ADD_LAYER_PROBABILITY = 0.25 * 0.85 * 1.5  # will be modified with decaying SIGMA

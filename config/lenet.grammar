@@ -1,8 +1,8 @@
 <features> ::= <convolution> | <pooling>
-<convolution> ::= layer:conv [num-filters,int,2,32] [filter-shape,int,2,5] [stride,int,1,3] [act:linear/relu/elu/sigmoid] [padding:same/valid] [bias:True/False] [batch-norm:True/False]
+<convolution> ::= layer:conv [num-filters,int,2,256] [filter-shape,int,2,5] [stride,int,1,3] [act:linear/relu/elu/sigmoid] [padding:same/valid] [bias:True/False] [batch-norm:True/False]
 <pooling> ::= layer:pooling [pooling-type:avg/max] [kernel-size,int,2,5] [stride,int,1,3] [padding:same/valid]
 
-<classification> ::= layer:fc [act:linear/relu/elu/sigmoid] [num-units,int,64,256] [bias:True/False] [batch-norm:True/False]
+<classification> ::= layer:fc [act:linear/relu/elu/sigmoid] [num-units,int,64,2048] [bias:True/False] [batch-norm:True/False]
 
 <output> ::= layer:output num-units:10 bias:True
 
