@@ -421,7 +421,7 @@ class Evaluator:
 												use_bias=eval(layer_params['bias']))
 				layers.append(rnn)
 
-			elif layer_type == 'conv1d':  # todo initializer
+			elif layer_type == 'conv1d':  # missing initializer
 				conv1d = tf.keras.layers.Conv1D(filters=int(layer_params['num-filters']),
 												kernel_size=int(layer_params['kernel-size']),
 												strides=int(layer_params['stride']),
@@ -528,7 +528,7 @@ class Evaluator:
 	def get_model_summary(model):
 		""" returns model summary from keras as a line list """
 		stringlist = []
-		model.summary(line_length=120, print_fn=lambda x: stringlist.append(x))
+		model.summary(line_length=100, print_fn=lambda x: stringlist.append(x))
 		stringlist = [s.rstrip() for s in stringlist if not s.isspace()]
 		if stringlist[0].startswith('Model:'):
 			del stringlist[0]
@@ -895,6 +895,17 @@ class Individual:
 		self.id = f"{generation}-{idx}"
 		self.parent_id = None
 		self.evolution_history = []
+		# strategy parameters
+		self.step_width = 0
+		self.previous_step = 0
+		# mutation statistics
+		self.statistic_nlayers = 0
+		self.statistic_variables = 0
+		self.statistic_floats = 0
+		self.statistic_ints = 0
+		self.statistic_cats = 0
+		self.statistic_variable_mutations = 0
+		self.statistic_layer_mutations = 0
 		self.reset_training()
 
 	def reset_training(self):
@@ -921,6 +932,8 @@ class Individual:
 			if self.metrics.final_test_accuracy:
 				result += f"final: {self.metrics.final_test_accuracy:.5f} "
 			result += f"acc: {self.metrics.accuracy:.5f} p: {self.metrics.parameters}"
+		if hasattr(self, 'step_width') and self.step_width:
+			result += f" σ: {self.step_width:.4f}"
 		return result
 
 	def log_long_description(self, title):
@@ -1226,7 +1239,16 @@ class Individual:
 		np.random.set_state(numpy_state)
 
 	def record_statistics(self, ind_stats: RunStatistics.IndividualStatistics):
-		ind_stats.id.append(self.id)
+		if hasattr(self, 'statistic_nlayers'):
+			ind_stats.statistic_nlayers.append(self.statistic_nlayers)
+			ind_stats.statistic_variables.append(self.statistic_variables)
+			ind_stats.statistic_floats.append(self.statistic_floats)
+			ind_stats.statistic_ints.append(self.statistic_ints)
+			ind_stats.statistic_cats.append(self.statistic_cats)
+			ind_stats.statistic_variable_mutations.append(self.statistic_variable_mutations)
+			ind_stats.statistic_layer_mutations.append(self.statistic_layer_mutations)
+		if hasattr(self, 'step_width'):
+			ind_stats.step_width.append(self.step_width)
 		if self.metrics is not None:
 			ind_stats.final_test_accuracy.append(self.metrics.final_test_accuracy)
 			ind_stats.accuracy.append(self.metrics.accuracy)

@@ -33,6 +33,16 @@ class RunStatistics:
 			self.k_fold_million_inferences_time = []
 			self.k_fold_million_inferences_time_std = []
 
+			self.statistic_nlayers = []
+			self.statistic_variables = []
+			self.statistic_floats = []
+			self.statistic_ints = []
+			self.statistic_cats = []
+			self.statistic_variable_mutations = []
+			self.statistic_layer_mutations = []
+
+			self.step_width = []
+
 		def metric(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 			if index == 0:
@@ -41,6 +51,8 @@ class RunStatistics:
 				return self.parameters
 			elif index == 2:
 				return np.array(self.fitness)
+			elif index == 3:
+				return self.step_width
 
 		def metric_k_fold(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
@@ -112,6 +124,8 @@ class RunStatistics:
 			return "Parameters"
 		elif index == 2:
 			return "Fitness"
+		elif index == 3:
+			return "Step size"
 
 	@staticmethod
 	def metric_ylimits(index):
@@ -121,6 +135,8 @@ class RunStatistics:
 			return (0, 100000)
 		elif index == 2:
 			return (-5, 2.1)
+		elif index == 3:
+			return (0, 0.52)
 		elif index == -1:
 			return (0.0, 5.0)
 
@@ -132,6 +148,8 @@ class RunStatistics:
 			return 10000
 		elif index == 2:
 			return 0.5
+		elif index == 3:
+			return 0.1
 
 	def init_session(self):
 		self.session_start_time = time()

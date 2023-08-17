@@ -30,7 +30,7 @@
     "comma_strategy": false,
 
     // NAS strategy to use: "Stepper" or "F-DENSER"
-    "nas_strategy": "F-DENSER"
+    "nas_strategy": "Stepper"
   },
 
   //network specific parameters

@@ -2,7 +2,8 @@ import numpy as np
 import random
 from enum import Enum
 from copy import deepcopy
-
+from utils import Individual
+from scipy.special import gamma
 
 def format_val(val):
 	"""format value for log"""
@@ -383,10 +384,17 @@ class StepperStrategy(NasStrategy):
 		# strategy parameters
 		self.EXPECTED_NUMBER_OF_PARAMETERS = 25
 
-		self.MUTATE_STEP = False
-		self.RANDOM_RESET_INTS = True
-		self.SIGMA_DECAY_START_GENERATION = 1
-		self.SIGMA_DECAY_RATE = 1/30    # was 1/50
+		self.MUTATE_STEP_PER_PARAMETER = False
+
+		self.MAX_STEP_WIDTH = 0.5
+
+		# Mutative Stepwidth Control parameters
+		self.ADAPTIVE_STEP_WIDTH = True
+		self.ADAPTIVE_ALPHA = 1.4
+
+		#step width decay parameters
+		self.SIGMA_DECAY_START_GENERATION = 0
+		self.SIGMA_DECAY_RATE = 1/30
 
 		# mutation probabilities
 		self.MUTATION_PROBABILITY_FLOAT = 0.15
@@ -409,38 +417,60 @@ class StepperStrategy(NasStrategy):
 			self.nonterminals_only = nonterminals_only
 
 	class MutationState:
-		def __init__(self, generation, nvars, SIGMA_DECAY_START_GENERATION=0, SIGMA_DECAY_RATE=None):
+
+		ABS_NORMAL_EXPECTATION_VALUE = np.sqrt(2/np.pi)
+		def __init__(self, generation: int, EXPECTED_NUMBER_OF_VARIABLES: int, sigma: float, previous_sigma: float):
 			self.generation = generation
-			self.nvars = nvars
+			self.EXPECTED_NUMBER_OF_VARIABLES = EXPECTED_NUMBER_OF_VARIABLES
+			self.number_of_variables = EXPECTED_NUMBER_OF_VARIABLES
+			self.sigma = sigma
+			self.previous_sigma = previous_sigma
 
-			self.sigma_decay_start_generation = SIGMA_DECAY_START_GENERATION
-			self.sigma_decay_rate = SIGMA_DECAY_RATE
-
-			self.tau_global = 1.0 / np.sqrt(2 * nvars)
+			self.tau_global = 1.0 / np.sqrt(2 * EXPECTED_NUMBER_OF_VARIABLES)
 			self.tau_global_gaussian = self.tau_global * random.gauss(0, 1)
-			self.tau_local = 1.0 / np.sqrt(2 * np.sqrt(nvars))
+			self.tau_local = 1.0 / np.sqrt(2 * np.sqrt(EXPECTED_NUMBER_OF_VARIABLES))
 			self.n_mutated_vars = 0
+			self.mutation_steps = []
 
-		def set_nvars(self, nvars):
-			self.nvars = nvars
+		def set_number_of_variables(self, nvars):
+			self.number_of_variables = nvars
+
+		def count_mutated_int(self, step_taken):
+			self.n_mutated_vars += 1
+			self.mutation_steps.append(step_taken)
+
+		def count_mutated_float(self, step_taken):
+			self.n_mutated_vars += 1
+			self.mutation_steps.append(step_taken)
 
 		def log_normal_random(self):
 			self.n_mutated_vars += 1
 			return self.tau_global_gaussian + self.tau_local * random.gauss(0, 1)
 
-		def step_sigma(self):
-			if self.sigma_decay_start_generation and self.generation >= self.sigma_decay_start_generation:
-				return 1 / (1 + self.sigma_decay_rate * (self.generation - self.sigma_decay_start_generation)) * 0.5
-			else:
-				return 0
+		@staticmethod
+		def norm_expected_value(n):
+			return np.sqrt(2) * gamma((n + 1) / 2) / gamma(n / 2)
 
-		def transform_with_decay(self, probability):
-			sigma = self.step_sigma()
-			if sigma:
-				probability *= sigma / 0.5
+		def calculate_derandomized_sigma(self):
+			sigma = self.previous_sigma
+			if self.n_mutated_vars:
+				d = np.sqrt(self.EXPECTED_NUMBER_OF_VARIABLES/8)
+				norm_of_steps_vector = np.linalg.norm(self.mutation_steps)
+				expectation_value = self.ABS_NORMAL_EXPECTATION_VALUE * self.previous_sigma
+				change_exponent = (norm_of_steps_vector - expectation_value) / d
+				sigma *= np.exp(change_exponent)
+				#print(f"{self.mutation_steps=} {norm_of_steps_vector=:.3f} {expectation_value=:.3f} {change_exponent=:.3f}")
+				#print(f"{self.previous_sigma=:.3f} -> {self.sigma=:.3f} -> {sigma=:.3f}")
+				#print()
+			return sigma
+
+		def transform_with_sigma(self, probability):
+			if self.sigma:
+				probability *= self.sigma / 0.5
 			return probability
 
 	def mutate_layers(self, ind, mutation_state: MutationState):
+		mutation_count = 0
 		for module in ind.modules_including_macro:
 			step = module.step
 			if step is None:
@@ -449,15 +479,16 @@ class StepperStrategy(NasStrategy):
 				module.step_history.append(step)
 			module.previous_step = step
 
-			if self.MUTATE_STEP:
+			if self.MUTATE_STEP_PER_PARAMETER:
 				tau_random_expression = mutation_state.log_normal_random()
 				step = 1.0 / (1 + ((1 - step) / step) * np.exp(-tau_random_expression))
-				step = interval_transform(step, 0.3333333 / mutation_state.nvars, 0.5)
+				step = interval_transform(step, 0.3333333 / mutation_state.number_of_variables, 0.5)
 				module.step = step
 			module.step_history.append(step)
 
 			u = random.uniform(0, 1)
 			if u < step:  # mutate this layer?
+				mutation_count += 1
 				max_nchanges = min(1, len(module.layers) // 2) + 1  # can change 1 or 2 layers, depending on the number of layers
 				nchanges = int(u * max_nchanges / step) + 1
 
@@ -466,7 +497,7 @@ class StepperStrategy(NasStrategy):
 					actions = []
 					nlayers = len(module.layers)
 					if nlayers < module.max_expansions:
-						probabilities.append(mutation_state.transform_with_decay(self.ADD_LAYER_PROBABILITY))
+						probabilities.append(mutation_state.transform_with_sigma(self.ADD_LAYER_PROBABILITY))
 						actions.append('add')
 						if nlayers:
 							probabilities.append(self.COPY_LAYER_PROBABILITY)
@@ -475,7 +506,7 @@ class StepperStrategy(NasStrategy):
 						probabilities.append(self.REMOVE_LAYER_PROBABILITY)
 						actions.append('remove')
 					if nlayers:
-						probabilities.append(mutation_state.transform_with_decay(self.CHANGE_TYPE_PROBABILITY))
+						probabilities.append(mutation_state.transform_with_sigma(self.CHANGE_TYPE_PROBABILITY))
 						actions.append('change')
 
 					action = actions[0] if len(actions) == 1 else random.choices(actions, weights=probabilities, k=1)[0]
@@ -486,22 +517,23 @@ class StepperStrategy(NasStrategy):
 							source_layer_index = random.randint(0, nlayers - 1)
 							new_layer = module.layers[source_layer_index]
 							layer_phenotype = self.grammar.decode_layer(module.module_name, new_layer)
-							ind.log_mutation(f"copy layer {module.module_name}{insert_pos}/{nlayers} from {source_layer_index} step: {module.previous_step:.5f} -> {step:.5f} - {layer_phenotype}")
+							ind.log_mutation(f"copy layer {module.module_name}{insert_pos}/{nlayers} from {source_layer_index} σ: {module.previous_step:.5f} -> {step:.5f} - {layer_phenotype}")
 						else:
 							new_layer = self.grammar.initialise_layer_random(module.module_name)
 							layer_phenotype = self.grammar.decode_layer(module.module_name, new_layer)
-							ind.log_mutation(f"add new layer {module.module_name}{insert_pos}/{nlayers} step: {module.previous_step:.5f} -> {step:.5f} - {layer_phenotype}")
+							ind.log_mutation(f"add new layer {module.module_name}{insert_pos}/{nlayers} σ: {module.previous_step:.5f} -> {step:.5f} - {layer_phenotype}")
 						module.layers.insert(insert_pos, new_layer)
 					# remove layer
 					elif action == 'remove':
 						remove_idx = random.randint(0, nlayers - 1)
 						layer_phenotype = self.grammar.decode_layer(module.module_name, module.layers[remove_idx])
-						ind.log_mutation(f"remove layer {module.module_name}{remove_idx}/{nlayers} step: {module.previous_step:.5f} -> {step:.5f} - {layer_phenotype}")
+						ind.log_mutation(f"remove layer {module.module_name}{remove_idx}/{nlayers} σ: {module.previous_step:.5f} -> {step:.5f} - {layer_phenotype}")
 						del module.layers[remove_idx]
 					# change layer
 					elif action == 'change':
 						change_idx = random.randint(0, nlayers - 1)
 						self.mutate_grammatical_type(ind, module, module.layers[change_idx], change_idx, nlayers, mutation_state)
+		return mutation_count
 
 	def mutate_grammatical_type(self, ind, module, layer, layer_idx, nlayers, mutation_state: MutationState):
 		mutable_vars = []
@@ -509,9 +541,9 @@ class StepperStrategy(NasStrategy):
 		if len(mutable_vars):
 			assert len(mutable_vars) == 1   # can currently mutate only one type
 			mvar = mutable_vars[0]
-			self.mutate_variable(mvar, mutation_state)
+			self.mutate_variable_step_per_parameter(mvar, mutation_state)
 			self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, 0, nonterminals_only=True)
-			ind.log_mutation(f"{mvar.info_string(): <34} {mvar.type: <25} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}, step: {format_val(module.previous_step)} -> {format_val(module.step)} : {layer}")
+			ind.log_mutation(f"{mvar.info_string(): <34} {mvar.type: <25} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}, σ: {format_val(module.previous_step)} -> {format_val(module.step)} : {layer}")
 
 	def mutation(self, parent, generation=0, idx=0):
 		# deep copy parent
@@ -525,11 +557,23 @@ class StepperStrategy(NasStrategy):
 		# mutation resets training results
 		ind.reset_training()
 
+		sigma = 0
+		if self.ADAPTIVE_STEP_WIDTH:
+			if ind.step_width == 0:
+				ind.step_width =  self.MAX_STEP_WIDTH
+			sigma = ind.step_width
+			if random.randint(0, 1) == 0:
+				sigma = min(sigma * self.ADAPTIVE_ALPHA, self.MAX_STEP_WIDTH)
+			else:
+				sigma /= self.ADAPTIVE_ALPHA
+		elif self.SIGMA_DECAY_START_GENERATION and ind.generation >= self.SIGMA_DECAY_START_GENERATION:
+			sigma = 1 / (1 + self.SIGMA_DECAY_RATE * (ind.generation - self.SIGMA_DECAY_START_GENERATION)) * 0.5
+
 		# calculate τ, τ' and Nc that are used for mutating all variables of this individual
-		mutation_state = StepperStrategy.MutationState(generation, self.EXPECTED_NUMBER_OF_PARAMETERS, self.SIGMA_DECAY_START_GENERATION, self.SIGMA_DECAY_RATE)
+		mutation_state = StepperStrategy.MutationState(generation, self.EXPECTED_NUMBER_OF_PARAMETERS, sigma, ind.step_width)
 
 		# add/copy/remove/change layers first
-		self.mutate_layers(ind, mutation_state)
+		ind.statistic_layer_mutations = self.mutate_layers(ind, mutation_state)
 
 		# scan all layers for mutable variables
 		layer_count = 0
@@ -541,19 +585,22 @@ class StepperStrategy(NasStrategy):
 
 		# number of variables in individual are useful for some step width calculations
 		nvars = len(mutable_vars) + layer_count
-		mutation_state.set_nvars(nvars)
+		mutation_state.set_number_of_variables(nvars)
 
 		# mutate all variables
 		for mvar in mutable_vars:
-			if self.MUTATE_STEP:
-				self.mutate_variable(mvar, mutation_state)
+			if self.MUTATE_STEP_PER_PARAMETER:
+				self.mutate_variable_step_per_parameter(mvar, mutation_state)
 			else:
-				self.mutate_variable_simple(mvar, mutation_state)
+				self.mutate_variable_simple(mvar, ind, mutation_state)
 
 		# log changed variables
 		for mvar in mutable_vars:
 			if mvar.new_value is not None:
-				ind.log_mutation(f"{mvar.info_string(): <34} {mvar.var.name: <12} {mvar.type: <12} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}, step: {format_val(mvar.step)} -> {format_val(mvar.new_step)}")
+				logstring = f"{mvar.info_string(): <34} {mvar.var.name: <12} {mvar.type: <12} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}"
+				if mvar.new_step:
+					logstring += f", σ: {format_val(mvar.step)} -> {format_val(mvar.new_step)}"
+				ind.log_mutation(logstring)
 
 		# write changed variables and step widths back into layers
 		index = 0
@@ -562,9 +609,20 @@ class StepperStrategy(NasStrategy):
 				index = self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, index)
 		assert index == len(mutable_vars)
 
+		if self.ADAPTIVE_STEP_WIDTH:
+			ind.step_width = min(mutation_state.calculate_derandomized_sigma(), self.MAX_STEP_WIDTH)
+
+		# record mutable variable statistics
+		ind.statistic_nlayers = sum(len(module.layers) for module in ind.modules_including_macro)
+		ind.statistic_variables = len(mutable_vars)
+		ind.statistic_floats = sum(1 for mvar in mutable_vars if mvar.type == Type.FLOAT)
+		ind.statistic_ints = sum(1 for mvar in mutable_vars if mvar.type == Type.INT)
+		ind.statistic_cats = sum(1 for mvar in mutable_vars if mvar.type == Type.CAT)
+		ind.statistic_variable_mutations = sum(1 for mvar in mutable_vars if mvar.new_value is not None)
+
 		return ind
 
-	def mutate_variable(self, mvar: MutableVar, mutation_state: MutationState):
+	def mutate_variable_step_per_parameter(self, mvar: MutableVar, mutation_state: MutationState):
 		value = mvar.value
 		step = mvar.step
 		var = mvar.var
@@ -590,7 +648,7 @@ class StepperStrategy(NasStrategy):
 				step = self.MUTATION_PROBABILITY_CAT
 				mvar.step = step
 			step = 1.0/(1 + ((1-step)/step) * np.exp(-mutation_state.log_normal_random()))
-			step = interval_transform(step, 0.3333333 / mutation_state.nvars, 0.5)
+			step = interval_transform(step, 0.3333333 / mutation_state.number_of_variables, 0.5)
 			if random.uniform(0, 1) < step:
 				list_of_choices = var.categories.copy()
 				list_of_choices.remove(value)
@@ -603,7 +661,7 @@ class StepperStrategy(NasStrategy):
 			value = random.choice(list_of_choices)
 
 		else:
-			raise TypeError(f"mutate() not supported for {mvar.type}")
+			raise TypeError(f"mutate_variable() not supported for {mvar.type}")
 
 		mvar.new_step = step    # always modify step, even if value does not change!
 		if value != mvar.value:
@@ -612,34 +670,36 @@ class StepperStrategy(NasStrategy):
 		return False
 
 
-	def mutate_variable_simple(self, mvar: MutableVar, mutation_state: MutationState):
+	def mutate_variable_simple(self, mvar: MutableVar, ind: Individual, mutation_state: MutationState):
 		value = mvar.value
 		var = mvar.var
 
 		if mvar.type == Type.FLOAT:
 			if random.uniform(0, 1) < self.MUTATION_PROBABILITY_FLOAT:
-				sigma = mutation_state.step_sigma()
-				# sigma *= 0.15 / 0.5
+				sigma = mutation_state.sigma
 				if not sigma:
 					sigma = 0.15
-				mvar.new_step = sigma
-				value += random.gauss(0, 1) * sigma * (var.max_value - var.min_value)
+				value += random.gauss(0, sigma) * (var.max_value - var.min_value)
 				value = interval_transform(value, var.min_value, var.max_value)
+				mutation_state.count_mutated_float((value - mvar.value) / (var.max_value - var.min_value))
 
 		elif mvar.type == Type.INT:
 			if random.uniform(0, 1) < self.MUTATION_PROBABILITY_INT:
-				mvar.new_step = sigma = mutation_state.step_sigma()
+				sigma = mutation_state.sigma
 				if not sigma:
 					while True:
 						value = random.randint(var.min_value, var.max_value)
 						if value != mvar.value or var.min_value == var.max_value:
 							break
+						mvar.new_step = sigma
 				else:
-					float_diff = random.gauss(0, 1) * sigma * (var.max_value - var.min_value)
+					float_diff = random.gauss(0, sigma) * (var.max_value - var.min_value)
 					diff = int(round(float_diff))
-					if diff == 0:
+					if not self.ADAPTIVE_STEP_WIDTH and diff == 0:
 						diff = 1 if float_diff > 0 else -1
-					value = interval_transform(value + diff, var.min_value, var.max_value)
+					if diff:
+						value = interval_transform(value + diff, var.min_value, var.max_value)
+						mutation_state.count_mutated_int((value - mvar.value) / (var.max_value - var.min_value))
 
 		elif mvar.type == Type.CAT:
 			if random.uniform(0, 1) < self.MUTATION_PROBABILITY_CAT:
@@ -654,7 +714,7 @@ class StepperStrategy(NasStrategy):
 			value = random.choice(list_of_choices)
 
 		else:
-			raise TypeError(f"mutate() not supported for {mvar.type}")
+			raise TypeError(f"mutate_variable_simple() not supported for {mvar.type}")
 
 		if value != mvar.value:
 			mvar.new_value = value
