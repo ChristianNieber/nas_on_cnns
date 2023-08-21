@@ -1,14 +1,24 @@
 import engine
 
-#EXPERIMENT_MAIN_FOLDER = "ADAPTIVE_200gen"
-#EXPERIMENT_NAME = "ADAPTIVE"
-#GRAMMAR_FILE = "lenet.grammar"
-#CONFIG_FILE = "config10.json"
+# EXPERIMENT_MAIN_FOLDER = "BESTSEARCH_200"
+# EXPERIMENT_NAME = "BESTSEARCH"
+# GRAMMAR_FILE = "lenet_best.grammar"
+# CONFIG_FILE = "config_best.json"
 
-EXPERIMENT_MAIN_FOLDER = "FDENSER_200gen"
-EXPERIMENT_NAME = "FDENSER"
-GRAMMAR_FILE = "lenet_fdenser.grammar"
-CONFIG_FILE = "config_fdenser.json"
+EXPERIMENT_MAIN_FOLDER = "ADAPTIVE20"
+EXPERIMENT_NAME = "ADAPTIVE"
+GRAMMAR_FILE = "lenet.grammar"
+CONFIG_FILE = "config10.json"
+
+# EXPERIMENT_MAIN_FOLDER = "DECAY_200gen"
+# EXPERIMENT_NAME = "DECAY"
+# GRAMMAR_FILE = "lenet.grammar"
+# CONFIG_FILE = "config10.json"
+
+# EXPERIMENT_MAIN_FOLDER = "FDENSER_200gen"
+# EXPERIMENT_NAME = "FDENSER"
+# GRAMMAR_FILE = "lenet_fdenser.grammar"
+# CONFIG_FILE = "config_fdenser.json"
 
 FIRST_RUN = 0
 LAST_RUN = 20

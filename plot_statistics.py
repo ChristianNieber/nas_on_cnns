@@ -13,6 +13,7 @@ from runstatistics import RunStatistics
 
 ALPHA_DOTS = 0.3
 ALPHA_LINES = 0.7
+ALPHA_BEST_IN_GEN = 0.3
 SAVE_ALL_PICTURES = False
 EXPERIMENT_TITLE = ''
 picture_count = 0
@@ -129,14 +130,14 @@ def plot_metric(stat, m, ax=None):
 	if len(stat.best.metric_k_fold(m)):
 		ax.plot(xscale, stat.best.metric_k_fold(m), '-', color='cyan', alpha=ALPHA_LINES, label="K-folds of best")
 		ax.errorbar(xscale, stat.best.metric_k_fold(m), yerr=stat.best.metric_k_fold_std(m), color='cyan', alpha=1, zorder=10)
-	ax.plot(stat.best_in_gen.metric(m), '-', color='magenta', alpha=ALPHA_LINES, label='best in generation')
+	ax.plot(stat.best_in_gen.metric(m), '-', color='magenta', alpha=ALPHA_BEST_IN_GEN, label='best in generation')
 	ax.plot(stat.best.metric(m), '-', color='blue', alpha=ALPHA_LINES, label='best fitness individual')
 	plot_set_limits(stat, m, ax)
 	reduced_legend(ax, population_size, 2)
 	show_plot()
 
 
-def multi_plot_metric(stats, m, ax=None):
+def plot_metric_multiple_runs(stats, m, ax=None):
 	global EXPERIMENT_TITLE
 
 	if ax is None:
@@ -208,7 +209,7 @@ def plot_step_width(stat, ax=None):
 		if ax is None:
 			ax = default_ax()
 		ax.set_title(f"{EXPERIMENT_TITLE} -  Step Width", fontsize=22)
-		ax.plot(stat.best_in_gen.step_width, color='magenta', label="best in generation")
+		ax.plot(stat.best_in_gen.step_width, color='magenta', alpha=ALPHA_BEST_IN_GEN, label="best in generation")
 		ax.plot(stat.best.step_width, color='blue', label="best")
 		ngenerations = stat.run_generation + 1
 		ax.set_xlim(0, ngenerations)
@@ -229,11 +230,11 @@ def do_all_plots(stats, save_all_pictures=False, experiment_title=''):
 		ax1, ax2, ax3, ax4 = None, None, None, None
 		if not SAVE_ALL_PICTURES:
 			fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(20, 14))
-		multi_plot_metric(stats, 0, ax1)
-		multi_plot_metric(stats, 1, ax2)
-		multi_plot_metric(stats, 2, ax3)
+		plot_metric_multiple_runs(stats, 0, ax1)
+		plot_metric_multiple_runs(stats, 1, ax2)
+		plot_metric_multiple_runs(stats, 2, ax3)
 		if hasattr(stats[0].best, 'step_width'):
-			multi_plot_metric(stats, 3, ax4)
+			plot_metric_multiple_runs(stats, 3, ax4)
 
 		_, _, _, _, best_parameter_index = calculate_statistics(stats, 1)
 		stat = stats[best_parameter_index]

@@ -9,7 +9,7 @@
     "initial_individuals" : "random",
 
     // resume from saved state
-    "resume": false,
+    "resume": true,
 
     // can resume at a certain generation (10, 20, ...)
     "resume_generation": 0,
@@ -18,7 +18,7 @@
     "random_seed" : 100,
 
     //Maximum number of generations
-    "num_generations": 100,
+    "num_generations": 200,
 
     // my - number of parents
     "my" : 1,
@@ -66,7 +66,7 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 15,
+    "max_training_time": 10,
     //maximum training epochs for each network
     "max_training_epochs": 10,
 

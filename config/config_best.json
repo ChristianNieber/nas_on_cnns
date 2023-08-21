@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "XXXXXX",
+    "experiment_name" : "BEST XX",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
@@ -18,7 +18,7 @@
     "random_seed" : 100,
 
     //Maximum number of generations
-    "num_generations": 200,
+    "num_generations": 100,
 
     // my - number of parents
     "my" : 1,
@@ -45,14 +45,14 @@
     "macro_structure": ["learning"],
 
     //number of layers on random initialisation
-    "network_structure_init": {"features":[2,3,4], "classification":[1]}
+    "network_structure_init": {"features":[2,3,4,5], "classification":[1,2]}
   },
 
   //training parameters
   "TRAINING": {
     // use cache file for storing and retrieving evaluated network configurations
     "use_evaluation_cache": true,
-    "evaluation_cache_file": "../../cache_10.pkl",
+    "evaluation_cache_file": "../../cache_30.pkl",
 
     //data augmentation generator for the training data - keras interpretable
     //set to "None" if no data augmentation is to be used
@@ -66,9 +66,9 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network (in seconds)
-    "max_training_time": 10,
+    "max_training_time": 30,
     //maximum training epochs for each network
-    "max_training_epochs": 10,
+    "max_training_epochs": 30,
 
     // find K folds accuracy for best individual, this specifies the number of folds or 0
     "k_folds" : 0,

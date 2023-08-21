@@ -615,7 +615,7 @@ class Evaluator:
 			result : CnnEvalResult
 				contains all result metrics
 		"""
-		# Mixed precision slows down LeNet training by 50%. Is this because it's too small?
+		# Using mixed precision slows down LeNet training by 50%. Is this because this model is too small?
 		# tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
 		start_time = time()
@@ -659,7 +659,7 @@ class Evaluator:
 
 		callbacks_list = [timed_stopping]
 
-		# early stopping
+		# early stopping not used
 		#if not for_k_folds_validation:
 		#	early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
 		#	# early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
@@ -700,14 +700,14 @@ class Evaluator:
 		if model_save_path:
 			model.save(model_save_path)
 
-		# measure test performance
+		# measure test accuracy
 		x_test = dataset['evo_x_test']
 		y_test = dataset['evo_y_test']
 		test_accuracy, model_test_time, million_inferences_time = self.test_model_with_data(model, x_test, y_test, datagen_test)
 
 		fitness = self.fitness_func(test_accuracy, parameters)
 
-		# measure final accuracy
+		# measure final test accuracy
 		x_final_test = dataset['x_final_test']
 		y_final_test = dataset['y_final_test']
 		final_test_accuracy, final_test_time, million_inferences_time = self.test_model_with_data(model, x_final_test, y_final_test, datagen_test)
@@ -1239,7 +1239,7 @@ class Individual:
 		np.random.set_state(numpy_state)
 
 	def record_statistics(self, ind_stats: RunStatistics.IndividualStatistics):
-		if hasattr(self, 'statistic_nlayers'):
+		if hasattr(self, 'statistic_nlayers') and hasattr(ind_stats, 'statistic_nlayers'):
 			ind_stats.statistic_nlayers.append(self.statistic_nlayers)
 			ind_stats.statistic_variables.append(self.statistic_variables)
 			ind_stats.statistic_floats.append(self.statistic_floats)
@@ -1247,7 +1247,7 @@ class Individual:
 			ind_stats.statistic_cats.append(self.statistic_cats)
 			ind_stats.statistic_variable_mutations.append(self.statistic_variable_mutations)
 			ind_stats.statistic_layer_mutations.append(self.statistic_layer_mutations)
-		if hasattr(self, 'step_width'):
+		if hasattr(self, 'step_width') and hasattr(ind_stats, 'step_width'):
 			ind_stats.step_width.append(self.step_width)
 		if self.metrics is not None:
 			ind_stats.final_test_accuracy.append(self.metrics.final_test_accuracy)

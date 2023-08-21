@@ -1,0 +1,12 @@
+<features> ::= <convolution> | <pooling>
+<convolution> ::= layer:conv [num-filters,int,2,16] [filter-shape,int,2,5] [stride,int,1,3] [act:linear/relu/elu/sigmoid] [padding:same/valid] [bias:True/False] [batch-norm:True/False]
+<pooling> ::= layer:pooling pooling-type:max [kernel-size,int,2,5] [stride,int,1,3] [padding:same/valid]
+
+<classification> ::= layer:fc [act:linear/relu/elu/sigmoid] [num-units,int,64,128] [bias:True/False] [batch-norm:True/False]
+
+<output> ::= layer:output num-units:10 bias:True
+
+<learning> ::= <gradient-descent> [batch_size,int,256,1024] | <rmsprop> [batch_size,int,256,1024] | <adam> [batch_size,int,256,1024]
+<gradient-descent> ::= learning:gradient-descent [lr,float,0.0001,0.1] [momentum,float,0.68,0.99] [nesterov:True/False]
+<rmsprop> ::= learning:rmsprop [lr,float,0.0001,0.1] [rho,float,0.5,1]
+<adam> ::= learning:adam [lr,float,0.0001,0.1] [beta1,float,0.5,1] [beta2,float,0.5,1]

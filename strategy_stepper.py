@@ -557,6 +557,9 @@ class StepperStrategy(NasStrategy):
 		# mutation resets training results
 		ind.reset_training()
 
+		if not hasattr(ind, 'step_width'):
+			ind.step_width = 0
+
 		sigma = 0
 		if self.ADAPTIVE_STEP_WIDTH:
 			if ind.step_width == 0:

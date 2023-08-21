@@ -119,22 +119,22 @@ class RunStatistics:
 	def metric_name(index):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 		if index == 0:
-			return "Error rate"
+			return "Error Rate"
 		elif index == 1:
 			return "Parameters"
 		elif index == 2:
 			return "Fitness"
 		elif index == 3:
-			return "Step size"
+			return "Step Width"
 
 	@staticmethod
 	def metric_ylimits(index):
 		if index == 0:
-			return (0.0, 10.0)
+			return (0.0, 5.0)
 		elif index == 1:
-			return (0, 100000)
+			return (0, 80000)
 		elif index == 2:
-			return (-5, 2.1)
+			return (-4, 2.1)
 		elif index == 3:
 			return (0, 0.52)
 		elif index == -1:
@@ -143,13 +143,13 @@ class RunStatistics:
 	@staticmethod
 	def metric_ticks(index):
 		if index <= 0:
-			return 1
+			return 0.5
 		elif index == 1:
 			return 10000
 		elif index == 2:
 			return 0.5
 		elif index == 3:
-			return 0.1
+			return 0.05
 
 	def init_session(self):
 		self.session_start_time = time()
