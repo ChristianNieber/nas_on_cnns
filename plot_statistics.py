@@ -12,7 +12,7 @@ import pandas as pd
 from runstatistics import RunStatistics
 
 ALPHA_DOTS = 0.3
-ALPHA_LINES = 0.7
+ALPHA_LINES = 0.5
 ALPHA_BEST_IN_GEN = 0.3
 SAVE_ALL_PICTURES = False
 EXPERIMENT_TITLE = ''
@@ -152,6 +152,15 @@ def plot_metric_multiple_runs(stats, m, ax=None):
 			ax.plot(all_metrics[:, i], 'o', markersize=4, color ='#808080', alpha=ALPHA_DOTS, label='population', zorder=-32)
 	for stat in stats:
 		ax.plot(stat.best.metric(m), '-', color='blue', alpha=ALPHA_LINES, label='best fitness')
+		if m == 10 and hasattr(stat.best, 'statistic_variables'):
+			ax.plot(stat.best.statistic_floats, label="floats")
+			ax.plot(stat.best.statistic_ints, label="ints")
+			ax.plot(stat.best.statistic_cats, label="categoricals")
+			ax.plot(stat.best_in_gen.statistic_variable_mutations, label="variable mutations best in gen.")
+			ax.plot(stat.best_in_gen.statistic_layer_mutations, label="layer mutations")
+		if m == 11 and hasattr(stat.best_in_gen, 'training_time'):
+			ax.plot(stat.best_in_gen.training_time, label="training time (s)")
+			ax.plot(stat.best_in_gen.training_epochs, label="training epochs (s)")
 	plot_set_limits(stats[0], m, ax)
 	reduced_legend(ax, all_population_size)
 	show_plot()
@@ -192,8 +201,8 @@ def plot_variable_counts(stat, ax=None):
 		ax.plot(stat.best.statistic_cats, label="categoricals")
 		ax.plot(stat.best_in_gen.statistic_variable_mutations, label="variable mutations best in gen.")
 		ax.plot(stat.best_in_gen.statistic_layer_mutations, label="layer mutations")
-	ax.plot(stat.best_in_gen.training_time, label="training time (s)")
-	ax.plot(stat.best_in_gen.training_epochs, label="training epochs (s)")
+	# ax.plot(stat.best_in_gen.training_time, label="training time (s)")
+	# ax.plot(stat.best_in_gen.training_epochs, label="training epochs (s)")
 	ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
 	ngenerations = stat.run_generation + 1
 	ax.set_xlim(0, ngenerations)
@@ -227,16 +236,19 @@ def do_all_plots(stats, save_all_pictures=False, experiment_title=''):
 	EXPERIMENT_TITLE = experiment_title
 
 	if len(stats) > 1:
-		ax1, ax2, ax3, ax4 = None, None, None, None
+		ax1, ax2, ax3, ax4, ax5, ax6 = None, None, None, None, None, None
 		if not SAVE_ALL_PICTURES:
-			fig, ((ax1, ax2), (ax3, ax4)) = plt.subplots(2, 2, figsize=(20, 14))
+			fig, ((ax1, ax2), (ax3, ax4), (ax5, ax6)) = plt.subplots(3, 2, figsize=(20, 21))
 		plot_metric_multiple_runs(stats, 0, ax1)
 		plot_metric_multiple_runs(stats, 1, ax2)
 		plot_metric_multiple_runs(stats, 2, ax3)
 		if hasattr(stats[0].best, 'step_width'):
 			plot_metric_multiple_runs(stats, 3, ax4)
+		if hasattr(stats[0].best, 'statistic_nlayers'):
+			plot_metric_multiple_runs(stats, 4, ax5)
+			plot_metric_multiple_runs(stats, 5, ax6)
 
-		_, _, _, _, best_parameter_index = calculate_statistics(stats, 1)
+		_, _, _, _, best_parameter_index = calculate_statistics(stats, 2)
 		stat = stats[best_parameter_index]
 		print(f"Plots for run #{best_parameter_index}")
 	else:

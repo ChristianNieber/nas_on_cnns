@@ -53,6 +53,10 @@ class RunStatistics:
 				return np.array(self.fitness)
 			elif index == 3:
 				return self.step_width
+			elif index == 4:
+				return self.statistic_nlayers
+			elif index == 5:
+				return self.statistic_variables
 
 		def metric_k_fold(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
@@ -114,6 +118,8 @@ class RunStatistics:
 			return self.generation_parameters
 		elif index == 2:
 			return np.array(self.generation_fitness)
+		else:
+			return None
 
 	@staticmethod
 	def metric_name(index):
@@ -126,6 +132,10 @@ class RunStatistics:
 			return "Fitness"
 		elif index == 3:
 			return "Step Width"
+		elif index == 4:
+			return "Number of Layers"
+		elif index == 5:
+			return "Number of Variables"
 
 	@staticmethod
 	def metric_ylimits(index):
@@ -137,6 +147,10 @@ class RunStatistics:
 			return (-4, 2.1)
 		elif index == 3:
 			return (0, 0.52)
+		elif index == 4:
+			return (0, 10)
+		elif index == 5:
+			return (0, 40)
 		elif index == -1:
 			return (0.0, 5.0)
 
@@ -150,6 +164,10 @@ class RunStatistics:
 			return 0.5
 		elif index == 3:
 			return 0.05
+		elif index == 5:
+			return 2
+		else:
+			return 1
 
 	def init_session(self):
 		self.session_start_time = time()
