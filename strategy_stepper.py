@@ -595,7 +595,7 @@ class StepperStrategy(NasStrategy):
 			if self.MUTATE_STEP_PER_PARAMETER:
 				self.mutate_variable_step_per_parameter(mvar, mutation_state)
 			else:
-				self.mutate_variable_simple(mvar, ind, mutation_state)
+				self.mutate_variable_simple(mvar, mutation_state)
 
 		# log changed variables
 		for mvar in mutable_vars:
@@ -673,7 +673,7 @@ class StepperStrategy(NasStrategy):
 		return False
 
 
-	def mutate_variable_simple(self, mvar: MutableVar, ind: Individual, mutation_state: MutationState):
+	def mutate_variable_simple(self, mvar: MutableVar, mutation_state: MutationState):
 		value = mvar.value
 		var = mvar.var
 
@@ -697,7 +697,7 @@ class StepperStrategy(NasStrategy):
 						mvar.new_step = sigma
 				else:
 					float_diff = random.gauss(0, sigma) * (var.max_value - var.min_value)
-					diff = int(round(float_diff))
+					diff =  int(round(float_diff))
 					if not self.ADAPTIVE_STEP_WIDTH and diff == 0:
 						diff = 1 if float_diff > 0 else -1
 					if diff:

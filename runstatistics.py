@@ -48,15 +48,15 @@ class RunStatistics:
 			if index == 0:
 				return 100.0 - np.array(self.accuracy) * 100.0
 			elif index == 1:
-				return self.parameters
+				return np.array(self.parameters)
 			elif index == 2:
 				return np.array(self.fitness)
 			elif index == 3:
-				return self.step_width
+				return np.array(self.step_width)
 			elif index == 4:
-				return self.statistic_nlayers
+				return np.array(self.statistic_nlayers)
 			elif index == 5:
-				return self.statistic_variables
+				return np.array(self.statistic_variables)
 
 		def metric_k_fold(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
@@ -70,11 +70,11 @@ class RunStatistics:
 		def metric_k_fold_std(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 			if index == 0:
-				return self.k_fold_accuracy_std
+				return np.array(self.k_fold_accuracy_std) * 100.0
 			elif index == 1:
 				return []
 			elif index == 2:
-				return self.k_fold_fitness_std
+				return np.array(self.k_fold_fitness_std)
 
 	def __init__(self, random_seed=-1):
 		self.random_seed = random_seed
@@ -125,28 +125,40 @@ class RunStatistics:
 	def metric_name(index):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 		if index == 0:
-			return "Error Rate"
+			return "Error rate"
 		elif index == 1:
 			return "Parameters"
 		elif index == 2:
 			return "Fitness"
 		elif index == 3:
-			return "Step Width"
+			return "Step size"
 		elif index == 4:
 			return "Number of Layers"
 		elif index == 5:
 			return "Number of Variables"
 
 	@staticmethod
+	def metric_color(index):
+		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
+		if index == 0:
+			return "red"
+		elif index == 1:
+			return "orange"
+		elif index == 2:
+			return "blue"
+		else:
+			return "blue"
+
+	@staticmethod
 	def metric_ylimits(index):
 		if index == 0:
-			return (0.0, 5.0)
+			return (0.0, 8.0)
 		elif index == 1:
-			return (0, 80000)
+			return (0, 100000)
 		elif index == 2:
-			return (-4, 2.1)
+			return (-8, 2.3)
 		elif index == 3:
-			return (0, 0.52)
+			return (0, 0.6)
 		elif index == 4:
 			return (0, 10)
 		elif index == 5:
@@ -156,12 +168,14 @@ class RunStatistics:
 
 	@staticmethod
 	def metric_ticks(index):
-		if index <= 0:
+		if index < 0:
 			return 0.5
+		elif index == 0:
+			return 1.0
 		elif index == 1:
 			return 10000
 		elif index == 2:
-			return 0.5
+			return 1.0
 		elif index == 3:
 			return 0.05
 		elif index == 5:

@@ -5,12 +5,12 @@ import engine
 # GRAMMAR_FILE = "lenet_best.grammar"
 # CONFIG_FILE = "config_best.json"
 
-EXPERIMENT_MAIN_FOLDER = "ADAPTIVE20"
+EXPERIMENT_MAIN_FOLDER = "ADAPTIVE_Test"
 EXPERIMENT_NAME = "ADAPTIVE"
 GRAMMAR_FILE = "lenet.grammar"
 CONFIG_FILE = "config10.json"
 
-# EXPERIMENT_MAIN_FOLDER = "DECAY_200gen"
+# EXPERIMENT_MAIN_FOLDER = "DECAY20"
 # EXPERIMENT_NAME = "DECAY"
 # GRAMMAR_FILE = "lenet.grammar"
 # CONFIG_FILE = "config10.json"
@@ -20,11 +20,11 @@ CONFIG_FILE = "config10.json"
 # GRAMMAR_FILE = "lenet_fdenser.grammar"
 # CONFIG_FILE = "config_fdenser.json"
 
-FIRST_RUN = 0
+FIRST_RUN = 19
 LAST_RUN = 20
 
 EXPERIMENTS_PATH = "D:/experiments"
-# EXPERIMENTS_PATH = "/content/gdrive/MyDrive/experiments/"
+# EXPERIMENTS_PATH = "/content/gdrive/MyDrive/experiments"
 
 # engine.do_nas_search(experiments_path, config_file='config/config.json', grammar_file='config/lenet.grammar')
 

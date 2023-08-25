@@ -303,8 +303,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	USE_EVALUATION_CACHE = config['TRAINING']['use_evaluation_cache']
 	EVALUATION_CACHE_FILE = config['TRAINING']['evaluation_cache_file']
-	if NAS_STRATEGY == "F-DENSER":
-		EVALUATION_CACHE_FILE = EVALUATION_CACHE_FILE.replace(".pkl", "_fdenser.pkl")
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	K_FOLDS = config['TRAINING']['k_folds']
@@ -543,8 +541,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	parent = population[0]
 	parent.log_long_description('Final Individual')
 
-	if NAS_STRATEGY == "F-DENSER":
-		nas_strategy.dump_mutated_variables(stat.evaluations_total)
+	# if NAS_STRATEGY == "F-DENSER":
+	# 	nas_strategy.dump_mutated_variables(stat.evaluations_total)
 
 
 def test_saved_model(save_path, name='best.h5'):

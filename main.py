@@ -2,9 +2,9 @@ import engine
 
 experiments_path = "D:/experiments"
 
-engine.do_nas_search(experiments_path, config_file='config/config.json', grammar_file='config/lenet.grammar')
+# engine.do_nas_search(experiments_path, config_file='config/config.json', grammar_file='config/lenet_smallspace.grammar')
 
-# engine.do_nas_search(experiments_path, config_file='config/config.json', grammar_file='config/lenet_fdenser.grammar')
+engine.do_nas_search(experiments_path, config_file='config/config_fdenser.json', grammar_file='config/lenet_smallspace_fdenser.grammar')
 
 # from tests.test_utils import Test
 # test = Test()
