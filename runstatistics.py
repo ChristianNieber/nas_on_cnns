@@ -3,6 +3,12 @@ import json
 import numpy as np
 import random
 
+
+# This is the same as engine.py:fitness_metric_with_size_penalty(), but can't be referenced here
+def run_statistics_fitness_metric(accuracy, parameters):
+	return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
+
+
 class RunStatistics:
 	""" keeps statistics over all generations """
 
@@ -57,6 +63,13 @@ class RunStatistics:
 				return np.array(self.statistic_nlayers)
 			elif index == 5:
 				return np.array(self.statistic_variables)
+			elif index == 6:
+				return 100.0 - np.array(self.final_test_accuracy) * 100.0
+			elif index == 7:
+				return 100.0 - np.array(self.train_accuracy) * 100.0
+			elif index == 8:
+				fitness_list = [run_statistics_fitness_metric(acc, params) for acc, params in zip(self.final_test_accuracy, self.parameters)]
+				return np.array(fitness_list)
 
 		def metric_k_fold(self, index):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
@@ -125,17 +138,45 @@ class RunStatistics:
 	def metric_name(index):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
 		if index == 0:
+			return "Error Rate"
+		elif index == 1:
+			return "Number of Parameters"
+		elif index == 2:
+			return "Fitness"
+		elif index == 3:
+			return "Step Size"
+		elif index == 4:
+			return "Number of Layers"
+		elif index == 5:
+			return "Number of Variables"
+		elif index == 6:
+			return "Final Test Error Rate"
+		elif index == 7:
+			return "Training Error Rate"
+		elif index == 8:
+			return "Final Test Fitness"
+
+	@staticmethod
+	def metric_name_lowercase(index):
+		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
+		if index == 0:
 			return "Error rate"
 		elif index == 1:
-			return "Parameters"
+			return "Number of parameters"
 		elif index == 2:
 			return "Fitness"
 		elif index == 3:
 			return "Step size"
 		elif index == 4:
-			return "Number of Layers"
+			return "Number of layers"
 		elif index == 5:
-			return "Number of Variables"
+			return "Number of variables"
+		elif index == 6:
+			return "Final test error rate"
+		elif index == 7:
+			return "Training error rate"
+		elif index == 8:
+			return "Final test fitness"
 
 	@staticmethod
 	def metric_color(index):

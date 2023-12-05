@@ -8,6 +8,8 @@ import glob
 # from IPython.display import HTML, display
 # import tabletext
 import pandas as pd
+import matplotlib.colors as mc
+import colorsys
 
 from runstatistics import RunStatistics
 
@@ -19,7 +21,7 @@ ALPHA_LINES = 0.3
 ALPHA_BEST_IN_GEN = 0.3
 
 # global variables
-SAVE_ALL_PICTURES = False
+SAVE_ALL_PICTURES_FORMAT = False
 EXPERIMENT_TITLE = ''
 picture_count = 0
 
@@ -48,7 +50,7 @@ def calculate_statistics(stats, m):
 	worst = np.min(values)
 	best = np.max(values)
 	best_index = np.argmax(values)
-	if m != 2:
+	if m != 2 and m != 8:
 		best, worst = worst, best
 		best_index = np.argmin(values)
 	std = np.std(values)
@@ -74,15 +76,15 @@ def print_statistics(stats, experiments_path, experiment_name):
 	eval_time_k_folds_this_run = sum(stat.eval_time_k_folds_this_run for stat in stats)
 	print(f"runtime {hms(run_time)}, evaluation time {hms(eval_time)} (this run {hms(eval_time_this_run)})" + (f", k-folds: {hms(eval_time_k_folds)} (this run {hms(eval_time_k_folds_this_run)})" if eval_time_k_folds else ""))
 	print()
-	columns = ['', 'Average', 'Mean', 'Std', 'Worst', 'Best', 'Best run']
+	columns = ['', 'Average', 'Std', 'Worst', 'Best', 'Best run']
 	data = []
-	for m in range(0, 2 + 1):
-		mean, median, std, worst, best, best_index = calculate_statistics(stats, m)
-		data.append([stats[0].metric_name(m), mean, median, std, worst, best, best_index])
+	for m in [2, 8, 1, 0, 7, 6]:
+		mean, _median, std, worst, best, best_index = calculate_statistics(stats, m)
+		data.append([stats[0].metric_name(m), mean, std, worst, best, best_index])
 	# pd.options.display.float_format = '{: .4f}'.format
 	df = pd.DataFrame(data, columns=columns)
 	df = df.round(decimals=2).astype(object)
-	print(df.head())
+	print(df)
 
 
 def reduced_legend(ax, population_size, additional_entries=1):
@@ -99,17 +101,19 @@ def default_ax():
 
 
 def show_plot():
-	global SAVE_ALL_PICTURES
+	global SAVE_ALL_PICTURES_FORMAT
 	global picture_count
 
-	if SAVE_ALL_PICTURES:
+	if SAVE_ALL_PICTURES_FORMAT:
 		title = plt.gca().get_title()
+		title = title.replace(' - ', ' ')
 		title, _, _ = title.partition('(')
 		title, _, _ = title.partition(':')
+		title = title.strip().replace(' ', '_')
 		name, _, _ = experiment_name.partition('/')
 		name, _, _ = name.partition('_')
 		picture_count += 1
-		plt.savefig(f"{experiments_path}graphs/{picture_count:02d} - {title}.png", format="png", transparent=True)
+		plt.savefig(f"D:/Data/workspace/Dissertation/graphs/{picture_count:02d}_{title}.{SAVE_ALL_PICTURES_FORMAT}", format=SAVE_ALL_PICTURES_FORMAT, dpi=600 if SAVE_ALL_PICTURES_FORMAT=='png' else 1200, transparent=True)
 		plt.show()
 
 
@@ -122,20 +126,27 @@ def plot_set_limits(stat, m, ax):
 	ax.grid(True)
 
 
-def plot_metric(stat, m, ax=None):
+def plot_metric(stat, m, use_transparency=False, ax=None):
 	global EXPERIMENT_TITLE
 
 	if ax is None:
 		ax = default_ax()
 	ngenerations = stat.run_generation + 1
 	xscale = np.arange(0, ngenerations)
-	ax.set_title(f"{EXPERIMENT_TITLE} - {stat.metric_name(m)} (best: {round(stat.best.metric(m)[-1], 4)})", fontsize=20)
+	if SAVE_ALL_PICTURES_FORMAT:
+		title = f"{EXPERIMENT_TITLE} - Evolution of {stat.metric_name(m)}"
+	else:
+		title = f"{EXPERIMENT_TITLE} - {stat.metric_name(m)} (best: {round(stat.best.metric(m)[-1], 4)})"
+	ax.set_title(title, fontsize=20)
 	population_size = 0
 	if m <= 2:
 		generation_metric = np.array(stat.metric_generation(m))
 		(_, population_size) = generation_metric.shape
+		dot_color = COLOR_DOTS
+		if not use_transparency:
+			dot_color = '#D0D0D0'
 		for i in range(population_size):
-			ax.plot(generation_metric[:, i], 'o', markersize=4, color=COLOR_DOTS, alpha=ALPHA_DOTS, label='population', zorder=-32)
+			ax.plot(generation_metric[:, i], 'o', markersize=4, color=dot_color, alpha=ALPHA_DOTS if use_transparency else 1.0, label='population', zorder=-32)
 		if len(stat.best.metric_k_fold(m)):
 			ax.plot(xscale, stat.best.metric_k_fold(m), '-', color='cyan', alpha=1, label="K-folds of best")
 			ax.errorbar(xscale, stat.best.metric_k_fold(m), yerr=stat.best.metric_k_fold_std(m), color='cyan', alpha=1, zorder=10)
@@ -147,7 +158,7 @@ def plot_metric(stat, m, ax=None):
 	show_plot()
 
 
-def plot_metric_multiple_runs(stats, m, ax=None):
+def plot_metric_multiple_runs(stats, m, use_transparency=False, ax=None):
 	global EXPERIMENT_TITLE
 
 	if ax is None:
@@ -158,8 +169,11 @@ def plot_metric_multiple_runs(stats, m, ax=None):
 	if m <= 2:
 		all_metrics = np.hstack([stat.metric_generation(m) for stat in stats])
 		(ngenerations, all_population_size) = all_metrics.shape
+		dot_color = COLOR_DOTS
+		if not use_transparency:
+			dot_color = '#D0D0D0'
 		for i in range(all_population_size):
-			ax.plot(all_metrics[:, i], 'o', markersize=4, color=COLOR_DOTS, alpha=ALPHA_DOTS_MULTIPLE_RUNS, label='population', zorder=-32)
+			ax.plot(all_metrics[:, i], 'o', markersize=4, color=dot_color, alpha=ALPHA_DOTS_MULTIPLE_RUNS if use_transparency else 1.0, label='population', zorder=-32)
 	for stat in stats:
 		ax.plot(stat.best.metric(m), '-', color=RunStatistics.metric_color(m), alpha=ALPHA_LINES, label='best fitness')
 
@@ -167,6 +181,23 @@ def plot_metric_multiple_runs(stats, m, ax=None):
 	if m <= 2:
 		reduced_legend(ax, all_population_size)
 	show_plot()
+
+def lighten_color(color, amount=0.5):
+    """
+    Lightens the given color by multiplying (1-luminosity) by the given amount.
+    Input can be matplotlib color string, hex string, or RGB tuple.
+
+    Examples:
+    >> lighten_color('g', 0.3)
+    >> lighten_color('#F034A3', 0.6)
+    >> lighten_color((.3,.55,.1), 0.5)
+    """
+    try:
+        c = mc.cnames[color]
+    except:
+        c = color
+    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+    return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 def plot_metric_mean_and_sd(stats, m, ax=None):
 	global EXPERIMENT_TITLE
@@ -180,8 +211,9 @@ def plot_metric_mean_and_sd(stats, m, ax=None):
 	all_metrics = np.vstack([stat.best.metric(m) for stat in stats])
 	all_means = np.mean(all_metrics, axis=0)
 	all_std = np.std(all_metrics, axis=0)
-	ax.plot(xscale, all_means, color=RunStatistics.metric_color(m), label='best fitness')
-	ax.fill_between(xscale, all_means - all_std, all_means + all_std, color=RunStatistics.metric_color(m), alpha=0.5)
+	plot_color = RunStatistics.metric_color(m)
+	ax.plot(xscale, all_means, color=plot_color, label='best fitness')
+	ax.fill_between(xscale, all_means - all_std, all_means + all_std, color=lighten_color(plot_color))
 	plot_set_limits(stats[0], m, ax)
 	show_plot()
 
@@ -205,7 +237,6 @@ def plot_different_accuracies(stat, ax=None):
 	ax.legend(fontsize=12)
 	show_plot()
 
-
 def plot_variable_counts(stat, ax=None):
 	global EXPERIMENT_TITLE
 
@@ -216,7 +247,7 @@ def plot_variable_counts(stat, ax=None):
 		ax.plot(stat.best.statistic_variables, label="variables")
 		ax.plot(stat.best.statistic_nlayers, label="layers")
 		ax.plot(stat.best.statistic_floats, label="floats")
-		ax.plot(stat.best.statistic_ints, label="ints")
+		ax.plot(stat.best.statistic_ints, label="integers")
 		ax.plot(stat.best.statistic_cats, label="categoricals")
 		ax.plot(stat.best_in_gen.statistic_variable_mutations, label="variable mutations best in gen.")
 		ax.plot(stat.best_in_gen.statistic_layer_mutations, label="layer mutations")
@@ -229,13 +260,32 @@ def plot_variable_counts(stat, ax=None):
 	ax.legend(fontsize=12, loc='center right')
 	show_plot()
 
-
-def do_all_plots(stats, experiment_title='', plot_individual_runs=True, plot_stepwidth=True, plot_best_run=True, group_pictures=True, save_all_pictures=False):
-	global SAVE_ALL_PICTURES
+def do_test_plots(stats, experiment_title='', plot_individual_runs=True, plot_stepwidth=True, plot_best_run=True, group_pictures=True, save_all_pictures_format=None):
+	global SAVE_ALL_PICTURES_FORMAT
 	global EXPERIMENT_TITLE
 
-	SAVE_ALL_PICTURES = save_all_pictures
+	SAVE_ALL_PICTURES_FORMAT = save_all_pictures_format
 	EXPERIMENT_TITLE = experiment_title
+
+	ax1, ax2, ax3 = None, None, None
+
+	stat = stats[0]
+
+	if len(stats) > 1:
+		if plot_individual_runs:
+			if group_pictures:
+				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
+			plot_metric_multiple_runs(stats, 2, False, ax1)
+			plot_metric_multiple_runs(stats, 0, False, ax2)
+			plot_metric_multiple_runs(stats, 1, False, ax3)
+
+def do_all_plots(stats, experiment_title='', plot_individual_runs=True, plot_stepwidth=True, plot_best_run=True, group_pictures=True, save_all_pictures_format=None):
+	global SAVE_ALL_PICTURES_FORMAT
+	global EXPERIMENT_TITLE
+
+	SAVE_ALL_PICTURES_FORMAT = save_all_pictures_format
+	EXPERIMENT_TITLE = experiment_title
+	use_transparency = save_all_pictures_format != 'eps'
 
 	ax1, ax2, ax3 = None, None, None
 
@@ -254,18 +304,18 @@ def do_all_plots(stats, experiment_title='', plot_individual_runs=True, plot_ste
 		if plot_individual_runs:
 			if group_pictures:
 				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-			plot_metric_multiple_runs(stats, 2, ax1)
-			plot_metric_multiple_runs(stats, 0, ax2)
-			plot_metric_multiple_runs(stats, 1, ax3)
+			plot_metric_multiple_runs(stats, 2, use_transparency, ax1)
+			plot_metric_multiple_runs(stats, 0, use_transparency, ax2)
+			plot_metric_multiple_runs(stats, 1, use_transparency, ax3)
 
 		if plot_individual_runs:
 			if group_pictures:
 				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
 				if hasattr(stat.best, 'step_width'):
-					plot_metric_multiple_runs(stats, 3, ax1)
+					plot_metric_multiple_runs(stats, 3, use_transparency, ax1)
 			if hasattr(stat.best, 'statistic_nlayers'):
-				plot_metric_multiple_runs(stats, 4, ax2)
-				plot_metric_multiple_runs(stats, 5, ax3)
+				plot_metric_multiple_runs(stats, 4, use_transparency, ax2)
+				plot_metric_multiple_runs(stats, 5, use_transparency, ax3)
 
 		best_parameter_index = calculate_statistics(stats, 2)[-1]
 		stat = stats[best_parameter_index]
@@ -275,9 +325,9 @@ def do_all_plots(stats, experiment_title='', plot_individual_runs=True, plot_ste
 	if plot_best_run:
 		if group_pictures:
 			fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-		plot_metric(stat, 2, ax1)
-		plot_metric(stat, 0, ax2)
-		plot_metric(stat, 1, ax3)
+		plot_metric(stat, 2, use_transparency, ax1)
+		plot_metric(stat, 0, use_transparency, ax2)
+		plot_metric(stat, 1, use_transparency, ax3)
 
 		if group_pictures:
 			fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
@@ -298,11 +348,12 @@ if __name__ == "__main__":
 	# experiment_title = 'Stepper-decay'
 
 	experiment_name = 'ADAPTIVE20/ADAPTIVE*'
-	experiment_title = 'Stepper-adaptive'
+	experiment_title = 'Stepper-Adaptive'
 
 	experiments_path = 'D:/experiments/'
 	# experiments_path = '/content/gdrive/MyDrive/experiments/'
 
 	stats = load_stats(experiments_path, experiment_name)
 	print_statistics(stats, experiments_path, experiment_name)
-	do_all_plots(stats, experiment_title=experiment_title, plot_best_run=True)
+	# save all pictures in eps format
+	do_all_plots(stats, experiment_title=experiment_title, plot_best_run=True, group_pictures=False, save_all_pictures_format='eps')
