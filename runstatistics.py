@@ -184,7 +184,7 @@ class RunStatistics:
 		if index == 0:
 			return "red"
 		elif index == 1:
-			return "orange"
+			return "darkviolet"
 		elif index == 2:
 			return "blue"
 		else:

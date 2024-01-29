@@ -110,10 +110,8 @@ def show_plot():
 		title, _, _ = title.partition('(')
 		title, _, _ = title.partition(':')
 		title = title.strip().replace(' ', '_')
-		name, _, _ = experiment_name.partition('/')
-		name, _, _ = name.partition('_')
 		picture_count += 1
-		plt.savefig(f"D:/Data/workspace/Dissertation/graphs/{picture_count:02d}_{title}.{SAVE_ALL_PICTURES_FORMAT}", format=SAVE_ALL_PICTURES_FORMAT, dpi=600 if SAVE_ALL_PICTURES_FORMAT=='png' else 1200, transparent=True)
+		plt.savefig(f"D:/Data/workspace/Dissertation/graphs2/{picture_count:02d}_{title}.{SAVE_ALL_PICTURES_FORMAT}", format=SAVE_ALL_PICTURES_FORMAT, dpi=600 if SAVE_ALL_PICTURES_FORMAT=='png' else 1200, transparent=True)
 		plt.show()
 
 
@@ -158,13 +156,13 @@ def plot_metric(stat, m, use_transparency=False, ax=None):
 	show_plot()
 
 
-def plot_metric_multiple_runs(stats, m, use_transparency=False, ax=None):
+def plot_metric_multiple_runs(stats, m, ax=None, use_transparency=True, add_legend=True):
 	global EXPERIMENT_TITLE
 
 	if ax is None:
 		ax = default_ax()
 	nruns=len(stats)
-	ax.set_title(f"{EXPERIMENT_TITLE} - {stats[0].metric_name(m)} over {nruns} runs", fontsize=20)
+	ax.set_title(f"{EXPERIMENT_TITLE} - {stats[0].metric_name(m)}", fontsize=24)
 	all_population_size = 0
 	if m <= 2:
 		all_metrics = np.hstack([stat.metric_generation(m) for stat in stats])
@@ -178,7 +176,7 @@ def plot_metric_multiple_runs(stats, m, use_transparency=False, ax=None):
 		ax.plot(stat.best.metric(m), '-', color=RunStatistics.metric_color(m), alpha=ALPHA_LINES, label='best fitness')
 
 	plot_set_limits(stats[0], m, ax)
-	if m <= 2:
+	if add_legend:
 		reduced_legend(ax, all_population_size)
 	show_plot()
 
@@ -207,7 +205,7 @@ def plot_metric_mean_and_sd(stats, m, ax=None):
 	ngenerations = stats[0].run_generation + 1
 	xscale = np.arange(0, ngenerations)
 	nruns=len(stats)
-	ax.set_title(f"{EXPERIMENT_TITLE} - {stats[0].metric_name(m)} over {nruns} runs", fontsize=20)
+	ax.set_title(f"{EXPERIMENT_TITLE} - {stats[0].metric_name(m)}", fontsize=24)
 	all_metrics = np.vstack([stat.best.metric(m) for stat in stats])
 	all_means = np.mean(all_metrics, axis=0)
 	all_std = np.std(all_metrics, axis=0)
@@ -275,17 +273,17 @@ def do_test_plots(stats, experiment_title='', plot_individual_runs=True, plot_st
 		if plot_individual_runs:
 			if group_pictures:
 				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-			plot_metric_multiple_runs(stats, 2, False, ax1)
-			plot_metric_multiple_runs(stats, 0, False, ax2)
-			plot_metric_multiple_runs(stats, 1, False, ax3)
+			plot_metric_multiple_runs(stats, 2, ax1)
+			plot_metric_multiple_runs(stats, 0, ax2)
+			plot_metric_multiple_runs(stats, 1, ax3)
 
 def do_all_plots(stats, experiment_title='', plot_individual_runs=True, plot_stepwidth=True, plot_best_run=True, group_pictures=True, save_all_pictures_format=None):
 	global SAVE_ALL_PICTURES_FORMAT
 	global EXPERIMENT_TITLE
 
 	SAVE_ALL_PICTURES_FORMAT = save_all_pictures_format
+
 	EXPERIMENT_TITLE = experiment_title
-	use_transparency = save_all_pictures_format != 'eps'
 
 	ax1, ax2, ax3 = None, None, None
 
@@ -304,18 +302,18 @@ def do_all_plots(stats, experiment_title='', plot_individual_runs=True, plot_ste
 		if plot_individual_runs:
 			if group_pictures:
 				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-			plot_metric_multiple_runs(stats, 2, use_transparency, ax1)
-			plot_metric_multiple_runs(stats, 0, use_transparency, ax2)
-			plot_metric_multiple_runs(stats, 1, use_transparency, ax3)
+			plot_metric_multiple_runs(stats, 2, ax1)
+			plot_metric_multiple_runs(stats, 0, ax2)
+			plot_metric_multiple_runs(stats, 1, ax3)
 
 		if plot_individual_runs:
 			if group_pictures:
 				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
 				if hasattr(stat.best, 'step_width'):
-					plot_metric_multiple_runs(stats, 3, use_transparency, ax1)
+					plot_metric_multiple_runs(stats, 3, ax1)
 			if hasattr(stat.best, 'statistic_nlayers'):
-				plot_metric_multiple_runs(stats, 4, use_transparency, ax2)
-				plot_metric_multiple_runs(stats, 5, use_transparency, ax3)
+				plot_metric_multiple_runs(stats, 4, ax2)
+				plot_metric_multiple_runs(stats, 5, ax3)
 
 		best_parameter_index = calculate_statistics(stats, 2)[-1]
 		stat = stats[best_parameter_index]
@@ -325,9 +323,9 @@ def do_all_plots(stats, experiment_title='', plot_individual_runs=True, plot_ste
 	if plot_best_run:
 		if group_pictures:
 			fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-		plot_metric(stat, 2, use_transparency, ax1)
-		plot_metric(stat, 0, use_transparency, ax2)
-		plot_metric(stat, 1, use_transparency, ax3)
+		plot_metric(stat, 2, ax1)
+		plot_metric(stat, 0, ax2)
+		plot_metric(stat, 1, ax3)
 
 		if group_pictures:
 			fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
@@ -337,7 +335,76 @@ def do_all_plots(stats, experiment_title='', plot_individual_runs=True, plot_ste
 		plot_variable_counts(stat, ax3)
 
 
+def plot_3x3_mean_and_sd(experiments_path, save_format):
+	global SAVE_ALL_PICTURES_FORMAT
+	global EXPERIMENT_TITLE
+
+	experiment_name1 = 'FDENSER20/FDENSER*'
+	experiment_title1 = 'F-DENSER'
+
+	experiment_name2 = 'DECAY20/DECAY*'
+	experiment_title2 = 'Stepper-decay'
+
+	experiment_name3 = 'ADAPTIVE20/ADAPTIVE*'
+	experiment_title3 = 'Stepper-Adaptive'
+
+	fig, ((ax11, ax12, ax13), (ax21, ax22, ax23), (ax31, ax32, ax33)) = plt.subplots(3, 3, figsize=(30, 21), constrained_layout=True)
+
+	stats1 = load_stats(experiments_path, experiment_name1)
+	EXPERIMENT_TITLE = experiment_title1
+	plot_metric_mean_and_sd(stats1, 2, ax11)
+	plot_metric_mean_and_sd(stats1, 0, ax21)
+	plot_metric_mean_and_sd(stats1, 1, ax31)
+
+	stats2 = load_stats(experiments_path, experiment_name2)
+	EXPERIMENT_TITLE = experiment_title2
+	plot_metric_mean_and_sd(stats2, 2, ax12)
+	plot_metric_mean_and_sd(stats2, 0, ax22)
+	plot_metric_mean_and_sd(stats2, 1, ax32)
+
+	stats3 = load_stats(experiments_path, experiment_name3)
+	EXPERIMENT_TITLE = experiment_title3
+	plot_metric_mean_and_sd(stats3, 2, ax13)
+	plot_metric_mean_and_sd(stats3, 0, ax23)
+	plot_metric_mean_and_sd(stats3, 1, ax33)
+
+	plt.savefig(f"D:/Data/workspace/Dissertation/graphs/Results_3x3." + save_format, format=save_format, dpi=1200, transparent=True)
+	plt.show()
+
+def plot_3x2_multiple_runs(experiments_path, save_format):
+	global SAVE_ALL_PICTURES_FORMAT
+	global EXPERIMENT_TITLE
+
+	experiment_name1 = 'FDENSER20/FDENSER*'
+	experiment_title1 = 'F-DENSER'
+
+	experiment_name2 = 'DECAY20/DECAY*'
+	experiment_title2 = 'Stepper-decay'
+
+	experiment_name3 = 'ADAPTIVE20/ADAPTIVE*'
+	experiment_title3 = 'Stepper-Adaptive'
+
+	fig, ((ax11, ax12), (ax21, ax22), (ax31, ax32)) = plt.subplots(3, 2, figsize=(20, 21), constrained_layout=True)
+
+	stats1 = load_stats(experiments_path, experiment_name1)
+	EXPERIMENT_TITLE = experiment_title1
+	plot_metric_multiple_runs(stats1, 2, ax11)
+	plot_metric_multiple_runs(stats1, 0, ax21)
+	plot_metric_multiple_runs(stats1, 1, ax31)
+
+	stats3 = load_stats(experiments_path, experiment_name3)
+	EXPERIMENT_TITLE = experiment_title3
+	plot_metric_multiple_runs(stats3, 2, ax12, add_legend=False)
+	plot_metric_multiple_runs(stats3, 0, ax22, add_legend=False)
+	plot_metric_multiple_runs(stats3, 1, ax32, add_legend=False)
+
+	plt.savefig(f"D:/Data/workspace/Dissertation/graphs/multiple_runs_2x3." + save_format, format=save_format, dpi=(300*1.2 if save_format=='png' else 1200), transparent=True)
+	plt.show()
+
 if __name__ == "__main__":
+	experiments_path = 'D:/experiments/'
+	# experiments_path = '/content/gdrive/MyDrive/experiments/'
+
 	# experiment_name = 'Stepper_test'
 	# experiment_title = 'Stepper test'
 
@@ -350,10 +417,11 @@ if __name__ == "__main__":
 	experiment_name = 'ADAPTIVE20/ADAPTIVE*'
 	experiment_title = 'Stepper-Adaptive'
 
-	experiments_path = 'D:/experiments/'
-	# experiments_path = '/content/gdrive/MyDrive/experiments/'
-
 	stats = load_stats(experiments_path, experiment_name)
 	print_statistics(stats, experiments_path, experiment_name)
-	# save all pictures in eps format
-	do_all_plots(stats, experiment_title=experiment_title, plot_best_run=True, group_pictures=False, save_all_pictures_format='eps')
+
+	# save all pictures in png format
+	do_all_plots(stats, experiment_title=experiment_title, plot_individual_runs=True, plot_best_run=True, group_pictures=False, save_all_pictures_format='pdf')
+
+	# plot_3x3_mean_and_sd(experiments_path, "eps")
+	# plot_3x2_multiple_runs(experiments_path, "pdf")
