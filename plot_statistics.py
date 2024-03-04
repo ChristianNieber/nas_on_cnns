@@ -118,8 +118,8 @@ def show_plot():
 def plot_set_limits(stat, m, ax):
 	ax.set_xlim(0, stat.run_generation + 1)
 	ax.set_ylim(RunStatistics.metric_ylimits(m))
-	ax.set_xlabel("Generation", fontsize=14)
-	ax.xaxis.set_major_locator(ticker.MultipleLocator(10))
+	# ax.set_xlabel("Generation", fontsize=14)
+	ax.xaxis.set_major_locator(ticker.MultipleLocator(20))
 	ax.yaxis.set_major_locator(ticker.MultipleLocator(stat.metric_ticks(m)))
 	ax.grid(True)
 
@@ -162,7 +162,7 @@ def plot_metric_multiple_runs(stats, m, ax=None, use_transparency=True, add_lege
 	if ax is None:
 		ax = default_ax()
 	nruns=len(stats)
-	ax.set_title(f"{EXPERIMENT_TITLE} - {stats[0].metric_name(m)}", fontsize=24)
+	ax.set_title(f"{EXPERIMENT_TITLE} - {stats[0].metric_name(m)}", fontsize=14)
 	all_population_size = 0
 	if m <= 2:
 		all_metrics = np.hstack([stat.metric_generation(m) for stat in stats])
@@ -205,7 +205,7 @@ def plot_metric_mean_and_sd(stats, m, ax=None):
 	ngenerations = stats[0].run_generation + 1
 	xscale = np.arange(0, ngenerations)
 	nruns=len(stats)
-	ax.set_title(f"{EXPERIMENT_TITLE} - {stats[0].metric_name(m)}", fontsize=24)
+	ax.set_title(f"{EXPERIMENT_TITLE} - {stats[0].metric_name(m)}", fontsize=14)
 	all_metrics = np.vstack([stat.best.metric(m) for stat in stats])
 	all_means = np.mean(all_metrics, axis=0)
 	all_std = np.std(all_metrics, axis=0)
@@ -348,7 +348,7 @@ def plot_3x3_mean_and_sd(experiments_path, save_format):
 	experiment_name3 = 'ADAPTIVE20/ADAPTIVE*'
 	experiment_title3 = 'Stepper-Adaptive'
 
-	fig, ((ax11, ax12, ax13), (ax21, ax22, ax23), (ax31, ax32, ax33)) = plt.subplots(3, 3, figsize=(30, 21), constrained_layout=True)
+	fig, ((ax11, ax12, ax13), (ax21, ax22, ax23), (ax31, ax32, ax33)) = plt.subplots(3, 3, figsize=(15, 10.5), constrained_layout=True)
 
 	stats1 = load_stats(experiments_path, experiment_name1)
 	EXPERIMENT_TITLE = experiment_title1
@@ -384,7 +384,7 @@ def plot_3x2_multiple_runs(experiments_path, save_format):
 	experiment_name3 = 'ADAPTIVE20/ADAPTIVE*'
 	experiment_title3 = 'Stepper-Adaptive'
 
-	fig, ((ax11, ax12), (ax21, ax22), (ax31, ax32)) = plt.subplots(3, 2, figsize=(20, 21), constrained_layout=True)
+	fig, ((ax11, ax12), (ax21, ax22), (ax31, ax32)) = plt.subplots(3, 2, figsize=(10, 11.5), constrained_layout=True)
 
 	stats1 = load_stats(experiments_path, experiment_name1)
 	EXPERIMENT_TITLE = experiment_title1
@@ -398,7 +398,7 @@ def plot_3x2_multiple_runs(experiments_path, save_format):
 	plot_metric_multiple_runs(stats3, 0, ax22, add_legend=False)
 	plot_metric_multiple_runs(stats3, 1, ax32, add_legend=False)
 
-	plt.savefig(f"D:/Data/workspace/Dissertation/graphs/multiple_runs_2x3." + save_format, format=save_format, dpi=(300*1.2 if save_format=='png' else 1200), transparent=True)
+	plt.savefig(f"D:/Data/workspace/Dissertation/graphs/multiple_runs_2x3." + save_format, format=save_format, dpi=(300 if save_format=='png' else 1200), transparent=True)
 	plt.show()
 
 if __name__ == "__main__":
@@ -421,7 +421,7 @@ if __name__ == "__main__":
 	print_statistics(stats, experiments_path, experiment_name)
 
 	# save all pictures in png format
-	do_all_plots(stats, experiment_title=experiment_title, plot_individual_runs=True, plot_best_run=True, group_pictures=False, save_all_pictures_format='pdf')
+	# do_all_plots(stats, experiment_title=experiment_title, plot_individual_runs=True, plot_best_run=True, group_pictures=False, save_all_pictures_format='svg')
 
-	# plot_3x3_mean_and_sd(experiments_path, "eps")
-	# plot_3x2_multiple_runs(experiments_path, "pdf")
+	# plot_3x3_mean_and_sd(experiments_path, "svg")
+	plot_3x2_multiple_runs(experiments_path, "svg")
