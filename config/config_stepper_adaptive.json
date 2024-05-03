@@ -30,7 +30,7 @@
     "comma_strategy": false,
 
     // NAS strategy to use: "Random", "F-DENSER", "Stepper-Decay" or "Stepper-Adaptive"
-    "nas_strategy": "F-DENSER"
+    "nas_strategy": "Stepper-Adaptive"
   },
 
   //network specific parameters
@@ -44,7 +44,7 @@
     //macro blocks: currently only learning
     "macro_structure": ["learning"],
 
-    //number of layers for random initialisation
+    //number of layers on random initialisation
     "network_structure_init": {"features":[2,3,4], "classification":[1]}
   },
 

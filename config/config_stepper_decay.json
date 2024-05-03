@@ -44,8 +44,8 @@
     //macro blocks: currently only learning
     "macro_structure": ["learning"],
 
-    //number of layers for random initialisation
-    "network_structure_init": {"features":[4,5,6], "classification":[1]}
+    //number of layers on random initialisation
+    "network_structure_init": {"features":[2,3,4], "classification":[1]}
   },
 
   //training parameters

@@ -1,13 +1,11 @@
 import random
 import tensorflow as tf
 import keras
-from keras import backend
-from keras.callbacks import Callback
-from keras.utils.layer_utils import count_params
 from time import time
 import numpy as np
 import os
 import pickle
+from enum import Enum
 
 from utilities.data import load_dataset
 from sklearn.metrics import accuracy_score
@@ -29,6 +27,12 @@ LOG_MODEL_TRAINING = 0		# training progress: 1 for progress bar, 2 for one line 
 LOG_EARLY_STOPPING = False	# log early stopping
 LOG_MODEL_SAVE = 1			# log for saving after each epoch
 
+class Type(Enum):
+	NONTERMINAL = 0
+	TERMINAL = 1
+	FLOAT = 2
+	INT = 3
+	CAT = 4
 
 class TimedStopping(keras.callbacks.Callback):
 	"""
@@ -651,8 +655,9 @@ class Evaluator:
 		model_build_time = time() - start_time
 
 		model_layers = len(model.get_config()['layers'])
-		parameters = count_params(model.trainable_weights)
-		# non_trainable_parameters = count_params(model.non_trainable_weights)
+		# parameters = count_params(model.trainable_weights)                    ! Deprecated !
+		parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.trainable_weights])
+		# non_trainable_parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.non_trainable_weights])
 
 		# time based stopping
 		timed_stopping = TimedStopping(seconds=max_training_time)
@@ -1237,6 +1242,15 @@ class Individual:
 
 		random.setstate(random_state)
 		np.random.set_state(numpy_state)
+
+	def compute_mutated_variables_statistics(self, mutable_vars):
+		''' record layers and variable statistics for individual '''
+		self.statistic_nlayers = sum(len(module.layers) for module in self.modules_including_macro)
+		self.statistic_variables = len(mutable_vars)
+		self.statistic_floats = sum(1 for mvar in mutable_vars if mvar.type == Type.FLOAT)
+		self.statistic_ints = sum(1 for mvar in mutable_vars if mvar.type == Type.INT)
+		self.statistic_cats = sum(1 for mvar in mutable_vars if mvar.type == Type.CAT)
+		self.statistic_variable_mutations = sum(1 for mvar in mutable_vars if mvar.new_value is not None)
 
 	def record_statistics(self, ind_stats: RunStatistics.IndividualStatistics):
 		if hasattr(self, 'statistic_nlayers') and hasattr(ind_stats, 'statistic_nlayers'):

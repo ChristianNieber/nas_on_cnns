@@ -1,8 +1,7 @@
 import numpy as np
 import random
-from enum import Enum
 from copy import deepcopy
-from utils import Individual
+from utils import Individual, Type
 from scipy.special import gamma
 
 def format_val(val):
@@ -16,12 +15,6 @@ def format_val(val):
 	return result.rjust(10)
 
 
-class Type(Enum):
-	NONTERMINAL = 0
-	TERMINAL = 1
-	FLOAT = 2
-	INT = 3
-	CAT = 4
 
 
 class Var:
@@ -378,9 +371,10 @@ class NasStrategy:
 		self.grammar = grammar
 
 
+
 class StepperStrategy(NasStrategy):
 
-	def __init__(self):
+	def __init__(self, is_adaptive=False):
 		# strategy parameters
 		self.EXPECTED_NUMBER_OF_PARAMETERS = 25
 
@@ -389,7 +383,7 @@ class StepperStrategy(NasStrategy):
 		self.MAX_STEP_WIDTH = 0.5
 
 		# Mutative Stepwidth Control parameters
-		self.ADAPTIVE_STEP_WIDTH = True
+		self.IS_ADAPTIVE = is_adaptive
 		self.ADAPTIVE_ALPHA = 1.4
 
 		#step width decay parameters
@@ -408,6 +402,7 @@ class StepperStrategy(NasStrategy):
 		self.CHANGE_TYPE_PROBABILITY = 0.1 * 1.5        # will be modified with decaying SIGMA
 		self.COPY_LAYER_PROBABILITY = 0.25 * 0.15
 		self.REMOVE_LAYER_PROBABILITY = 0.25
+
 
 	class ScanLayerInfo:
 		def __init__(self, module_name, layer_index, nlayers, nonterminals_only=False):
@@ -545,86 +540,6 @@ class StepperStrategy(NasStrategy):
 			self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, 0, nonterminals_only=True)
 			ind.log_mutation(f"{mvar.info_string(): <34} {mvar.type: <25} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}, σ: {format_val(module.previous_step)} -> {format_val(module.step)} : {layer}")
 
-	def mutation(self, parent, generation=0, idx=0):
-		# deep copy parent
-		ind = deepcopy(parent)
-		ind.parent_id = parent.id
-
-		# name for new individual
-		ind.generation = generation
-		ind.id = f"{generation}-{idx}"
-
-		# mutation resets training results
-		ind.reset_training()
-
-		if not hasattr(ind, 'step_width'):
-			ind.step_width = 0
-
-		sigma = 0
-		if self.ADAPTIVE_STEP_WIDTH:
-			if ind.step_width == 0:
-				ind.step_width =  self.MAX_STEP_WIDTH
-			sigma = ind.step_width
-			if random.randint(0, 1) == 0:
-				sigma = min(sigma * self.ADAPTIVE_ALPHA, self.MAX_STEP_WIDTH)
-			else:
-				sigma /= self.ADAPTIVE_ALPHA
-		elif self.SIGMA_DECAY_START_GENERATION and ind.generation >= self.SIGMA_DECAY_START_GENERATION:
-			sigma = 1 / (1 + self.SIGMA_DECAY_RATE * (ind.generation - self.SIGMA_DECAY_START_GENERATION)) * 0.5
-
-		# calculate τ, τ' and Nc that are used for mutating all variables of this individual
-		mutation_state = StepperStrategy.MutationState(generation, self.EXPECTED_NUMBER_OF_PARAMETERS, sigma, ind.step_width)
-
-		# add/copy/remove/change layers first
-		ind.statistic_layer_mutations = self.mutate_layers(ind, mutation_state)
-
-		# scan all layers for mutable variables
-		layer_count = 0
-		mutable_vars = []
-		for module in ind.modules_including_macro:
-			for layer_idx, layer in enumerate(module.layers):
-				layer_count += 1
-				self.scan_mutable_variables_recursive(module.module_name, layer, StepperStrategy.ScanLayerInfo(module.module_name, layer_idx, len(module.layers)), mutable_vars)
-
-		# number of variables in individual are useful for some step width calculations
-		nvars = len(mutable_vars) + layer_count
-		mutation_state.set_number_of_variables(nvars)
-
-		# mutate all variables
-		for mvar in mutable_vars:
-			if self.MUTATE_STEP_PER_PARAMETER:
-				self.mutate_variable_step_per_parameter(mvar, mutation_state)
-			else:
-				self.mutate_variable_simple(mvar, mutation_state)
-
-		# log changed variables
-		for mvar in mutable_vars:
-			if mvar.new_value is not None:
-				logstring = f"{mvar.info_string(): <34} {mvar.var.name: <12} {mvar.type: <12} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}"
-				if mvar.new_step:
-					logstring += f", σ: {format_val(mvar.step)} -> {format_val(mvar.new_step)}"
-				ind.log_mutation(logstring)
-
-		# write changed variables and step widths back into layers
-		index = 0
-		for module in ind.modules_including_macro:
-			for layer_idx, layer in enumerate(module.layers):
-				index = self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, index)
-		assert index == len(mutable_vars)
-
-		if self.ADAPTIVE_STEP_WIDTH:
-			ind.step_width = min(mutation_state.calculate_derandomized_sigma(), self.MAX_STEP_WIDTH)
-
-		# record mutable variable statistics
-		ind.statistic_nlayers = sum(len(module.layers) for module in ind.modules_including_macro)
-		ind.statistic_variables = len(mutable_vars)
-		ind.statistic_floats = sum(1 for mvar in mutable_vars if mvar.type == Type.FLOAT)
-		ind.statistic_ints = sum(1 for mvar in mutable_vars if mvar.type == Type.INT)
-		ind.statistic_cats = sum(1 for mvar in mutable_vars if mvar.type == Type.CAT)
-		ind.statistic_variable_mutations = sum(1 for mvar in mutable_vars if mvar.new_value is not None)
-
-		return ind
-
 	def mutate_variable_step_per_parameter(self, mvar: MutableVar, mutation_state: MutationState):
 		value = mvar.value
 		step = mvar.step
@@ -698,7 +613,7 @@ class StepperStrategy(NasStrategy):
 				else:
 					float_diff = random.gauss(0, sigma) * (var.max_value - var.min_value)
 					diff =  int(round(float_diff))
-					if not self.ADAPTIVE_STEP_WIDTH and diff == 0:
+					if not self.IS_ADAPTIVE and diff == 0:
 						diff = 1 if float_diff > 0 else -1
 					if diff:
 						value = interval_transform(value + diff, var.min_value, var.max_value)
@@ -766,3 +681,104 @@ class StepperStrategy(NasStrategy):
 						layer[layer_idx] = (key, new_value, mutable_vars[index].new_step)
 					index += 1
 		return index
+
+	def mutation(self, parent, generation=0, idx=0):
+		# deep copy parent
+		ind = deepcopy(parent)
+		ind.parent_id = parent.id
+
+		# name for new individual
+		ind.generation = generation
+		ind.id = f"{generation}-{idx}"
+
+		# mutation resets training results
+		ind.reset_training()
+
+		if not hasattr(ind, 'step_width'):
+			ind.step_width = 0
+
+		sigma = 0
+		if self.IS_ADAPTIVE:
+			if ind.step_width == 0:
+				ind.step_width =  self.MAX_STEP_WIDTH
+			sigma = ind.step_width
+			if random.randint(0, 1) == 0:
+				sigma = min(sigma * self.ADAPTIVE_ALPHA, self.MAX_STEP_WIDTH)
+			else:
+				sigma /= self.ADAPTIVE_ALPHA
+		elif self.SIGMA_DECAY_START_GENERATION and ind.generation >= self.SIGMA_DECAY_START_GENERATION:
+			sigma = 1 / (1 + self.SIGMA_DECAY_RATE * (ind.generation - self.SIGMA_DECAY_START_GENERATION)) * 0.5
+
+		# calculate τ, τ' and Nc that are used for mutating all variables of this individual
+		mutation_state = StepperStrategy.MutationState(generation, self.EXPECTED_NUMBER_OF_PARAMETERS, sigma, ind.step_width)
+
+		# add/copy/remove/change layers first
+		ind.statistic_layer_mutations = self.mutate_layers(ind, mutation_state)
+
+		# scan all layers for mutable variables
+		layer_count = 0
+		mutable_vars = []
+		for module in ind.modules_including_macro:
+			for layer_idx, layer in enumerate(module.layers):
+				layer_count += 1
+				self.scan_mutable_variables_recursive(module.module_name, layer, StepperStrategy.ScanLayerInfo(module.module_name, layer_idx, len(module.layers)), mutable_vars)
+
+		# number of variables in individual are useful for some step width calculations
+		nvars = len(mutable_vars) + layer_count
+		mutation_state.set_number_of_variables(nvars)
+
+		# mutate all variables
+		for mvar in mutable_vars:
+			if self.MUTATE_STEP_PER_PARAMETER:
+				self.mutate_variable_step_per_parameter(mvar, mutation_state)
+			else:
+				self.mutate_variable_simple(mvar, mutation_state)
+
+		# log changed variables
+		for mvar in mutable_vars:
+			if mvar.new_value is not None:
+				logstring = f"{mvar.info_string(): <34} {mvar.var.name: <12} {mvar.type: <12} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}"
+				if mvar.new_step:
+					logstring += f", σ: {format_val(mvar.step)} -> {format_val(mvar.new_step)}"
+				ind.log_mutation(logstring)
+
+		# write changed variables and step widths back into layers
+		index = 0
+		for module in ind.modules_including_macro:
+			for layer_idx, layer in enumerate(module.layers):
+				index = self.write_mutated_variables_recursive(module.module_name, layer, mutable_vars, index)
+		assert index == len(mutable_vars)
+
+		if self.IS_ADAPTIVE:
+			ind.step_width = min(mutation_state.calculate_derandomized_sigma(), self.MAX_STEP_WIDTH)
+
+		ind.compute_mutated_variables_statistics([])
+
+		return ind
+
+
+class RandomSearchStrategy(NasStrategy):
+
+	def __init__(self, network_structure, macro_structure, output_structure, network_structure_init):
+		# strategy parameters
+		self.network_structure = network_structure
+		self.macro_structure = macro_structure
+		self.output_structure = output_structure
+		self.network_structure_init = network_structure_init
+
+	def mutation(self, parent, generation=0, idx=0):
+		# deep copy parent
+		ind = Individual(self.network_structure, self.macro_structure, self.output_structure, 0, idx)
+		ind.parent_id = None
+
+		# name for new individual
+		ind.generation = generation
+		ind.id = f"{generation}-{idx}"
+
+		ind.step_width = 0
+
+		ind.initialise_random(self.grammar, self.network_structure_init)
+
+		ind.compute_mutated_variables_statistics([])
+
+		return ind

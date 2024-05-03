@@ -29,8 +29,8 @@
     //comma strategy - no parents in selection
     "comma_strategy": false,
 
-    // NAS strategy to use: "Stepper" or "F-DENSER"
-    "nas_strategy": "Stepper"
+    // NAS strategy to use: "Random", "F-DENSER", "Stepper-Decay" or "Stepper-Adaptive"
+    "nas_strategy": "Stepper-Decay"
   },
 
   //network specific parameters

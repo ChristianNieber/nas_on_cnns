@@ -101,7 +101,7 @@ class Test(unittest.TestCase):
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')
 
-		engine.save_population_statistics([ind], './run_0/', 0)
+		engine.save_population_statistics_json([ind], './run_0/', 0)
 
 		self.assertTrue(os.path.exists('./run_0/gen_0.json'))
 

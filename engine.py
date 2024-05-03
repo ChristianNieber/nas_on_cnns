@@ -16,26 +16,26 @@ from runstatistics import RunStatistics
 from logger import *
 from utils import Evaluator, Individual
 
-from strategy_stepper import StepperGrammar, StepperStrategy
+from strategy_stepper import StepperGrammar, StepperStrategy, RandomSearchStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
 DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
-LOG_DEBUG = 0						# log debug messages (for caching)
+LOG_DEBUG = 0						# log debug messages (about caching)
 LOG_MUTATIONS = 0					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
 SAVE_MODELS_TO_FILE = 0             # currently not used
-SAVE_MILESTONE_GENERATIONS = 10     # save milestone every 10 generations
+SAVE_MILESTONE_GENERATIONS = 50     # save milestone every 50 generations
 
-# global variables set from config.json
-
+# turn off annoying keras log messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-
+# The fitness metric used in experiments
 def fitness_metric_with_size_penalty(accuracy, parameters):
 	return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
 
 
-def save_population_statistics(population, save_path, gen):
+# save statistics to json currently not used, this is saved in a pickle file now
+def save_population_statistics_json(population, save_path, gen):
 	"""
 		Save the current population statistics in json.
 		For each individual:
@@ -67,6 +67,7 @@ def save_population_statistics(population, save_path, gen):
 		f_json.write(json.dumps(json_dump, indent=4))
 
 
+# save evaluator currently not used
 def pickle_evaluator(evaluator, save_path):
 	"""
 		Save the Evaluator instance to later enable resuming evolution
@@ -322,11 +323,14 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	if NAS_STRATEGY == "F-DENSER":
 		grammar = FDENSERGrammar(grammar_file)
 		nas_strategy = FDENSERStrategy()
-	elif NAS_STRATEGY == "Stepper":
+	elif NAS_STRATEGY == "Stepper-Decay" or NAS_STRATEGY == "Stepper-Adaptive":
 		grammar = StepperGrammar(grammar_file)
-		nas_strategy = StepperStrategy()
+		nas_strategy = StepperStrategy(NAS_STRATEGY == "Stepper-Adaptive")
+	elif NAS_STRATEGY == "Random":
+		grammar = StepperGrammar(grammar_file)
+		nas_strategy = RandomSearchStrategy(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, NETWORK_STRUCTURE_INIT)
 	else:
-		raise TypeError("nas_strategy must be 'Stepper' or 'F-DENSER'")
+		raise TypeError("nas_strategy must be 'Random', 'F-DENSER' or 'Stepper'")
 
 	nas_strategy.set_grammar(grammar)
 
@@ -461,7 +465,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					orig_parent_list = [ind for ind in population if ind.id == parent.parent_id]
 					if len(orig_parent_list) == 1:
 						orig_parent = orig_parent_list[0]
-						parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.description()}] <- [{orig_parent.description()}] Δfitness={parent.fitness - orig_parent.fitness:.5f} Δacc={parent.metrics.accuracy - orig_parent.metrics.accuracy:.5f}")
+						parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.description()}] <- [{orig_parent.description()}] d_fitness={parent.fitness - orig_parent.fitness:.5f} d_acc={parent.metrics.accuracy - orig_parent.metrics.accuracy:.5f}")
 					else:
 						log_warning(f"parent {parent.parent_id} of {parent.id} not found in current population!")
 
