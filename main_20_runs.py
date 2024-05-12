@@ -6,7 +6,7 @@ import sys
 EXPERIMENT_MAIN_FOLDER = "ADAPTIVE_test"     # Main folder name. Numbered subfolders will be created within.
 EXPERIMENT_NAME = "ADAPTIVE"                 # Template for the numbered subfolder names. This will create subfolders e.g. ADAPTIVE00 to ADAPTIVE19
 GRAMMAR_FILE = "lenet.grammar"               # grammar to use
-CONFIG_FILE = "config_stepper_decay.json"    # config file to use
+CONFIG_FILE = "config_stepper_adaptive.json"    # config file to use
 
 
 # EXPERIMENT_MAIN_FOLDER = "FDENSER20"

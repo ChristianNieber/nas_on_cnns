@@ -200,7 +200,7 @@ class Test(unittest.TestCase):
 		keras_layers = evaluator.get_keras_layers(phenotype)
 		model = evaluator.assemble_network(keras_layers, (28, 28, 1))
 
-		model_config =  model.get_config()
+		model_config = model.get_config()
 		config = model.get_config()
 		self.assertEqual(len(config['layers']), 7)
 		self.assertEqual(len(config['input_layers']), 1)

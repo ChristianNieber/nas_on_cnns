@@ -74,6 +74,8 @@
     // find K folds accuracy for best individual, this specifies the number of folds or 0 for no K folds testing
     "k_folds" : 0,
     // select new parents on average K folds fitness
-    "select_best_with_k_folds_accuracy" : false
+    "select_best_with_k_folds_accuracy" : false,
+    // test different initialisation seeds (alternatively to k_folds). This specifies the number of different seeds to test or 0 for no seeds test
+    "test_init_seeds" : 0
   }
 }

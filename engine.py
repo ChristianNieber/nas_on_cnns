@@ -34,6 +34,10 @@ def fitness_metric_with_size_penalty(accuracy, parameters):
 	return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
 
 
+def average_standard_deviation(list):
+	""" Take the average of a list of standard deviations """
+	return np.sqrt(np.sum([i ** 2 for i in list]) / len(list))
+
 # save statistics to json currently not used, this is saved in a pickle file now
 def save_population_statistics_json(population, save_path, gen):
 	"""
@@ -308,6 +312,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 	K_FOLDS = config['TRAINING']['k_folds']
 	SELECT_BEST_WITH_K_FOLDS_ACCURACY = config['TRAINING']['select_best_with_k_folds_accuracy']
+	TEST_INIT_SEEDS = config['TRAINING']['test_init_seeds']
+
 	data_generator = eval(config['TRAINING']['datagen'])
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
 
@@ -373,8 +379,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	evaluation_cache_path = None
 	if USE_EVALUATION_CACHE:
 		evaluation_cache_path = Path(save_path, EVALUATION_CACHE_FILE).resolve()
-	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY,
-							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME)
+	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY, test_init_seeds=TEST_INIT_SEEDS,
+	                     evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test, save_path=save_path if SAVE_MODELS_TO_FILE else None)
 
 	if unpickle is None:
 		# save evaluator
@@ -400,7 +406,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					new_individual.initialise_random(grammar, NETWORK_STRUCTURE_INIT)
 				else:
 					raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
-				new_individual.evaluate_individual(grammar, cnn_eval, stat, data_generator, data_generator_test, save_path if SAVE_MODELS_TO_FILE else None, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+				new_individual.evaluate_individual(grammar, cnn_eval, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 				if new_individual.fitness:  # new individual could be invalid, then try again
 					break
 				log_bold("Invalid individual created, trying again")
@@ -429,7 +435,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 				parent = select_parent(population[0:MY])
 				while True:
 					new_individual = nas_strategy.mutation(parent, gen, idx)
-					fitness = new_individual.evaluate_individual(grammar, cnn_eval, stat, data_generator, data_generator_test, save_path if SAVE_MODELS_TO_FILE else None, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					fitness = new_individual.evaluate_individual(grammar, cnn_eval, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					if fitness:
 						break
 				generation_list.append(new_individual)
@@ -450,7 +456,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 			for idx, parent in enumerate(new_parents):
 				if not parent.is_parent:
 					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.description()}")
-					parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 					new_parent_candidates_count += 1
 			if new_parent_candidates_count:
 				new_parents = select_new_parents(selection_pool, MY, after_k_folds_evaluation=True)
@@ -469,9 +475,13 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 					else:
 						log_warning(f"parent {parent.parent_id} of {parent.id} not found in current population!")
 
-				if K_FOLDS and not parent.k_fold_metrics:
-					log_bold(f'*** Evaluating k folds for new parent {parent.description()} ***')
-					parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, data_generator, data_generator_test, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					if K_FOLDS and not parent.k_fold_metrics:
+						log_bold(f'*** Evaluating k folds for new parent {parent.description()} ***')
+						parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					if TEST_INIT_SEEDS:
+						parent.k_fold_metrics = None
+						log_bold(f'*** Evaluating init folds for new parent {parent.description()} ***')
+						parent.evaluate_individual_init_seeds(grammar, cnn_eval, TEST_INIT_SEEDS, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 
 				if best_fitness is None or parent.fitness > best_fitness:
 					if best_fitness:
@@ -545,7 +555,12 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	parent = population[0]
 	parent.log_long_description('Final Individual')
 
-	# if NAS_STRATEGY == "F-DENSER":
+	if len(stat.k_fold_accuracy_stds) > 1:
+		log(f"Average folds accuracy SD: {average_standard_deviation(stat.k_fold_accuracy_stds):.5f} {stat.k_fold_accuracy_stds}")
+		log(f"Average folds final accuracy SD: {average_standard_deviation(stat.k_fold_final_accuracy_stds):.5f} {stat.k_fold_final_accuracy_stds}")
+
+
+# if NAS_STRATEGY == "F-DENSER":
 	# 	nas_strategy.dump_mutated_variables(stat.evaluations_total)
 
 

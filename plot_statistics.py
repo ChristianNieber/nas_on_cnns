@@ -77,15 +77,16 @@ def print_statistics(stats, experiments_path, experiment_name):
 	eval_time_k_folds_this_run = sum(stat.eval_time_k_folds_this_run for stat in stats)
 	print(f"runtime {hms(run_time)}, evaluation time {hms(eval_time)} (this run {hms(eval_time_this_run)})" + (f", k-folds: {hms(eval_time_k_folds)} (this run {hms(eval_time_k_folds_this_run)})" if eval_time_k_folds else ""))
 	print()
-	columns = ['', 'Average', 'Std', 'Worst', 'Best', 'Best run']
+	columns = ['', 'Average', 'Median', 'Std', 'Worst', 'Best', 'Best run']
 	data = []
 	for m in [2, 8, 1, 0, 7, 6]:
-		mean, _median, std, worst, best, best_index = calculate_statistics(stats, m)
-		data.append([RunStatistics.metric_name(m), mean, std, worst, best, best_index])
+		mean, median, std, worst, best, best_index = calculate_statistics(stats, m)
+		data.append([RunStatistics.metric_name(m), mean, median, std, worst, best, best_index])
 	# pd.options.display.float_format = '{: .4f}'.format
 	df = pd.DataFrame(data, columns=columns)
 	df = df.round(decimals=2).astype(object)
 	print(df)
+
 
 
 def reduced_legend(ax, population_size, additional_entries=1):
@@ -394,7 +395,8 @@ def box_plot(experiments_path, m=2, save_path = DEFAULT_SAVE_PATH, save_format="
 
 	experiment_stat_paths = ['RANDOM20/RANDOM*', 'FDENSER20/FDENSER*', 'DECAY20/DECAY*', 'ADAPTIVE20/ADAPTIVE*']
 	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
-	experiment_colors = ['yellow', 'yellow', 'yellow', 'yellow']
+	metric_color = ['lightsalmon', 'violet', 'lightblue']
+	medianprops = dict(linestyle='-', linewidth=1, color = 'black')
 
 	stats_list = []
 	for path in experiment_stat_paths:
@@ -408,15 +410,47 @@ def box_plot(experiments_path, m=2, save_path = DEFAULT_SAVE_PATH, save_format="
 
 	fig, ax = plt.subplots(figsize=(6, 4))
 	ax.set_title(f"{RunStatistics.metric_name(m)}", fontsize=14)
-	bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names)
-	for patch, color in zip(bplot['boxes'], experiment_colors):
-		patch.set_facecolor(color)
-
+	bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names, medianprops=medianprops)
+	for patch in bplot['boxes']:
+		patch.set_facecolor(metric_color[m])
 	ax.yaxis.set_major_locator(ticker.MultipleLocator(RunStatistics.metric_ticks(m)))
-
 	ax.grid(True)
 
 	plt.savefig(save_path + f"Box Plot {RunStatistics.metric_name_lowercase(m)}." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
+	plt.show()
+
+def box_plots_3(experiments_path, save_path=DEFAULT_SAVE_PATH, save_format="svg"):
+
+	experiment_stat_paths = ['RANDOM20/RANDOM*', 'FDENSER20/FDENSER*', 'DECAY20/DECAY*', 'ADAPTIVE20/ADAPTIVE*']
+	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
+	metric_color = ['lightsalmon', 'violet', 'lightblue']
+	medianprops = dict(linestyle='-', linewidth=1, color = 'black')
+
+	stats_list = []
+	for path in experiment_stat_paths:
+		stats = load_stats(experiments_path, path)
+		stats_list.append(stats)
+
+	fig, axes = plt.subplots(1, 3, figsize=(20, 5))
+	for i in range(0, 2+1):
+		ax = axes[i]
+		m = [2, 0, 1][i]
+		ax.set_title(f"{RunStatistics.metric_name(m)}", fontsize=14)
+		values_list = []
+		for stats in stats_list:
+			values = [run.best.metric(m)[-1] for run in stats]  # get metric of best of last generation over all runs
+			values_list.append(values)
+		bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names, medianprops=medianprops)
+		if m == 0:
+			ax.set_ylim(0)
+		if m == 1:
+			ax.set_ylim(0, 130000)
+		for patch in bplot['boxes']:
+			patch.set_facecolor(metric_color[m])
+		ax.yaxis.set_major_locator(ticker.MultipleLocator(RunStatistics.metric_ticks(m)))
+		ax.grid(True)
+
+	plt.savefig(save_path + f"Box Plots Fitness Error Parameters." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
 	plt.show()
 
 # Module's main function. Call this and uncomment to generate different plots.
@@ -425,25 +459,23 @@ if __name__ == "__main__":
 	experiments_path = 'D:/experiments/'
 	# experiments_path = '/content/gdrive/MyDrive/experiments/'
 
-	# experiment_name = 'Stepper_test'
-	# experiment_title = 'Stepper test'
-
 	# experiment_name = 'FDENSER20/FDENSER*'
 	# experiment_title = 'F-DENSER'
 
 	# experiment_name = 'DECAY20/DECAY*'
 	# experiment_title = 'Stepper-decay'
 
-	#experiment_name = 'ADAPTIVE20/ADAPTIVE*'
-	#experiment_title = 'Stepper-Adaptive'
+	experiment_name = 'ADAPTIVE20/ADAPTIVE*'
+	experiment_title = 'Stepper-Adaptive'
 
-	#stats = load_stats(experiments_path, experiment_name)
-	#print_statistics(stats, experiments_path, experiment_name)
-	#do_all_plots(stats, experiment_title=experiment_title, plot_individual_runs=True, plot_best_run=True, group_pictures=False, save_all_pictures_format='svg')
+	stats = load_stats(experiments_path, experiment_name)
+	print_statistics(stats, experiments_path, experiment_name)
+	# do_all_plots(stats, experiment_title=experiment_title, plot_individual_runs=True, plot_best_run=True, group_pictures=False, save_all_pictures_format='svg')
 
-	box_plot(experiments_path, 2)
-	box_plot(experiments_path, 0)
-	box_plot(experiments_path, 1)
+	# box_plots_3(experiments_path)
+	# box_plot(experiments_path, 2)
+	#box_plot(experiments_path, 0)
+	#box_plot(experiments_path, 1)
 
-	plot_fitness_mean_and_sd(experiments_path)
-	plot_multiple_runs(experiments_path)
+	#plot_fitness_mean_and_sd(experiments_path)
+	#plot_multiple_runs(experiments_path)
