@@ -13,6 +13,7 @@ from keras.models import load_model
 # from data_augmentation import augmentation
 
 from runstatistics import RunStatistics
+from plot_statistics import DEFAULT_EXPERIMENT_PATH
 from logger import *
 from utils import Evaluator, Individual
 
@@ -67,7 +68,7 @@ def save_population_statistics_json(population, save_path, gen):
 	for ind in population:
 		json_dump.append(ind.json_statistics())
 
-	with open(Path('%s/gen_%d.json' % (save_path, gen)), 'w') as f_json:
+	with open(Path('%s/gen%d.json' % (save_path, gen)), 'w') as f_json:
 		f_json.write(json.dumps(json_dump, indent=4))
 
 
@@ -114,8 +115,9 @@ def pickle_population_and_statistics(path, population, stat: RunStatistics):
 		pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
 def pickle_population_and_statistics_milestone(save_path, generation, population, stat : RunStatistics):
-	pickle_population_and_statistics(save_path + 'gen_%d_' % generation, population, stat)
+	pickle_population_and_statistics(save_path + 'gen%d_' % generation, population, stat)
 
+# unused
 def get_total_epochs(save_path, last_gen):
 	"""
 		Compute the total number of performed epochs.
@@ -172,16 +174,16 @@ def unpickle_population_and_statistics(path, resume_generation=0):
 			Numpy module random state
 	"""
 
-	prefix = f"gen_{resume_generation}_" if resume_generation else ''
-	if os.path.isfile(path + prefix + 'statistics.pkl'):
-		with open(path + prefix + 'statistics.pkl', 'rb') as handle_statistics:
+	gen_prefix = f"gen{resume_generation}_" if resume_generation else ''
+	if os.path.isfile(path + gen_prefix + 'statistics.pkl'):
+		with open(path + gen_prefix + 'statistics.pkl', 'rb') as handle_statistics:
 			pickled_statistics = pickle.load(handle_statistics)
 		last_generation = pickled_statistics.run_generation
 
-		# with open(save_path + 'evaluator.pkl', 'rb') as handle_eval:
+		# with open(path + 'evaluator.pkl', 'rb') as handle_eval:
 		# pickled_evaluator = pickle.load(handle_eval)
 
-		with open(path + prefix + 'population.pkl', 'rb') as handle_pop:
+		with open(path + gen_prefix + 'population.pkl', 'rb') as handle_pop:
 			pickled_population = pickle.load(handle_pop)
 
 		return last_generation, pickled_population, pickled_statistics
@@ -261,13 +263,13 @@ def load_config(config_file):
 	return config
 
 
-def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar', override_experiment_name=None, override_random_seed=None):
+def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar', override_experiment_name=None, override_random_seed=None):
 	"""
 		do (my+/,lambda)-ES for NAS search
 
 		Parameters
 		----------
-		experiments_directory : str
+		experiments_path : str
 			directory where all experiments are saved
 		dataset : str
 			dataset to be solved
@@ -317,11 +319,13 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	data_generator = eval(config['TRAINING']['datagen'])
 	data_generator_test = eval(config['TRAINING']['datagen_test'])
 
-	if not experiments_directory.endswith('/'):
-		experiments_directory += '/'
-	save_path = experiments_directory + EXPERIMENT_NAME + '/'
+	if not experiments_path.endswith('/'):
+		experiments_path += '/'
+	save_path = experiments_path + EXPERIMENT_NAME + '/'
+	run_prefix = f"r{run_number:02}_"
+	save_path_with_run = save_path + run_prefix
 
-	log_file_path = save_path + '#' + EXPERIMENT_NAME + '.log'
+	log_file_path = save_path + '#' + run_prefix + ' ' + EXPERIMENT_NAME + '.log'
 	init_logger(log_file_path)
 	logger_configuration(logger_log_training=True, logger_log_mutations=LOG_MUTATIONS, logger_log_debug=LOG_DEBUG)
 
@@ -344,30 +348,30 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	best_individual_overall = None
 
 	# load previous population content (if any)
-	unpickle = unpickle_population_and_statistics(save_path, RESUME_GENERATION) if RESUME else None
+	unpickle = unpickle_population_and_statistics(save_path_with_run, RESUME_GENERATION) if RESUME else None
 	# if there is not a previous population/statistics file
 	if unpickle is None:
-		# create directories
-		makedirs(save_path, exist_ok=True)
+		if not Path(save_path).exists():
+			makedirs(save_path)         # create directory
+			copyfile(config_file, save_path + Path(config_file).name)       # copy config files to path for documentation
+			copyfile(grammar_file, save_path + Path(grammar_file).name)
 		# delete old files
 		if not RESUME:
-			for f in glob(str(Path(save_path, '*'))):
+			for f in glob(save_path_with_run + '*'):
 				os.remove(f)
-
-		# copy config files to path
-		copyfile(config_file, save_path + Path(config_file).name)
-		copyfile(grammar_file, save_path + Path(grammar_file).name)
+			for f in glob(save_path + '#' + run_prefix + '*'):
+				os.remove(f)
 
 		stat = RunStatistics(RANDOM_SEED)
 		stat.init_session()
 
-		log_bold(f"[Experiment {EXPERIMENT_NAME} in folder {save_path}]")
+		log_bold(f"[Experiment {EXPERIMENT_NAME} in folder {save_path} run#{run_number:02}]")
 
 	else:
 		logger_configure_overwrite(False)
 		last_gen, population, stat = unpickle
 		if last_gen + 1 >= NUM_GENERATIONS:
-			print(f'{EXPERIMENT_NAME} in folder {save_path} is already complete, generation {last_gen}')
+			print(f'{EXPERIMENT_NAME} run#{run_number:02} in folder {save_path} is already complete, generation {last_gen}')
 			return
 
 	# set random seeds
@@ -384,7 +388,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 	if unpickle is None:
 		# save evaluator
-		# pickle_evaluator(cnn_eval, save_path)
+		# pickle_evaluator(cnn_eval, save_path_with_run)
 		last_gen = -1
 
 		# set random seeds
@@ -425,7 +429,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		population = new_parents
 
 		log('\n========================================================================================================')
-		log(f'Resuming experiment {EXPERIMENT_NAME} in folder {save_path} after generation {last_gen}')
+		log_bold(f'Resuming experiment {EXPERIMENT_NAME} run#{run_number:02} in folder {save_path} after generation {last_gen}')
 
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
@@ -496,8 +500,8 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 
 					# copy new best individual's weights
 					if SAVE_MODELS_TO_FILE and os.path.isfile(parent.model_save_path):
-						copyfile(parent.model_save_path, Path(save_path, 'best.h5'))
-					with open('%s/best_parent.pkl' % save_path, 'wb') as handle:
+						copyfile(parent.model_save_path, save_path_with_run + 'best.h5')
+					with open(save_path_with_run + 'best_parent.pkl', 'wb') as handle:
 						pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 				elif not COMMA_STRATEGY:
@@ -510,7 +514,7 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		# remove temporary files to free disk space
 		if gen > 1 and SAVE_MODELS_TO_FILE:
 			for x in range(LAMBDA):
-				individual_path = Path(save_path, 'individual-%d-%d.h5' % (gen - 2, x))
+				individual_path = Path(save_path_with_run, 'individual-%d-%d.h5' % (gen - 2, x))
 				if os.path.isfile(individual_path):
 					os.remove(individual_path)
 
@@ -538,11 +542,9 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 		stat.record_generation(generation_list)
 
 		# save population and statistics
-		pickle_population_and_statistics(save_path, population, stat)
+		pickle_population_and_statistics(save_path_with_run, population, stat)
 		if (gen + 1) % SAVE_MILESTONE_GENERATIONS == 0:
-			pickle_population_and_statistics_milestone(save_path, gen + 1, population, stat)
-		# save_population_statistics(population, save_path, gen)
-		# stat.save_to_json_file(save_path)
+			pickle_population_and_statistics_milestone(save_path_with_run, gen + 1, population, stat)
 
 		generation_list.clear()
 		selection_pool.clear()
@@ -558,7 +560,6 @@ def do_nas_search(experiments_directory='../Experiments/', dataset='mnist', conf
 	if len(stat.k_fold_accuracy_stds) > 1:
 		log(f"Average folds accuracy SD: {average_standard_deviation(stat.k_fold_accuracy_stds):.5f} {stat.k_fold_accuracy_stds}")
 		log(f"Average folds final accuracy SD: {average_standard_deviation(stat.k_fold_final_accuracy_stds):.5f} {stat.k_fold_final_accuracy_stds}")
-
 
 # if NAS_STRATEGY == "F-DENSER":
 	# 	nas_strategy.dump_mutated_variables(stat.evaluations_total)
