@@ -1,3 +1,5 @@
+# Logging to console and to log file
+
 logging_file_path = ''
 logging_line_list = []
 logging_overwrite = False
@@ -113,6 +115,11 @@ def log_debug(value):
 	if logging_debug:
 		print(TerminalColors.OKCYAN + value + TerminalColors.ENDC)
 		log_append(value)
+
+
+def log_blue(value):
+	print(TerminalColors.OKBLUE + value + TerminalColors.ENDC)
+	log_append_flush(value)
 
 
 def log_flush():

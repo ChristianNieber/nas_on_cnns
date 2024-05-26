@@ -23,12 +23,14 @@ ALPHA_BEST_IN_GEN = 0.3
 # global variables
 DEFAULT_EXPERIMENT_PATH = "D:/experiments/"
 DEFAULT_SAVE_PATH = "D:/experiments/graphs/"
-SAVE_ALL_PICTURES_FORMAT = False
+EXPERIMENT_NAMES = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']   # All experiment folders used in plots
+SAVE_ALL_PICTURES_FORMAT = None
 EXPERIMENT_TITLE = ''
 picture_count = 0
 
+
 def load_stats(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH, max_runs=-1):
-	''' load statistics of all runs in an experiment '''
+	""" load statistics of all runs in an experiment """
 	file_list = sorted(glob.glob(experiment_path + experiment_name + "/r??_statistics.pkl"))
 	stats = []
 	for i, file in enumerate(file_list):
@@ -88,7 +90,6 @@ def print_statistics(stats, experiment_name):
 	print(df)
 
 
-
 def reduced_legend(ax, population_size, additional_entries=1):
 	""" hide labels for population plots except one """
 	handles, labels = ax.get_legend_handles_labels()
@@ -113,7 +114,7 @@ def show_plot():
 		title, _, _ = title.partition(':')
 		title = title.strip().replace(' ', '_')
 		picture_count += 1
-		plt.savefig(f"{DEFAULT_SAVE_PATH}{picture_count:02d}_{title}.{SAVE_ALL_PICTURES_FORMAT}", format=SAVE_ALL_PICTURES_FORMAT, dpi=600 if SAVE_ALL_PICTURES_FORMAT=='png' else 1200, transparent=True)
+		plt.savefig(f"{DEFAULT_SAVE_PATH}{picture_count:02d}_{title}.{SAVE_ALL_PICTURES_FORMAT}", format=SAVE_ALL_PICTURES_FORMAT, dpi=600 if SAVE_ALL_PICTURES_FORMAT == 'png' else 1200, transparent=True)
 		plt.show()
 
 
@@ -163,7 +164,6 @@ def plot_metric_multiple_runs(stats, m, ax=None, use_transparency=True, add_lege
 
 	if ax is None:
 		ax = default_ax()
-	nruns=len(stats)
 	ax.set_title(f"{EXPERIMENT_TITLE} - {RunStatistics.metric_name(m)}", fontsize=14)
 	all_population_size = 0
 	if m <= 2:
@@ -182,22 +182,24 @@ def plot_metric_multiple_runs(stats, m, ax=None, use_transparency=True, add_lege
 		reduced_legend(ax, all_population_size)
 	show_plot()
 
-def lighten_color(color, amount=0.5):
-    """
-    Lightens the given color by multiplying (1-luminosity) by the given amount.
-    Input can be matplotlib color string, hex string, or RGB tuple.
 
-    Examples:
-    >> lighten_color('g', 0.3)
-    >> lighten_color('#F034A3', 0.6)
-    >> lighten_color((.3,.55,.1), 0.5)
-    """
-    try:
-        c = mc.cnames[color]
-    except:
-        c = color
-    c = colorsys.rgb_to_hls(*mc.to_rgb(c))
-    return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
+def lighten_color(color, amount=0.5):
+	"""
+		Lightens the given color by multiplying (1-luminosity) by the given amount.
+		Input can be matplotlib color string, hex string, or RGB tuple.
+
+		Examples:
+		>> lighten_color('g', 0.3)
+		>> lighten_color('#F034A3', 0.6)
+		>> lighten_color((.3,.55,.1), 0.5)
+	"""
+	try:
+		c = mc.cnames[color]
+	except:
+		c = color
+	c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+	return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
+
 
 def plot_metric_mean_and_sd(stats, m, ax=None):
 	global EXPERIMENT_TITLE
@@ -206,7 +208,6 @@ def plot_metric_mean_and_sd(stats, m, ax=None):
 		ax = default_ax()
 	ngenerations = stats[0].run_generation + 1
 	xscale = np.arange(0, ngenerations)
-	nruns=len(stats)
 	ax.set_title(f"{EXPERIMENT_TITLE} - {RunStatistics.metric_name(m)}", fontsize=14)
 	all_metrics = np.vstack([stat.best.metric(m) for stat in stats])
 	all_means = np.mean(all_metrics, axis=0)
@@ -216,6 +217,7 @@ def plot_metric_mean_and_sd(stats, m, ax=None):
 	ax.fill_between(xscale, all_means - all_std, all_means + all_std, color=lighten_color(plot_color))
 	plot_set_limits(stats[0], m, ax)
 	show_plot()
+
 
 def plot_different_accuracies(stat, ax=None):
 	global EXPERIMENT_TITLE
@@ -236,6 +238,7 @@ def plot_different_accuracies(stat, ax=None):
 	plot_set_limits(stat, -1, ax)
 	ax.legend(fontsize=12)
 	show_plot()
+
 
 def plot_variable_counts(stat, ax=None):
 	global EXPERIMENT_TITLE
@@ -259,25 +262,6 @@ def plot_variable_counts(stat, ax=None):
 	ax.set_ylim(0)
 	ax.legend(fontsize=12, loc='center right')
 	show_plot()
-
-def do_test_plots(stats, experiment_title='', plot_individual_runs=True, plot_stepwidth=True, plot_best_run=True, group_pictures=True, save_all_pictures_format=None):
-	global SAVE_ALL_PICTURES_FORMAT
-	global EXPERIMENT_TITLE
-
-	SAVE_ALL_PICTURES_FORMAT = save_all_pictures_format
-	EXPERIMENT_TITLE = experiment_title
-
-	ax1, ax2, ax3 = None, None, None
-
-	stat = stats[0]
-
-	if len(stats) > 1:
-		if plot_individual_runs:
-			if group_pictures:
-				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-			plot_metric_multiple_runs(stats, 2, ax1)
-			plot_metric_multiple_runs(stats, 0, ax2)
-			plot_metric_multiple_runs(stats, 1, ax3)
 
 def do_all_plots(stats, experiment_name='', plot_individual_runs=True, plot_stepwidth=True, plot_best_run=True, group_pictures=True, save_all_pictures_format=None):
 	global SAVE_ALL_PICTURES_FORMAT
@@ -347,13 +331,11 @@ def plot_all_mean_and_sd(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	global SAVE_ALL_PICTURES_FORMAT
 	global EXPERIMENT_TITLE
 
-	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive' ]
-
 	fig, ax = plt.subplots(3, 4, figsize=(20, 10.5), constrained_layout=True)
 
-	for row in range(0 , len(experiment_names)):
-		stats = load_stats(experiment_names[row])
-		EXPERIMENT_TITLE = experiment_names[row]
+	for row, name in enumerate(EXPERIMENT_NAMES):
+		stats = load_stats(name)
+		EXPERIMENT_TITLE = name
 		plot_metric_mean_and_sd(stats, 2, ax[0, row])
 		plot_metric_mean_and_sd(stats, 0, ax[1, row])
 		plot_metric_mean_and_sd(stats, 1, ax[2, row])
@@ -361,44 +343,43 @@ def plot_all_mean_and_sd(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	plt.savefig(save_path + "Fitness Error Params Mean and SD." + save_format, format=save_format, dpi=1200, transparent=True)
 	plt.show()
 
+
 def plot_fitness_mean_and_sd(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	global EXPERIMENT_TITLE
 
-	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive' ]
-
 	fig, ax = plt.subplots(1, 4, figsize=(20, 3.5), constrained_layout=True)
 
-	for i in range(0 , len(experiment_names)):
-		stats = load_stats(experiment_names[i])
-		EXPERIMENT_TITLE = experiment_names[i]
+	for i, name in enumerate(EXPERIMENT_NAMES):
+		stats = load_stats(name)
+		EXPERIMENT_TITLE = name
 		plot_metric_mean_and_sd(stats, 2, ax[i])
 
 	plt.savefig(save_path + "Fitness Mean and SD." + save_format, format=save_format, dpi=1200, transparent=True)
 	plt.show()
 
-def plot_multiple_runs(save_path = DEFAULT_SAVE_PATH, save_format="png"):
-	global EXPERIMENT_TITLE
 
-	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive' ]
+def plot_multiple_runs(save_path=DEFAULT_SAVE_PATH, save_format="png"):
+	global EXPERIMENT_TITLE
 
 	fig, ax = plt.subplots(3, 4, figsize=(20, 10.5), constrained_layout=True)
 
-	for i in range(0 , len(experiment_names)):
-		stats = load_stats(experiment_names[i])
-		EXPERIMENT_TITLE = experiment_names[i]
-		add_legend = 1 if i == 0 else 0
+	for i, name in enumerate(EXPERIMENT_NAMES):
+		stats = load_stats(name)
+		EXPERIMENT_TITLE = name
+		add_legend = (i == 0)
 		plot_metric_multiple_runs(stats, 2, ax[0, i], add_legend=add_legend)
 		plot_metric_multiple_runs(stats, 0, ax[1, i], add_legend=add_legend)
 		plot_metric_multiple_runs(stats, 1, ax[2, i], add_legend=add_legend)
 
-	plt.savefig(save_path + "Multiple Runs." + save_format, format=save_format, dpi=(300 if save_format=='png' else 1200), transparent=True)
+	plt.savefig(save_path + "Multiple Runs." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200), transparent=True)
 	plt.show()
 
-def box_plot(m=2, save_path = DEFAULT_SAVE_PATH, save_format="svg"):
+
+def box_plot(m=2, save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 
 	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
 	metric_color = ['lightsalmon', 'violet', 'lightblue']
-	medianprops = dict(linestyle='-', linewidth=1, color = 'black')
+	medianprops = dict(linestyle='-', linewidth=1, color='black')
 
 	stats_list = []
 	for name in experiment_names:
@@ -425,7 +406,7 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 
 	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
 	metric_color = ['lightsalmon', 'violet', 'lightblue']
-	medianprops = dict(linestyle='-', linewidth=1, color = 'black')
+	medianprops = dict(linestyle='-', linewidth=1, color='black')
 
 	stats_list = []
 	for name in experiment_names:
@@ -454,22 +435,24 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	plt.savefig(save_path + f"Box Plots Fitness Error Parameters." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
 	plt.show()
 
-# Module's main function. Call this and uncomment to generate different plots.
 
+# Module's main function. Call this and uncomment to generate different plots.
 if __name__ == "__main__":
 	# experiments_path = 'D:/experiments/'
 	# experiments_path = '/content/gdrive/MyDrive/experiments/'
 
-	experiment_name = 'Stepper-Adaptive'
+	name = 'Stepper-Adaptive'
 
-	stats = load_stats(experiment_name)
-	print_statistics(stats, experiment_name)
-	# do_all_plots(stats, experiment_name=experiment_name, plot_individual_runs=True, plot_best_run=True, group_pictures=True)
+	stats = load_stats(name)
+	print_statistics(stats, name)
+	do_all_plots(stats, experiment_name=name, plot_individual_runs=True, plot_best_run=True, group_pictures=True)
 
 	box_plots_3()
-	#box_plot(2)
-	#box_plot(0)
-	#box_plot(1)
+	# box_plot(2)
+	# box_plot(0)
+	# box_plot(1)
 
-	plot_fitness_mean_and_sd()
-	plot_multiple_runs()
+	# plot_fitness_mean_and_sd()
+	# plot_all_mean_and_sd()
+	# plot_multiple_runs()
+

@@ -1,18 +1,17 @@
-import numpy as np
-import random
+# NAS engine main module. Call do_nas_search() to run.
+
 from os import makedirs
 import pickle
 import os
 from shutil import copyfile
 from glob import glob
-import json
 from jsmin import jsmin
 from pathlib import Path
 from keras.models import load_model
 # from keras.preprocessing.image import ImageDataGenerator
 # from data_augmentation import augmentation
 
-from runstatistics import RunStatistics
+from runstatistics import *
 from plot_statistics import DEFAULT_EXPERIMENT_PATH
 from logger import *
 from utils import Evaluator, Individual
@@ -22,7 +21,7 @@ from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
 DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (about caching)
-LOG_MUTATIONS = 0					# log all mutations
+LOG_MUTATIONS = 1					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
 SAVE_MODELS_TO_FILE = 0             # currently not used
 SAVE_MILESTONE_GENERATIONS = 50     # save milestone every 50 generations
@@ -30,61 +29,9 @@ SAVE_MILESTONE_GENERATIONS = 50     # save milestone every 50 generations
 # turn off annoying keras log messages
 os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-# The fitness metric used in experiments
-def fitness_metric_with_size_penalty(accuracy, parameters):
-	return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
 
-
-def average_standard_deviation(list):
-	""" Take the average of a list of standard deviations """
-	return np.sqrt(np.sum([i ** 2 for i in list]) / len(list))
-
-# save statistics to json currently not used, this is saved in a pickle file now
-def save_population_statistics_json(population, save_path, gen):
-	"""
-		Save the current population statistics in json.
-		For each individual:
-			.name: name as <generation>-<index>
-			.phenotype: phenotype of the individual
-			.fitness: fitness of the individual
-			.metrics: other evaluation metrics (e.g., loss, accuracy)
-			.metrics.parameters: number of network trainable parameters
-			.metrics.training_epochs: number of performed training epochs
-			.metrics.training_time: time (sec) the network took to perform training_epochs
-			.million_inferences_time: measured time per million inferences
-
-		Parameters
-		----------
-		population : list
-			list of Individual instances
-		save_path : str
-			path to the json file
-		gen : int
-			current generation
-	"""
-
-	json_dump = []
-
-	for ind in population:
-		json_dump.append(ind.json_statistics())
-
-	with open(Path('%s/gen%d.json' % (save_path, gen)), 'w') as f_json:
-		f_json.write(json.dumps(json_dump, indent=4))
-
-
-# save evaluator currently not used
-def pickle_evaluator(evaluator, save_path):
-	"""
-		Save the Evaluator instance to later enable resuming evolution
-
-		Parameters
-		----------
-		evaluator: Evaluator
-			instance of the Evaluator class
-		save_path: str
-			path to the json file
-	"""
-
+def pickle_evaluator(evaluator: Evaluator, save_path):
+	""" Save the Evaluator instance to later enable resuming evolution - currently unused"""
 	with open(Path('%s/evaluator.pkl' % save_path), 'wb') as handle:
 		pickle.dump(evaluator, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -100,10 +47,12 @@ def pickle_population_and_statistics(path, population, stat: RunStatistics):
 
 		Parameters
 		----------
-		population : list
-			a list of Individuals
 		path: str
 			path to the json file
+		population : list
+			a list of Individuals
+		stat: RunStatistics
+			statistics to store
 	"""
 
 	stat.random_state = random.getstate()
@@ -114,35 +63,9 @@ def pickle_population_and_statistics(path, population, stat: RunStatistics):
 	with open(path + 'population.pkl', 'wb') as handle_pop:
 		pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
-def pickle_population_and_statistics_milestone(save_path, generation, population, stat : RunStatistics):
+
+def pickle_population_and_statistics_milestone(save_path, generation, population, stat: RunStatistics):
 	pickle_population_and_statistics(save_path + 'gen%d_' % generation, population, stat)
-
-# unused
-def get_total_epochs(save_path, last_gen):
-	"""
-		Compute the total number of performed epochs.
-
-		Parameters
-		----------
-		save_path: str
-			path where the objects needed to resume evolution are stored.
-		last_gen : int
-			count the number of performed epochs until the last_gen generation
-
-		Returns
-		-------
-		total_epochs : int
-			sum of the number of epochs performed by all trainings
-	"""
-
-	total_epochs = 0
-	for gen in range(0, last_gen + 1):
-		with open(Path('%s/gen_%d.json' % (save_path, gen))) as json_file:
-			j = json.load(json_file)
-			training_epochs = [elm['training_epochs'] for elm in j]
-			total_epochs += sum(training_epochs)
-
-	return total_epochs
 
 
 def unpickle_population_and_statistics(path, resume_generation=0):
@@ -157,6 +80,8 @@ def unpickle_population_and_statistics(path, resume_generation=0):
 		----------
 		path: str
 			path where the objects needed to resume evolution are stored.
+		resume_generation : int
+			0 for last, or number of milestone generation (50, 100 or 150) where computation should resume
 
 
 		Returns
@@ -244,7 +169,6 @@ def load_config(config_file):
 	"""
 		Load configuration json file.
 
-
 		Parameters
 		----------
 		config_file : str
@@ -271,6 +195,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		----------
 		experiments_path : str
 			directory where all experiments are saved
+		run_number : int
+			number of run (0-based)
 		dataset : str
 			dataset to be solved
 		config_file : str
@@ -302,6 +228,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	LAMBDA = config['EVOLUTIONARY']['lambda']
 	COMMA_STRATEGY = config['EVOLUTIONARY']['comma_strategy']
 	NAS_STRATEGY = config['EVOLUTIONARY']['nas_strategy']
+	INITIAL_SIGMA = config['EVOLUTIONARY']['stepper_initial_sigma'] if 'stepper_initial_sigma' in config['EVOLUTIONARY'].keys() else 0.5
 
 	NETWORK_STRUCTURE = config['NETWORK']['network_structure']
 	MACRO_STRUCTURE = config['NETWORK']['macro_structure']
@@ -335,7 +262,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		nas_strategy = FDENSERStrategy()
 	elif NAS_STRATEGY == "Stepper-Decay" or NAS_STRATEGY == "Stepper-Adaptive":
 		grammar = StepperGrammar(grammar_file)
-		nas_strategy = StepperStrategy(NAS_STRATEGY == "Stepper-Adaptive")
+		nas_strategy = StepperStrategy(NAS_STRATEGY == "Stepper-Adaptive", initial_sigma=INITIAL_SIGMA)
 	elif NAS_STRATEGY == "Random":
 		grammar = StepperGrammar(grammar_file)
 		nas_strategy = RandomSearchStrategy(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, NETWORK_STRUCTURE_INIT)
@@ -347,6 +274,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	best_fitness = None
 	best_individual_overall = None
 
+	population = []
+	last_gen = -1
 	# load previous population content (if any)
 	unpickle = unpickle_population_and_statistics(save_path_with_run, RESUME_GENERATION) if RESUME else None
 	# if there is not a previous population/statistics file
@@ -383,13 +312,11 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	evaluation_cache_path = None
 	if USE_EVALUATION_CACHE:
 		evaluation_cache_path = Path(save_path, EVALUATION_CACHE_FILE).resolve()
-	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY, test_init_seeds=TEST_INIT_SEEDS,
-	                     evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test, save_path=save_path if SAVE_MODELS_TO_FILE else None)
+	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS,  for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY, test_init_seeds=TEST_INIT_SEEDS,
+							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test, save_path=save_path if SAVE_MODELS_TO_FILE else None)
 
 	if unpickle is None:
-		# save evaluator
-		# pickle_evaluator(cnn_eval, save_path_with_run)
-		last_gen = -1
+		# pickle_evaluator(cnn_eval, save_path_with_run) # save evaluator
 
 		# set random seeds
 		if RANDOM_SEED != -1:
@@ -398,7 +325,6 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 		initial_population_size = LAMBDA if INITIAL_INDIVIDUALS == 'random' else 1
 		log(f'Creating the initial population of {initial_population_size}')
-		population = []
 		for idx in range(initial_population_size):
 			while True:
 				new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
@@ -410,7 +336,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 					new_individual.initialise_random(grammar, NETWORK_STRUCTURE_INIT)
 				else:
 					raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
-				new_individual.evaluate_individual(grammar, cnn_eval, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+				new_individual.evaluate_individual(grammar, cnn_eval, stat)
 				if new_individual.fitness:  # new individual could be invalid, then try again
 					break
 				log_bold("Invalid individual created, trying again")
@@ -439,7 +365,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 				parent = select_parent(population[0:MY])
 				while True:
 					new_individual = nas_strategy.mutation(parent, gen, idx)
-					fitness = new_individual.evaluate_individual(grammar, cnn_eval, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
+					fitness = new_individual.evaluate_individual(grammar, cnn_eval, stat)
 					if fitness:
 						break
 				generation_list.append(new_individual)
@@ -561,7 +487,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		log(f"Average folds accuracy SD: {average_standard_deviation(stat.k_fold_accuracy_stds):.5f} {stat.k_fold_accuracy_stds}")
 		log(f"Average folds final accuracy SD: {average_standard_deviation(stat.k_fold_final_accuracy_stds):.5f} {stat.k_fold_final_accuracy_stds}")
 
-# if NAS_STRATEGY == "F-DENSER":
+	# if NAS_STRATEGY == "F-DENSER":
 	# 	nas_strategy.dump_mutated_variables(stat.evaluations_total)
 
 

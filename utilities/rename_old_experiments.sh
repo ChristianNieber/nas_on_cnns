@@ -1,4 +1,4 @@
-#!/bin/sh
+#!/bin/bash
 # copy files from old experiments structure with subfolders to new flat structure
 experiment="Stepper-Decay_old"
 out_dir="Stepper-Decay"

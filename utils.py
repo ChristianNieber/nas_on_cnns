@@ -27,12 +27,14 @@ LOG_MODEL_TRAINING = 0		# training progress: 1 for progress bar, 2 for one line 
 LOG_EARLY_STOPPING = False	# log early stopping
 LOG_MODEL_SAVE = 1			# log for saving after each epoch
 
+
 class Type(Enum):
 	NONTERMINAL = 0
 	TERMINAL = 1
 	FLOAT = 2
 	INT = 3
 	CAT = 4
+
 
 class TimedStopping(keras.callbacks.Callback):
 	"""
@@ -202,8 +204,8 @@ class Evaluator:
 		def set_k_fold_metrics(self, k_fold_metrics):
 			self.k_fold_metrics = k_fold_metrics
 
-	def __init__(self, dataset, fitness_func=fitness_function_accuracy, for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
-	             evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, save_path=None):
+	def __init__(self, dataset, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
+					evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, save_path=None):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -211,15 +213,17 @@ class Evaluator:
 			----------
 			dataset : str
 				dataset to be loaded
-			datagen : keras.preprocessing.image.ImageDataGenerator
+			data_generator : keras.preprocessing.image.ImageDataGenerator
 				Data augmentation method image data generator
-			datagen_test : keras.preprocessing.image.ImageDataGenerator
+			data_generator_test : keras.preprocessing.image.ImageDataGenerator
 				Image data generator without augmentation
 			fitness_func : function
 				calculates fitness from accuracy and number of trainable weights
 		"""
 		self.dataset = load_dataset(dataset, for_k_fold_validation)
 		self.fitness_func = fitness_func
+		self.max_training_time = max_training_time
+		self.max_training_epochs = max_training_epochs
 
 		self.early_stop_delta = EARLY_STOP_DELTA
 		self.early_stop_patience = EARLY_STOP_PATIENCE
@@ -591,11 +595,19 @@ class Evaluator:
 		fitness = self.fitness_func(accuracy, ind.metrics.parameters) if accuracy is not None else None
 		return fitness
 
-	@staticmethod
-	def cache_key(phenotype, max_training_time, max_training_epochs):
-		return f"{phenotype}#{max_training_time}#{max_training_epochs}"
+	def cache_key(self, phenotype):
+		return f"{phenotype}#{self.max_training_time}#{self.max_training_epochs}"
 
-	def evaluate_cnn(self, phenotype, max_training_time, max_training_epochs, model_save_path, dataset, stat, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
+	def construct_keras_layers(self, phenotype):
+		""" construct list of layers to pass into keras, and learning parameters from phenotype string """
+		model_phenotype, learning_phenotype = phenotype.split('learning:')
+		learning_phenotype = 'learning:' + learning_phenotype.rstrip().lstrip()
+		model_phenotype = model_phenotype.rstrip().lstrip().replace('  ', ' ')
+		keras_layers = self.get_keras_layers(model_phenotype)
+		keras_learning = self.get_learning(learning_phenotype)
+		return keras_layers, keras_learning
+
+	def evaluate_cnn(self, phenotype, model_save_path, dataset, stat, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -605,10 +617,6 @@ class Evaluator:
 				individual phenotype
 			load_prev_weights : bool
 				resume training from a previous train or not
-			max_training_time : float
-				maximum training time
-			max_training_epochs : int
-				maximum number of epochs
 			model_save_path : str
 				path where model and its weights are saved, or empty
 			dataset : dict
@@ -634,13 +642,8 @@ class Evaluator:
 		gpu_devices = tf.config.experimental.list_physical_devices('GPU')
 		tf.config.experimental.set_memory_growth(gpu_devices[0], True)
 
-		model_phenotype, learning_phenotype = phenotype.split('learning:')
-		learning_phenotype = 'learning:' + learning_phenotype.rstrip().lstrip()
-		model_phenotype = model_phenotype.rstrip().lstrip().replace('  ', ' ')
-
-		keras_layers = self.get_keras_layers(model_phenotype)
+		keras_layers, keras_learning = self.construct_keras_layers(phenotype)
 		keras_layers_count = len(keras_layers)
-		keras_learning = self.get_learning(learning_phenotype)
 		batch_size = int(keras_learning['batch_size'])
 
 		if load_prev_weights and os.path.exists(model_save_path):
@@ -666,15 +669,15 @@ class Evaluator:
 		# non_trainable_parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.non_trainable_weights])  # not used
 
 		# time based stopping
-		timed_stopping = TimedStopping(seconds=max_training_time)
+		timed_stopping = TimedStopping(seconds=self.max_training_time)
 
 		callbacks_list = [timed_stopping]
 
 		# early stopping not used
-		#if not for_k_folds_validation:
-		#	early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
-		#	# early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
-		#	callbacks_list.append(early_stop)
+		# if not for_k_folds_validation:
+		#   early_stop = keras.callbacks.EarlyStopping(monitor='val_loss', patience=8, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
+		#   # or early_stop = keras.callbacks.EarlyStopping(monitor='val_accuracy', min_delta=self.early_stop_delta, patience=self.early_stop_patience, restore_best_weights=False, verbose=LOG_EARLY_STOPPING)
+		#   callbacks_list.append(early_stop)
 
 		training_start_time = time()
 
@@ -685,7 +688,7 @@ class Evaluator:
 		if self.data_generator is not None:
 			score = model.fit_generator(self.data_generator.flow(x_train, y_train, batch_size=batch_size),
 										steps_per_epoch=(x_train.shape[0] // batch_size),
-										epochs=max_training_epochs,
+										epochs=self.max_training_epochs,
 										validation_data=(self.data_generator_test.flow(x_val, y_val, batch_size=batch_size)),
 										validation_steps=(x_val.shape[0] // batch_size),
 										callbacks=callbacks_list,
@@ -695,7 +698,7 @@ class Evaluator:
 			score = model.fit(x=x_train,
 								y=y_train,
 								batch_size=batch_size,
-								epochs=max_training_epochs,
+								epochs=self.max_training_epochs,
 								steps_per_epoch=(x_train.shape[0] // batch_size),
 								validation_data=(x_val, y_val),
 								callbacks=callbacks_list,
@@ -705,7 +708,7 @@ class Evaluator:
 		training_time = time() - training_start_time
 		training_epochs = len(score.epoch)
 		timer_stop_triggered = timed_stopping.timer_stop_triggered
-		early_stop_triggered = training_epochs < max_training_epochs and not timer_stop_triggered
+		early_stop_triggered = training_epochs < self.max_training_epochs and not timer_stop_triggered
 
 		# save final model to file
 		if model_save_path:
@@ -723,30 +726,31 @@ class Evaluator:
 		y_final_test = dataset['y_final_test']
 		final_test_accuracy, final_test_time, million_inferences_time = self.test_model_with_data(model, x_final_test, y_final_test)
 
+		del model
 		keras.backend.clear_session()
 
 		eval_time = time() - start_time
 
 		result = CnnEvalResult(score.history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered,
-		                       parameters, keras_layers_count, model_layers, test_accuracy, fitness, model_summary)
+								parameters, keras_layers_count, model_layers, test_accuracy, fitness, model_summary)
 
 		stat.record_evaluation(seconds=eval_time, is_k_folds=for_k_folds_validation)
 
 		return result
 
-	def evaluate_cnn_with_cache(self, phenotype, name, max_training_time, max_training_epochs, model_save_path, dataset, stat, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
+	def evaluate_cnn_with_cache(self, phenotype, name, model_save_path, dataset, stat, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
 		"""
 			Evaluates the keras model using the keras optimiser, using caching
 		"""
 
-		cache_key = Evaluator.cache_key(phenotype, max_training_time, max_training_epochs)
+		cache_key = self.cache_key(phenotype)
 		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
 			cache_entry = self.evaluation_cache[cache_key]
 			log_debug('using cached metrics from ' + cache_entry.origin_description)
 			stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
 			return cache_entry.metrics
 
-		result = self.evaluate_cnn(phenotype, max_training_time, max_training_epochs, model_save_path, dataset, stat, for_k_folds_validation, load_prev_weights, input_size)
+		result = self.evaluate_cnn(phenotype, model_save_path, dataset, stat, for_k_folds_validation, load_prev_weights, input_size)
 
 		if self.evaluation_cache_path:
 			new_cache_entry = Evaluator.EvaluationCacheEntry(f"{self.experiment_name}:{name}", result)
@@ -755,22 +759,21 @@ class Evaluator:
 
 		return result
 
-	def evaluate_cnn_init_seeds(self, phenotype, name, metrics, n_seeds, max_training_time, max_training_epochs, dataset, stat, input_size=(28, 28, 1)):
+	def evaluate_cnn_init_seeds(self, phenotype, name, metrics, n_seeds, dataset, stat, input_size=(28, 28, 1)):
 		""" evaluate individual for different initialisation seeds """
 
 		k_folds_result = KFoldEvalResult()
 
-		fold_number = 1
 		for seed in range(0, n_seeds):
-			result = self.evaluate_cnn(phenotype, max_training_time, max_training_epochs, '', dataset, stat, for_k_folds_validation=True, input_size=input_size)
+			result = self.evaluate_cnn(phenotype, '', dataset, stat, for_k_folds_validation=True, input_size=input_size)
 			k_folds_result.append_cnn_eval_result(result)
 
 		return k_folds_result
 
-	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, max_training_time, max_training_epochs, stat, input_size=(28, 28, 1)):
+	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, stat, input_size=(28, 28, 1)):
 		""" evaluate individual for k-folds, using cache """
 
-		cache_key = Evaluator.cache_key(phenotype, max_training_time, max_training_epochs)
+		cache_key = self.cache_key(phenotype)
 		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
 			cache_entry = self.evaluation_cache[cache_key]
 			if cache_entry.k_fold_metrics is not None:
@@ -803,7 +806,7 @@ class Evaluator:
 				'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
 				'x_final_test': self.dataset['x_final_test'], 'y_final_test': self.dataset['y_final_test']
 			}
-			result = self.evaluate_cnn(phenotype, max_training_time, max_training_epochs, '', fold_dataset, stat, for_k_folds_validation=True, input_size=input_size)
+			result = self.evaluate_cnn(phenotype, '', fold_dataset, stat, for_k_folds_validation=True, input_size=input_size)
 			fold_number += 1
 			k_folds_result.append_cnn_eval_result(result)
 
@@ -830,10 +833,9 @@ class Evaluator:
 		"""
 
 		model = keras.models.load_model(model_path)
-		accuracy, model_test_time, million_inferences_time = Evaluator.test_model_with_data(model, self.dataset['x_final_test'], self.dataset['y_final_test'], self.datagen_test)
+		accuracy, model_test_time, million_inferences_time = Evaluator.test_model_with_data(model, self.dataset['x_final_test'], self.dataset['y_final_test'], self.data_generator_test)
 
 		return accuracy
-
 
 	@staticmethod
 	def test_model_with_data(model, x_test, y_test, datagen_test=None):
@@ -882,8 +884,8 @@ class Individual:
 				Performs the evaluation of a candidate solution
 	"""
 	is_parent: bool
-	final_test_accuracy: None	# accuracy with final test set
-	fitness: None				# calculated fitness
+	final_test_accuracy: None       # accuracy with final test set
+	fitness: None                   # calculated fitness
 	metrics: CnnEvalResult
 	k_fold_metrics: KFoldEvalResult
 	training_complete: bool
@@ -960,15 +962,16 @@ class Individual:
 			result += f" σ: {self.step_width:.4f}"
 		return result
 
-	def log_long_description(self, title):
+	def log_long_description(self, title, with_history=False):
 		""" output long description to log, with phenotype, model summary and evolution history """
 		log('\n----------------------------------------------------------------------------------------------------------------------------------------')
 		log_bold(f"{title}: {self.description()}\nPhenotype:")
-		log('\n'.join(self.phenotype_lines) + '\n')
+
 		log(self.metrics.model_summary)
-		log_bold('\nEvolution history:')
-		log('\n'.join(self.evolution_history))
-		log('\n----------------------------------------------------------------------------------------------------------------------------------------')
+		if with_history:
+			log_bold('\nEvolution history:')
+			log('\n'.join(self.evolution_history))
+			log('\n----------------------------------------------------------------------------------------------------------------------------------------')
 
 	def json_statistics(self):
 		""" return dictionary of statistics for individual to write to json file"""
@@ -1069,7 +1072,7 @@ class Individual:
 
 		# Initialise the macro structure: learning, data augmentation, etc.
 		self.macro_module = grammar.Module("learning", 1, 1)
-		self.macro_module.layers = layers = grammar.Module.default_learning_rule_adam()
+		self.macro_module.layers = grammar.Module.default_learning_rule_adam()
 		self.modules_including_macro = self.modules + [self.macro_module]
 		return self
 
@@ -1152,7 +1155,7 @@ class Individual:
 		self.phenotype_lines = phenotype.split('\n')
 		return phenotype
 
-	def evaluate_individual(self, grammar, cnn_eval, stat, max_training_time, max_training_epochs):
+	def evaluate_individual(self, grammar, cnn_eval, stat):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1164,12 +1167,6 @@ class Individual:
 				for recording statistics
 			cnn_eval : Evaluator
 				Evaluator instance used to train the networks
-			datagen : keras.preprocessing.image.ImageDataGenerator
-				Data augmentation method image data generator
-			datagen_test : keras.preprocessing.image.ImageDataGenerator
-				Image data generator without augmentation
-			save_path : str
-				path where statistics and weights are saved
 
 			Returns
 			-------
@@ -1188,7 +1185,7 @@ class Individual:
 			log_training_nolf(f"{self.id} layers: {len(self.modules_including_macro[0].layers)}+{len(self.modules_including_macro[1].layers)} ")
 
 			try:
-				metrics = cnn_eval.evaluate_cnn_with_cache(phenotype, self.id, max_training_time, max_training_epochs, model_save_path, cnn_eval.dataset, stat)
+				metrics = cnn_eval.evaluate_cnn_with_cache(phenotype, self.id, model_save_path, cnn_eval.dataset, stat)
 			except tf.errors.ResourceExhaustedError as e:
 				log_warning(f"{self.id} : ResourceExhaustedError {e}")
 				keras.backend.clear_session()
@@ -1197,7 +1194,7 @@ class Individual:
 				log_warning(f"{self.id} : caught exception {e}")
 				keras.backend.clear_session()
 				stat.record_evaluation(is_invalid=True)
-
+#
 			if metrics is not None:
 				self.metrics = metrics
 				self.model_save_path = model_save_path
@@ -1215,7 +1212,7 @@ class Individual:
 
 		return self.fitness
 
-	def evaluate_individual_k_folds(self, grammar, cnn_eval, nfolds, stat, max_training_time, max_training_epochs):
+	def evaluate_individual_k_folds(self, grammar, cnn_eval, nfolds, stat):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1227,14 +1224,8 @@ class Individual:
 				Evaluator instance used to train the networks
 			nfolds : int
 				number of folds
-			datagen : keras.preprocessing.image.ImageDataGenerator
-				Data augmentation method image data generator
-			datagen_test : keras.preprocessing.image.ImageDataGenerator
-				Image data generator without augmentation
-			max_training_time : int
-				Maximum training time per model
-			max_training_epochs : int
-				Maximal epochs to train
+			stat : RunStatistics
+				keeps statistics
 
 			Returns
 			-------
@@ -1247,15 +1238,17 @@ class Individual:
 		phenotype = self.get_phenotype(grammar)
 
 		try:
-			self.k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, max_training_time, max_training_epochs, stat)
+			self.k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, stat)
 			self.k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
 			old_fitness = self.fitness
 			self.fitness = cnn_eval.calculate_fitness(self)
 
 			stat.k_fold_accuracy_stds.append(self.k_fold_metrics.accuracy_std)
 			stat.k_fold_final_accuracy_stds.append(self.k_fold_metrics.final_accuracy_std)
+			stat.k_fold_fitness_stds.append(self.k_fold_metrics.fitness_std)
 
 			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.metrics.accuracy:0.5f} -> {self.k_fold_metrics.accuracy:0.5f} (SD:{self.k_fold_metrics.accuracy_std:0.5f}), final acc: {self.k_fold_metrics.final_accuracy:0.5f} (SD:{self.k_fold_metrics.final_accuracy_std:0.5f}), fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
+
 		except tf.errors.ResourceExhaustedError as e:
 			log_warning(f"{self.id} k-folds evaluation: ResourceExhaustedError {e}")
 			keras.backend.clear_session()
@@ -1266,7 +1259,7 @@ class Individual:
 		random.setstate(random_state)
 		np.random.set_state(numpy_state)
 
-	def evaluate_individual_init_seeds(self, grammar, cnn_eval, n_seeds, stat, max_training_time, max_training_epochs):
+	def evaluate_individual_init_seeds(self, grammar, cnn_eval, n_seeds, stat):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1276,16 +1269,10 @@ class Individual:
 				grammar instance that stores the expansion rules
 			cnn_eval : Evaluator
 				Evaluator instance used to train the networks
-			nfolds : int
-				number of folds
-			datagen : keras.preprocessing.image.ImageDataGenerator
-				Data augmentation method image data generator
-			datagen_test : keras.preprocessing.image.ImageDataGenerator
-				Image data generator without augmentation
-			max_training_time : int
-				Maximum training time per model
-			max_training_epochs : int
-				Maximal epochs to train
+			n_seeds : int
+				number of seeds to test
+			stat : RunStatistics
+				records statistics
 
 			Returns
 			-------
@@ -1297,13 +1284,14 @@ class Individual:
 
 		phenotype = self.get_phenotype(grammar)
 
-		self.k_fold_metrics = cnn_eval.evaluate_cnn_init_seeds(phenotype, self.id, self.metrics, n_seeds, max_training_time, max_training_epochs, cnn_eval.dataset, stat)
+		self.k_fold_metrics = cnn_eval.evaluate_cnn_init_seeds(phenotype, self.id, self.metrics, n_seeds, cnn_eval.dataset, stat)
 		self.k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
 		old_fitness = self.fitness
 		self.fitness = cnn_eval.calculate_fitness(self)
 
 		stat.k_fold_accuracy_stds.append(self.k_fold_metrics.accuracy_std)
 		stat.k_fold_final_accuracy_stds.append(self.k_fold_metrics.final_accuracy_std)
+		stat.k_fold_fitness_stds.append(self.k_fold_metrics.fitness_std)
 
 		log_bold(f"--> {self.id} with {n_seeds} seeds: acc: {self.metrics.accuracy:0.5f} -> {self.k_fold_metrics.accuracy:0.5f} (SD:{self.k_fold_metrics.accuracy_std:0.5f}), final acc: {self.k_fold_metrics.final_accuracy:0.5f} (SD:{self.k_fold_metrics.final_accuracy_std:0.5f}), fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
 
@@ -1311,7 +1299,7 @@ class Individual:
 		np.random.set_state(numpy_state)
 
 	def compute_mutated_variables_statistics(self, mutable_vars):
-		''' record layers and variable statistics for individual '''
+		""" record layers and variable statistics for individual """
 		self.statistic_nlayers = sum(len(module.layers) for module in self.modules_including_macro)
 		self.statistic_variables = len(mutable_vars)
 		self.statistic_floats = sum(1 for mvar in mutable_vars if mvar.type == Type.FLOAT)

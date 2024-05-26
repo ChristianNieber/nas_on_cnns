@@ -4,9 +4,14 @@ import numpy as np
 import random
 
 
-# This is the same as engine.py:fitness_metric_with_size_penalty(), but can't be referenced here
-def run_statistics_fitness_metric(accuracy, parameters):
+# The fitness metric used in experiments
+def fitness_metric_with_size_penalty(accuracy, parameters):
 	return 2.5625 - (((1.0 - accuracy)/0.02) ** 2 + parameters / 31079.0)
+
+
+def average_standard_deviation(numlist):
+	""" Take the average of a list of standard deviations """
+	return np.sqrt(np.sum([i ** 2 for i in numlist]) / len(numlist))
 
 
 class RunStatistics:
@@ -68,7 +73,7 @@ class RunStatistics:
 			elif index == 7:
 				return 100.0 - np.array(self.train_accuracy) * 100.0
 			elif index == 8:
-				fitness_list = [run_statistics_fitness_metric(acc, params) for acc, params in zip(self.final_test_accuracy, self.parameters)]
+				fitness_list = [fitness_metric_with_size_penalty(acc, params) for acc, params in zip(self.final_test_accuracy, self.parameters)]
 				return np.array(fitness_list)
 
 		def metric_k_fold(self, index):
@@ -101,6 +106,7 @@ class RunStatistics:
 		# k folds standard deviations
 		self.k_fold_accuracy_stds = []
 		self.k_fold_final_accuracy_stds = []
+		self.k_fold_fitness_stds = [0]
 
 		# best of generation
 		self.generation_best_accuracy = []

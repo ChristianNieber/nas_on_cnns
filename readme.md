@@ -7,7 +7,7 @@ The code was taken from <https://github.com/fillassuncao/fast-denser3>, which or
 * The sequence of mutations depends deterministically on the random number seed and is repeatable, as long as nothing changes on the algorithms.
 * The ability to re-train a previously trained model for more epochs
 
-The author rewrote most of the code and extended the project to add features:
+I rewrote most of the code and extended the project to add features:
 
 * Change the representation of an individual's layer parameters, so that mutation step size control can be implemented more easily.
 * Before applying mutations, collect all variables of an individual in a list, so that an algorithm can easily process all variables at once.
@@ -21,3 +21,9 @@ The author rewrote most of the code and extended the project to add features:
 * An option to run multiple NAS searches with different random number seeds. 
 * NAS searches often run for several hours. When the process is aborted or crashes (which happened quite often, especially when running in the cloud), the search can resume from the last completed generation.
 * A collection of functions to plot results, combining different statistics from one run or from multiple runs.
+
+# Run unit tests
+
+To run all tests:
+
+`python -m unittest discover -s tests`

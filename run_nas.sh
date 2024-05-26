@@ -1,3 +1,5 @@
+#!/bin/bash
+# run NAS search from a command line. Will restart if the Python process crashes.
 export PYTHONUNBUFFERED=1
 export PYTHONHASHSEED=0
 while true; do

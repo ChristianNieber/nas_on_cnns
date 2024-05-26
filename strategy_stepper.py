@@ -4,6 +4,7 @@ from copy import deepcopy
 from utils import Individual, Type
 from scipy.special import gamma
 
+
 def format_val(val):
 	"""format value for log"""
 	if val is None:
@@ -13,8 +14,6 @@ def format_val(val):
 	else:
 		result = str(val)[:9]
 	return result.rjust(10)
-
-
 
 
 class Var:
@@ -146,7 +145,8 @@ class StepperGrammar:
 									raise ValueError(f"Invalid variable type '{typename}' for variable '{name}'")
 								var = Var(name, var_type, min_value, max_value)
 
-						elif ':' in symbol:
+						else:
+							assert ':' in symbol
 							var = Var(symbol, Type.TERMINAL)
 
 						vars_list.append(var)
@@ -265,6 +265,8 @@ class StepperGrammar:
 				----------
 				grammar : StepperGrammar
 					grammar instance that stores the expansion rules
+				init_max : dict
+					specifies maximum number of layers per module
 			"""
 			REUSE_LAYER = 0.15
 
@@ -314,8 +316,13 @@ class StepperGrammar:
 
 		@staticmethod
 		def default_learning_rule_adam():
-			""" default learning rule for Individual.macro initialisation """
+			""" default learning rule of "A modern variant of LeNet" for Individual.macro initialisation """
 			return [[('adam', [('learning:adam', ''), ('lr', 0.0005), ('beta1', 0.9), ('beta2', 0.999)]), ('batch_size', 1024)]]
+
+		@staticmethod
+		def default_learning_rule_gradient_descent():
+			""" new default learning rule for Individual.macro initialisation !! only for lenet_fixed_learning.grammar !! """
+			return [[('learning:gradient-descent', ''), ('lr', 0.054239), ('momentum', 0.831085), ('nesterov', True), ('batch_size', 256)]]
 
 
 class MutableVar:
@@ -323,8 +330,8 @@ class MutableVar:
 	var: Var
 	info_nt_key: str
 
-	def __init__(self, type, value, step, var=None, info_module_name='', info_layer_index=0, info_nlayers=0, info_nt_key='', value_list=None):
-		self.type = type
+	def __init__(self, var_type, value, step, var=None, info_module_name='', info_layer_index=0, info_nlayers=0, info_nt_key='', value_list=None):
+		self.type = var_type
 		self.value = value
 		self.step = step
 		self.new_value = None
@@ -371,10 +378,10 @@ class NasStrategy:
 		self.grammar = grammar
 
 
-
 class StepperStrategy(NasStrategy):
 
-	def __init__(self, is_adaptive=False):
+	def __init__(self, is_adaptive=False, initial_sigma=0.5):
+		super().__init__()
 		# strategy parameters
 		self.EXPECTED_NUMBER_OF_PARAMETERS = 25
 
@@ -386,9 +393,10 @@ class StepperStrategy(NasStrategy):
 		self.IS_ADAPTIVE = is_adaptive
 		self.ADAPTIVE_ALPHA = 1.4
 
-		#step width decay parameters
+		# step width decay parameters
 		self.SIGMA_DECAY_START_GENERATION = 0
 		self.SIGMA_DECAY_RATE = 1/30
+		self.INITIAL_SIGMA = initial_sigma
 
 		# mutation probabilities
 		self.MUTATION_PROBABILITY_FLOAT = 0.15
@@ -403,7 +411,6 @@ class StepperStrategy(NasStrategy):
 		self.COPY_LAYER_PROBABILITY = 0.25 * 0.15
 		self.REMOVE_LAYER_PROBABILITY = 0.25
 
-
 	class ScanLayerInfo:
 		def __init__(self, module_name, layer_index, nlayers, nonterminals_only=False):
 			self.module_name = module_name
@@ -414,16 +421,17 @@ class StepperStrategy(NasStrategy):
 	class MutationState:
 
 		ABS_NORMAL_EXPECTATION_VALUE = np.sqrt(2/np.pi)
-		def __init__(self, generation: int, EXPECTED_NUMBER_OF_VARIABLES: int, sigma: float, previous_sigma: float):
+
+		def __init__(self, generation: int, expected_number_of_variables: int, sigma: float, previous_sigma: float):
 			self.generation = generation
-			self.EXPECTED_NUMBER_OF_VARIABLES = EXPECTED_NUMBER_OF_VARIABLES
-			self.number_of_variables = EXPECTED_NUMBER_OF_VARIABLES
+			self.EXPECTED_NUMBER_OF_VARIABLES = expected_number_of_variables
+			self.number_of_variables = expected_number_of_variables
 			self.sigma = sigma
 			self.previous_sigma = previous_sigma
 
-			self.tau_global = 1.0 / np.sqrt(2 * EXPECTED_NUMBER_OF_VARIABLES)
+			self.tau_global = 1.0 / np.sqrt(2 * expected_number_of_variables)
 			self.tau_global_gaussian = self.tau_global * random.gauss(0, 1)
-			self.tau_local = 1.0 / np.sqrt(2 * np.sqrt(EXPECTED_NUMBER_OF_VARIABLES))
+			self.tau_local = 1.0 / np.sqrt(2 * np.sqrt(expected_number_of_variables))
 			self.n_mutated_vars = 0
 			self.mutation_steps = []
 
@@ -454,9 +462,8 @@ class StepperStrategy(NasStrategy):
 				expectation_value = self.ABS_NORMAL_EXPECTATION_VALUE * self.previous_sigma
 				change_exponent = (norm_of_steps_vector - expectation_value) / d
 				sigma *= np.exp(change_exponent)
-				#print(f"{self.mutation_steps=} {norm_of_steps_vector=:.3f} {expectation_value=:.3f} {change_exponent=:.3f}")
-				#print(f"{self.previous_sigma=:.3f} -> {self.sigma=:.3f} -> {sigma=:.3f}")
-				#print()
+				# print(f"{self.mutation_steps=} {norm_of_steps_vector=:.3f} {expectation_value=:.3f} {change_exponent=:.3f}")
+				# print(f"{self.previous_sigma=:.3f} -> {self.sigma=:.3f} -> {sigma=:.3f}")
 			return sigma
 
 		def transform_with_sigma(self, probability):
@@ -587,7 +594,6 @@ class StepperStrategy(NasStrategy):
 			return True
 		return False
 
-
 	def mutate_variable_simple(self, mvar: MutableVar, mutation_state: MutationState):
 		value = mvar.value
 		var = mvar.var
@@ -612,7 +618,7 @@ class StepperStrategy(NasStrategy):
 						mvar.new_step = sigma
 				else:
 					float_diff = random.gauss(0, sigma) * (var.max_value - var.min_value)
-					diff =  int(round(float_diff))
+					diff = int(round(float_diff))
 					if not self.IS_ADAPTIVE and diff == 0:
 						diff = 1 if float_diff > 0 else -1
 					if diff:
@@ -653,8 +659,9 @@ class StepperStrategy(NasStrategy):
 				self.scan_mutable_variables_recursive(key, val, scan_layer_info, mutable_vars)
 			else:
 				var = grammar_alternatives[0][layer_idx]
-				assert key == var.name, var.type != Type.NONTERMINAL
+				assert var.type != Type.NONTERMINAL
 				if var.type != Type.TERMINAL and not scan_layer_info.nonterminals_only:
+					assert key == var.name
 					mutable_vars.append(MutableVar(var.type, val, step, var, scan_layer_info.module_name, scan_layer_info.layer_index, scan_layer_info.nlayers, nt_key))
 
 	def write_mutated_variables_recursive(self, nt_key, layer, mutable_vars, index, nonterminals_only=False):
@@ -671,9 +678,9 @@ class StepperStrategy(NasStrategy):
 					index = self.write_mutated_variables_recursive(key, val, mutable_vars, index)
 			else:
 				var = grammar_alternatives[0][layer_idx]
-				assert key == var.name
 				assert type(val) != list
 				if var.type != Type.TERMINAL and not nonterminals_only:
+					assert key == var.name
 					if mutable_vars[index].new_step is not None or mutable_vars[index].new_value is not None:
 						new_value = mutable_vars[index].new_value
 						if new_value is None:
@@ -700,14 +707,14 @@ class StepperStrategy(NasStrategy):
 		sigma = 0
 		if self.IS_ADAPTIVE:
 			if ind.step_width == 0:
-				ind.step_width =  self.MAX_STEP_WIDTH
+				ind.step_width = self.MAX_STEP_WIDTH
 			sigma = ind.step_width
 			if random.randint(0, 1) == 0:
 				sigma = min(sigma * self.ADAPTIVE_ALPHA, self.MAX_STEP_WIDTH)
 			else:
 				sigma /= self.ADAPTIVE_ALPHA
-		elif self.SIGMA_DECAY_START_GENERATION and ind.generation >= self.SIGMA_DECAY_START_GENERATION:
-			sigma = 1 / (1 + self.SIGMA_DECAY_RATE * (ind.generation - self.SIGMA_DECAY_START_GENERATION)) * 0.5
+		elif ind.generation >= self.SIGMA_DECAY_START_GENERATION:
+			sigma = 1 / (1 + self.SIGMA_DECAY_RATE * (ind.generation - self.SIGMA_DECAY_START_GENERATION)) * self.INITIAL_SIGMA
 
 		# calculate τ, τ' and Nc that are used for mutating all variables of this individual
 		mutation_state = StepperStrategy.MutationState(generation, self.EXPECTED_NUMBER_OF_PARAMETERS, sigma, ind.step_width)
@@ -760,6 +767,7 @@ class StepperStrategy(NasStrategy):
 class RandomSearchStrategy(NasStrategy):
 
 	def __init__(self, network_structure, macro_structure, output_structure, network_structure_init):
+		super().__init__()
 		# strategy parameters
 		self.network_structure = network_structure
 		self.macro_structure = macro_structure
