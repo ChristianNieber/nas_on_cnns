@@ -22,7 +22,6 @@ PREDICT_BATCH_SIZE = 1024   # batch size used for model.predict()
 EARLY_STOP_DELTA = 0.001    # currently unused
 EARLY_STOP_PATIENCE = 3
 
-LOG_MODEL_SUMMARY = 0		# keras summary of each evaluated model
 LOG_MODEL_TRAINING = 0		# training progress: 1 for progress bar, 2 for one line per epoch
 LOG_EARLY_STOPPING = False	# log early stopping
 LOG_MODEL_SAVE = 1			# log for saving after each epoch
@@ -35,6 +34,13 @@ class Type(Enum):
 	INT = 3
 	CAT = 4
 
+def store_random_state():
+	""" store the random state relevant for mutations """
+	return (random.getstate(), np.random.get_state())
+
+def restore_random_state(random_state : tuple):
+	random.setstate(random_state[0])
+	np.random.set_state(random_state[1])
 
 class TimedStopping(keras.callbacks.Callback):
 	"""
@@ -205,7 +211,7 @@ class Evaluator:
 			self.k_fold_metrics = k_fold_metrics
 
 	def __init__(self, dataset, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
-					evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, save_path=None):
+					evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -237,7 +243,6 @@ class Evaluator:
 		self.experiment_name = experiment_name
 		self.data_generator = data_generator
 		self.data_generator_test = data_generator_test
-		self.save_path = save_path
 
 		if self.evaluation_cache_path:
 			if os.path.isfile(self.evaluation_cache_path):
@@ -596,7 +601,27 @@ class Evaluator:
 		return fitness
 
 	def cache_key(self, phenotype):
+		""" generate key for metrics lookup """
 		return f"{phenotype}#{self.max_training_time}#{self.max_training_epochs}"
+
+	def cache_lookup(self, phenotype, stat):
+		""" look up phenotype in cache. Returns metrics if found or None """
+		cache_key = self.cache_key(phenotype)
+		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
+			cache_entry = self.evaluation_cache[cache_key]
+			log_debug('using cached metrics from ' + cache_entry.origin_description)
+			if stat:
+				stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
+			return cache_entry.metrics
+		else:
+			return None
+
+	def cache_update(self, phenotype, metrics, origin_id):
+		""" add/update cache entry after evaluation. origin_description is for information only. """
+		if self.evaluation_cache_path:
+			new_cache_entry = Evaluator.EvaluationCacheEntry(f"{self.experiment_name}:{origin_id}", metrics)
+			self.evaluation_cache[self.cache_key(phenotype)] = new_cache_entry
+			self.evaluation_cache_changed = True
 
 	def construct_keras_layers(self, phenotype):
 		""" construct list of layers to pass into keras, and learning parameters from phenotype string """
@@ -607,7 +632,10 @@ class Evaluator:
 		keras_learning = self.get_learning(learning_phenotype)
 		return keras_layers, keras_learning
 
-	def evaluate_cnn(self, phenotype, model_save_path, dataset, stat, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
+	def validate_cnn(self, phenotype, input_size=(28, 28, 1)):
+		return self.evaluate_cnn(phenotype, None, None, validate_only=True)
+
+	def evaluate_cnn(self, phenotype, dataset, stat, for_k_folds_validation=False, input_size=(28, 28, 1), validate_only=False):
 		"""
 			Evaluates the keras model using the keras optimiser
 
@@ -617,8 +645,6 @@ class Evaluator:
 				individual phenotype
 			load_prev_weights : bool
 				resume training from a previous train or not
-			model_save_path : str
-				path where model and its weights are saved, or empty
 			dataset : dict
 				train and test datasets
 			stat : RunStatistics
@@ -646,22 +672,21 @@ class Evaluator:
 		keras_layers_count = len(keras_layers)
 		batch_size = int(keras_learning['batch_size'])
 
-		if load_prev_weights and os.path.exists(model_save_path):
-			model = keras.models.load_model(model_save_path)
-			initial_epoch = 10  # !! load weights not implemented
-		else:
-			initial_epoch = 0
-			model = self.assemble_network(keras_layers, input_size)
-			opt = self.assemble_optimiser(keras_learning)
-			model.compile(optimizer=opt,
-							loss='sparse_categorical_crossentropy',
-							metrics=['accuracy'])
-
-		model_summary = Evaluator.get_model_summary(model)
-		if LOG_MODEL_SUMMARY:
-			log(model_summary)
+		initial_epoch = 0
+		model = self.assemble_network(keras_layers, input_size)
+		opt = self.assemble_optimiser(keras_learning)
+		model.compile(optimizer=opt,
+						loss='sparse_categorical_crossentropy',
+						metrics=['accuracy'])
 
 		model_build_time = time() - start_time
+
+		if validate_only:
+			del model
+			log(f"Validated in {model_build_time:.2f}")
+			return True
+
+		model_summary = Evaluator.get_model_summary(model)
 
 		model_layers = len(model.get_config()['layers'])
 		# parameters = count_params(model.trainable_weights)                    ! Deprecated !
@@ -710,10 +735,6 @@ class Evaluator:
 		timer_stop_triggered = timed_stopping.timer_stop_triggered
 		early_stop_triggered = training_epochs < self.max_training_epochs and not timer_stop_triggered
 
-		# save final model to file
-		if model_save_path:
-			model.save(model_save_path)
-
 		# measure test accuracy
 		x_test = dataset['evo_x_test']
 		y_test = dataset['evo_y_test']
@@ -738,26 +759,6 @@ class Evaluator:
 
 		return result
 
-	def evaluate_cnn_with_cache(self, phenotype, name, model_save_path, dataset, stat, for_k_folds_validation=False, load_prev_weights=False, input_size=(28, 28, 1)):
-		"""
-			Evaluates the keras model using the keras optimiser, using caching
-		"""
-
-		cache_key = self.cache_key(phenotype)
-		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
-			cache_entry = self.evaluation_cache[cache_key]
-			log_debug('using cached metrics from ' + cache_entry.origin_description)
-			stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
-			return cache_entry.metrics
-
-		result = self.evaluate_cnn(phenotype, model_save_path, dataset, stat, for_k_folds_validation, load_prev_weights, input_size)
-
-		if self.evaluation_cache_path:
-			new_cache_entry = Evaluator.EvaluationCacheEntry(f"{self.experiment_name}:{name}", result)
-			self.evaluation_cache[cache_key] = new_cache_entry
-			self.evaluation_cache_changed = True
-
-		return result
 
 	def evaluate_cnn_init_seeds(self, phenotype, name, metrics, n_seeds, dataset, stat, input_size=(28, 28, 1)):
 		""" evaluate individual for different initialisation seeds """
@@ -888,8 +889,6 @@ class Individual:
 	fitness: None                   # calculated fitness
 	metrics: CnnEvalResult
 	k_fold_metrics: KFoldEvalResult
-	training_complete: bool
-	model_save_path: str
 
 	def __init__(self, network_structure, macro_symbols, output_rule, generation, idx):
 		"""
@@ -940,8 +939,6 @@ class Individual:
 		self.fitness = None
 		self.metrics = None
 		self.k_fold_metrics = None
-		self.training_complete = False
-		self.model_save_path = None
 
 	def __repr__(self):
 		return self.description()
@@ -988,7 +985,6 @@ class Individual:
 			'history_train_loss': self.metrics.history_train_loss,
 			'history_val_accuracy': self.metrics.history_val_accuracy,
 			'history_val_loss': self.metrics.history_val_loss,
-			'training_complete': self.training_complete,
 			'phenotype': self.phenotype_lines,
 			'model_summary': self.metrics.model_summary,
 			'evolution_history': self.evolution_history,
@@ -1072,7 +1068,7 @@ class Individual:
 
 		# Initialise the macro structure: learning, data augmentation, etc.
 		self.macro_module = grammar.Module("learning", 1, 1)
-		self.macro_module.layers = grammar.Module.default_learning_rule_adam()
+		self.macro_module.layers = grammar.Module.default_learning_rule_gradient_descent()
 		self.modules_including_macro = self.modules + [self.macro_module]
 		return self
 
@@ -1155,7 +1151,37 @@ class Individual:
 		self.phenotype_lines = phenotype.split('\n')
 		return phenotype
 
-	def evaluate_individual(self, grammar, cnn_eval, stat):
+	def validate_individual(self, grammar, cnn_eval, stat, use_cache=True):
+		phenotype = self.get_phenotype(grammar)
+
+		# look up in cache first - entries in cache are valid
+		if use_cache:
+			metrics = cnn_eval.cache_lookup(phenotype, stat)
+			if metrics:
+				self.set_metrics(metrics, cnn_eval, 'v')
+				return True
+
+		# store random state
+		random_state = store_random_state()
+
+		is_valid = False
+		try:
+			is_valid = cnn_eval.validate_cnn(phenotype, stat)
+
+		except tf.errors.ResourceExhaustedError as e:
+			log_warning(f"Validating {self.id} : ResourceExhaustedError {e}")
+			keras.backend.clear_session()
+			stat.record_evaluation(is_invalid=True)
+		except (TypeError, ValueError) as e:
+			log_warning(f"Validating {self.id} : caught exception {e}")
+			keras.backend.clear_session()
+			stat.record_evaluation(is_invalid=True)
+
+		restore_random_state(random_state)
+
+		return is_valid
+
+	def evaluate_individual(self, grammar, cnn_eval, stat, use_cache = True):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1173,19 +1199,24 @@ class Individual:
 			fitness : float
 		"""
 
-		if not self.training_complete:
-			random_state = random.getstate()
-			numpy_state = np.random.get_state()
+		log_training_nolf(f"{self.id} layers: {len(self.modules_including_macro[0].layers)}+{len(self.modules_including_macro[1].layers)} ")
 
-			phenotype = self.get_phenotype(grammar)
+		# generate phenotype
+		phenotype = self.get_phenotype(grammar)
 
-			model_save_path = cnn_eval.save_path + 'individual-' + self.id + '.h5' if cnn_eval.save_path else None
+		# look up in cache
+		metrics = cnn_eval.cache_lookup(phenotype, stat) if use_cache else None
+		if metrics:
+			self.set_metrics(metrics, cnn_eval, 'c')
+		else:
+			random_state = store_random_state()
 
-			metrics = None
-			log_training_nolf(f"{self.id} layers: {len(self.modules_including_macro[0].layers)}+{len(self.modules_including_macro[1].layers)} ")
-
+			# evaluate and catch exceptions
 			try:
-				metrics = cnn_eval.evaluate_cnn_with_cache(phenotype, self.id, model_save_path, cnn_eval.dataset, stat)
+				metrics = cnn_eval.evaluate_cnn(phenotype, cnn_eval.dataset, stat)
+				cnn_eval.cache_update(phenotype, metrics, self.id)
+				self.set_metrics(metrics, cnn_eval)
+
 			except tf.errors.ResourceExhaustedError as e:
 				log_warning(f"{self.id} : ResourceExhaustedError {e}")
 				keras.backend.clear_session()
@@ -1194,23 +1225,19 @@ class Individual:
 				log_warning(f"{self.id} : caught exception {e}")
 				keras.backend.clear_session()
 				stat.record_evaluation(is_invalid=True)
-#
-			if metrics is not None:
-				self.metrics = metrics
-				self.model_save_path = model_save_path
-				self.fitness = cnn_eval.calculate_fitness(self)
-				log_training(self.metrics.summary())
-				if not self.metrics.training_epochs:
-					log_warning(f"*** {self.id}: no training epoch completed ***")
-			else:
-				self.fitness = None
 
-			self.training_complete = True
+			restore_random_state(random_state)
 
-			random.setstate(random_state)
-			np.random.set_state(numpy_state)
+		return self.metrics is not None
 
-		return self.fitness
+	def set_metrics(self, metrics, cnn_eval, log_suffix=None):
+		""" set metrics to individual after evaluation or cache lookup, and calculate fitness """
+		self.metrics = metrics
+		self.fitness = cnn_eval.calculate_fitness(self)
+		log_training(self.metrics.summary(f" ({log_suffix})" if log_suffix else ''))
+		if not self.metrics.training_epochs:
+			log_warning(f"*** {self.id}: no training epoch completed ***")
+
 
 	def evaluate_individual_k_folds(self, grammar, cnn_eval, nfolds, stat):
 		"""
@@ -1232,32 +1259,22 @@ class Individual:
 			fitness : float
 		"""
 
-		random_state = random.getstate()
-		numpy_state = np.random.get_state()
+		random_state = store_random_state()
 
 		phenotype = self.get_phenotype(grammar)
 
-		try:
-			self.k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, stat)
-			self.k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
-			old_fitness = self.fitness
-			self.fitness = cnn_eval.calculate_fitness(self)
+		self.k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, stat)
+		self.k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
+		old_fitness = self.fitness
+		self.fitness = cnn_eval.calculate_fitness(self)
 
-			stat.k_fold_accuracy_stds.append(self.k_fold_metrics.accuracy_std)
-			stat.k_fold_final_accuracy_stds.append(self.k_fold_metrics.final_accuracy_std)
-			stat.k_fold_fitness_stds.append(self.k_fold_metrics.fitness_std)
+		stat.k_fold_accuracy_stds.append(self.k_fold_metrics.accuracy_std)
+		stat.k_fold_final_accuracy_stds.append(self.k_fold_metrics.final_accuracy_std)
+		stat.k_fold_fitness_stds.append(self.k_fold_metrics.fitness_std)
 
-			log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.metrics.accuracy:0.5f} -> {self.k_fold_metrics.accuracy:0.5f} (SD:{self.k_fold_metrics.accuracy_std:0.5f}), final acc: {self.k_fold_metrics.final_accuracy:0.5f} (SD:{self.k_fold_metrics.final_accuracy_std:0.5f}), fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
+		log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.metrics.accuracy:0.5f} -> {self.k_fold_metrics.accuracy:0.5f} (SD:{self.k_fold_metrics.accuracy_std:0.5f}), final acc: {self.k_fold_metrics.final_accuracy:0.5f} (SD:{self.k_fold_metrics.final_accuracy_std:0.5f}), fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
 
-		except tf.errors.ResourceExhaustedError as e:
-			log_warning(f"{self.id} k-folds evaluation: ResourceExhaustedError {e}")
-			keras.backend.clear_session()
-		except (TypeError, ValueError) as e:
-			log_warning(f"{self.id} k-folds evaluation: caught exception {e}")
-			keras.backend.clear_session()
-
-		random.setstate(random_state)
-		np.random.set_state(numpy_state)
+		restore_random_state(random_state)
 
 	def evaluate_individual_init_seeds(self, grammar, cnn_eval, n_seeds, stat):
 		"""
@@ -1279,8 +1296,7 @@ class Individual:
 			fitness : float
 		"""
 
-		random_state = random.getstate()
-		numpy_state = np.random.get_state()
+		random_state = store_random_state()
 
 		phenotype = self.get_phenotype(grammar)
 
@@ -1295,8 +1311,7 @@ class Individual:
 
 		log_bold(f"--> {self.id} with {n_seeds} seeds: acc: {self.metrics.accuracy:0.5f} -> {self.k_fold_metrics.accuracy:0.5f} (SD:{self.k_fold_metrics.accuracy_std:0.5f}), final acc: {self.k_fold_metrics.final_accuracy:0.5f} (SD:{self.k_fold_metrics.final_accuracy_std:0.5f}), fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
 
-		random.setstate(random_state)
-		np.random.set_state(numpy_state)
+		restore_random_state(random_state)
 
 	def compute_mutated_variables_statistics(self, mutable_vars):
 		""" record layers and variable statistics for individual """

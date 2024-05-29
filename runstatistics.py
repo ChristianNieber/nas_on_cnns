@@ -116,6 +116,7 @@ class RunStatistics:
 		self.generation_accuracy = []
 		self.generation_parameters = []
 		self.generation_fitness = []
+		self.generation_eval_time = []
 		# run state
 		self.run_generation = -1
 		self.run_time = 0
@@ -247,6 +248,7 @@ class RunStatistics:
 		self.generation_accuracy.append([ind.metrics.accuracy for ind in generation_list])
 		self.generation_fitness.append([ind.fitness for ind in generation_list])
 		self.generation_parameters.append([ind.metrics.parameters for ind in generation_list])
+		self.generation_eval_time.append(np.sum([ind.metrics.eval_time for ind in generation_list]))
 		self.run_time = self.session_previous_runtime + time() - self.session_start_time
 
 	def record_evaluation(self, seconds=.0, is_cache_hit=False, is_k_folds=False, is_invalid=False):
@@ -318,8 +320,8 @@ class CnnEvalResult:
 	def __descr__(self):
 		return self.summary()
 
-	def summary(self):
-		return f"p: {self.parameters:6d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness:0.5f} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} epochs: {self.training_epochs:2d} t: {self.training_time:0.2f}s"
+	def summary(self, suffix=''):
+		return f"p: {self.parameters:6d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness:0.5f} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} epochs: {self.training_epochs:2d} t: {self.training_time:0.2f}s{suffix}"
 
 	@staticmethod
 	def dummy_eval_result():

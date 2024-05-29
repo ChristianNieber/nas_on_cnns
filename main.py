@@ -1,6 +1,6 @@
 import engine
 
-engine.do_nas_search(config_file='config/config.json', grammar_file='config/lenet.grammar')
+engine.do_nas_search(config_file='config/config.json', grammar_file='config/lenet_fixed_learning.grammar')
 
 # engine.do_nas_search(config_file='config/config_fdenser.json', grammar_file='config/lenet_smallspace_fdenser.grammar')
 

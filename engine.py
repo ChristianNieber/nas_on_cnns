@@ -21,9 +21,8 @@ from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
 DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
 LOG_DEBUG = 0						# log debug messages (about caching)
-LOG_MUTATIONS = 1					# log all mutations
-LOG_NEW_BEST_INDIVIDUAL = 1			# log long description of new best individual
-SAVE_MODELS_TO_FILE = 0             # currently not used
+LOG_MUTATIONS = 0					# log all mutations
+LOG_NEW_BEST_INDIVIDUAL = 0			# log long description of new best individual
 SAVE_MILESTONE_GENERATIONS = 50     # save milestone every 50 generations
 
 # turn off annoying keras log messages
@@ -187,6 +186,32 @@ def load_config(config_file):
 	return config
 
 
+MAX_PARALLEL_EVALUATIONS = 5
+
+
+def evaluate_generation(generation_list: list[Individual], grammar: StepperGrammar, cnn_eval: Evaluator, stat: RunStatistics):
+	""" Evaluate a whole generation of individuals """
+	parallel_list = []
+	for ind in generation_list:
+		if ind.metrics is None:
+			parallel_list.append(ind)
+			if len(parallel_list) >= MAX_PARALLEL_EVALUATIONS:
+				if not evaluate_in_parallel(parallel_list, grammar, cnn_eval, stat):
+					return False
+				parallel_list = []
+
+	return evaluate_in_parallel(parallel_list, grammar, cnn_eval, stat)
+
+
+def evaluate_in_parallel(parallel_list: list[Individual], grammar: StepperGrammar, cnn_eval: Evaluator, stat: RunStatistics):
+	""" evaluate list of individuals in parallel """
+	for ind in parallel_list:
+		if not ind.evaluate_individual(grammar, cnn_eval, stat, use_cache=False):
+			log_warning(f"Invalid parallel evaluation in list starting with {parallel_list[0].id}")
+			return False
+	return True
+
+
 def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar', override_experiment_name=None, override_random_seed=None):
 	"""
 		do (my+/,lambda)-ES for NAS search
@@ -313,7 +338,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	if USE_EVALUATION_CACHE:
 		evaluation_cache_path = Path(save_path, EVALUATION_CACHE_FILE).resolve()
 	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS,  for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY, test_init_seeds=TEST_INIT_SEEDS,
-							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test, save_path=save_path if SAVE_MODELS_TO_FILE else None)
+							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test)
 
 	if unpickle is None:
 		# pickle_evaluator(cnn_eval, save_path_with_run) # save evaluator
@@ -336,8 +361,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 					new_individual.initialise_random(grammar, NETWORK_STRUCTURE_INIT)
 				else:
 					raise RuntimeError(f"invalid value '{INITIAL_INDIVIDUALS}' of initial_individuals")
-				new_individual.evaluate_individual(grammar, cnn_eval, stat)
-				if new_individual.fitness:  # new individual could be invalid, then try again
+				if new_individual.evaluate_individual(grammar, cnn_eval, stat):     # new individual could be invalid, then try again
 					break
 				log_bold("Invalid individual created, trying again")
 			population.append(new_individual)
@@ -357,18 +381,31 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		log('\n========================================================================================================')
 		log_bold(f'Resuming experiment {EXPERIMENT_NAME} run#{run_number:02} in folder {save_path} after generation {last_gen}')
 
+	generation_list = []
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
-		generation_list = []
 		if gen:
-			for idx in range(LAMBDA):
-				parent = select_parent(population[0:MY])
+			if False:
+				for idx in range(LAMBDA):
+					parent = select_parent(population[0:MY])
+					while True:
+						new_individual = nas_strategy.mutation(parent, gen, idx)
+						if new_individual.evaluate_individual(grammar, cnn_eval, stat):
+							break
+					generation_list.append(new_individual)
+			else:
 				while True:
-					new_individual = nas_strategy.mutation(parent, gen, idx)
-					fitness = new_individual.evaluate_individual(grammar, cnn_eval, stat)
-					if fitness:
+					for idx in range(LAMBDA):
+						parent = select_parent(population[0:MY])
+						while True:
+							new_individual = nas_strategy.mutation(parent, gen, idx)
+							if new_individual.validate_individual(grammar, cnn_eval, stat, use_cache=False):
+								break
+						generation_list.append(new_individual)
+					if evaluate_generation(generation_list, grammar, cnn_eval, stat):
 						break
-				generation_list.append(new_individual)
+					log_bold("Invalid generation created, trying again for whole generation")
+					generation_list = []
 
 		# select candidates for parents
 		population += generation_list
@@ -424,25 +461,12 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 					best_fitness = parent.fitness
 					best_individual_overall = parent
 
-					# copy new best individual's weights
-					if SAVE_MODELS_TO_FILE and os.path.isfile(parent.model_save_path):
-						copyfile(parent.model_save_path, save_path_with_run + 'best.h5')
-					with open(save_path_with_run + 'best_parent.pkl', 'wb') as handle:
-						pickle.dump(parent, handle, protocol=pickle.HIGHEST_PROTOCOL)
-
 				elif not COMMA_STRATEGY:
 					log_bold(f'New individual rank {idx} replaces {population[idx].description()}')
 					log_bold(f'New rank {idx}: {parent.description()}')
 
 		# flush evaluation cache after every generation
 		cnn_eval.flush_evaluation_cache()
-
-		# remove temporary files to free disk space
-		if gen > 1 and SAVE_MODELS_TO_FILE:
-			for x in range(LAMBDA):
-				individual_path = Path(save_path_with_run, 'individual-%d-%d.h5' % (gen - 2, x))
-				if os.path.isfile(individual_path):
-					os.remove(individual_path)
 
 		best_individual = new_parents[0]
 
@@ -467,6 +491,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		assert len(generation_list) == LAMBDA
 		stat.record_generation(generation_list)
 
+		log_bold(f"Generation evaluation time: {stat.generation_eval_time[-1]:.2f}")
+
 		# save population and statistics
 		pickle_population_and_statistics(save_path_with_run, population, stat)
 		if (gen + 1) % SAVE_MILESTONE_GENERATIONS == 0:
@@ -486,6 +512,11 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	if len(stat.k_fold_accuracy_stds) > 1:
 		log(f"Average folds accuracy SD: {average_standard_deviation(stat.k_fold_accuracy_stds):.5f} {stat.k_fold_accuracy_stds}")
 		log(f"Average folds final accuracy SD: {average_standard_deviation(stat.k_fold_final_accuracy_stds):.5f} {stat.k_fold_final_accuracy_stds}")
+
+	for i, t in enumerate(stat.generation_eval_time):
+		log_bold(f"Generation {i}: {t:.2f} sec")
+	log_bold(f"Total eval time: {np.sum(stat.generation_eval_time):.2f} sec")
+
 
 	# if NAS_STRATEGY == "F-DENSER":
 	# 	nas_strategy.dump_mutated_variables(stat.evaluations_total)
