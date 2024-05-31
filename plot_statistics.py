@@ -1,4 +1,3 @@
-import time
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
@@ -11,7 +10,7 @@ import pandas as pd
 import matplotlib.colors as mc
 import colorsys
 
-from runstatistics import RunStatistics
+from runstatistics import RunStatistics, hms
 
 # plot colors and alpha channel
 COLOR_DOTS = '#808080'
@@ -42,10 +41,6 @@ def load_stats(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH, max_run
 	while stats[-1].run_generation < stats[0].run_generation:   # delete last stat if incomplete
 		del stats[-1]
 	return stats
-
-
-def hms(seconds):
-	return time.strftime("%H:%M:%S", time.gmtime(seconds))
 
 
 def calculate_statistics(stats, m):

@@ -10,12 +10,15 @@ from enum import Enum
 from utilities.data import load_dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
+import concurrent.futures
 
 from runstatistics import RunStatistics, CnnEvalResult
 from logger import *
 
 # possible test: impose memory constraints
 # tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
+
+N_GPUS = 1          # number of GPUs to simulate for parallel evaluation
 
 # Tuning parameters
 PREDICT_BATCH_SIZE = 1024   # batch size used for model.predict()
@@ -26,13 +29,29 @@ LOG_MODEL_TRAINING = 0		# training progress: 1 for progress bar, 2 for one line 
 LOG_EARLY_STOPPING = False	# log early stopping
 LOG_MODEL_SAVE = 1			# log for saving after each epoch
 
-
 class Type(Enum):
 	NONTERMINAL = 0
 	TERMINAL = 1
 	FLOAT = 2
 	INT = 3
 	CAT = 4
+
+logical_gpus = []
+
+def init_gpu(n_gpus=N_GPUS):
+	global N_GPUS
+	global logical_gpus
+	if n_gpus <= 0:
+		n_gpus = 1
+	N_GPUS = n_gpus
+	gpus = tf.config.experimental.list_physical_devices('GPU')
+	# only allocate as much GPU memory as needed
+	if n_gpus == 1:
+		tf.config.experimental.set_memory_growth(gpus[0], True)
+	else:
+		tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=8000/N_GPUS) for i in range(0, N_GPUS)])
+	logical_gpus = tf.config.list_logical_devices('GPU')
+	log_bold(f"{len(gpus)} physical GPUs, {len(logical_gpus)} logical GPUs")
 
 def store_random_state():
 	""" store the random state relevant for mutations """
@@ -210,8 +229,8 @@ class Evaluator:
 		def set_k_fold_metrics(self, k_fold_metrics):
 			self.k_fold_metrics = k_fold_metrics
 
-	def __init__(self, dataset, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
-					evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None):
+	def __init__(self, dataset, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, max_parameters = 0, input_size=(28, 28, 1), for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
+					evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, n_gpus=0):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -230,6 +249,7 @@ class Evaluator:
 		self.fitness_func = fitness_func
 		self.max_training_time = max_training_time
 		self.max_training_epochs = max_training_epochs
+		self.max_parameters = max_parameters
 
 		self.early_stop_delta = EARLY_STOP_DELTA
 		self.early_stop_patience = EARLY_STOP_PATIENCE
@@ -243,6 +263,7 @@ class Evaluator:
 		self.experiment_name = experiment_name
 		self.data_generator = data_generator
 		self.data_generator_test = data_generator_test
+		self.input_size = input_size
 
 		if self.evaluation_cache_path:
 			if os.path.isfile(self.evaluation_cache_path):
@@ -252,9 +273,16 @@ class Evaluator:
 			else:
 				log_bold(f"will create new evaluation cache {self.evaluation_cache_path}")
 
+		init_gpu(n_gpus=n_gpus)
+
 	def init_options(self, early_stop_patience, early_stop_delta):
 		self.early_stop_patience = early_stop_patience
 		self.early_stop_delta = early_stop_delta
+
+	@staticmethod
+	def get_n_gpus():
+		""" returns the number of logical GPUs, or the number of models to evaluate in parallel """
+		return N_GPUS
 
 	def flush_evaluation_cache(self):
 		""" if evaluation cache entries have been added, write all to file """
@@ -609,12 +637,13 @@ class Evaluator:
 		cache_key = self.cache_key(phenotype)
 		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
 			cache_entry = self.evaluation_cache[cache_key]
-			log_debug('using cached metrics from ' + cache_entry.origin_description)
-			if stat:
-				stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
-			return cache_entry.metrics
-		else:
-			return None
+			if self.is_model_valid(cache_entry.metrics.parameters):
+				log_debug('using cached metrics from ' + cache_entry.origin_description)
+				if stat:
+					stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
+				return cache_entry.metrics
+
+		return None
 
 	def cache_update(self, phenotype, metrics, origin_id):
 		""" add/update cache entry after evaluation. origin_description is for information only. """
@@ -632,66 +661,83 @@ class Evaluator:
 		keras_learning = self.get_learning(learning_phenotype)
 		return keras_layers, keras_learning
 
-	def validate_cnn(self, phenotype, input_size=(28, 28, 1)):
-		return self.evaluate_cnn(phenotype, None, None, validate_only=True)
+	@staticmethod
+	def get_model_parameters(model):
+		""" calculate number of trainable parameters from keras model """
+		# parameters = count_params(model.trainable_weights)                    ! Deprecated !
+		parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.trainable_weights])
+		# non_trainable_parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.non_trainable_weights])  # not used
+		return parameters
 
-	def evaluate_cnn(self, phenotype, dataset, stat, for_k_folds_validation=False, input_size=(28, 28, 1), validate_only=False):
+	def is_model_valid(self, parameters):
+		if self.max_parameters > 0 and parameters > self.max_parameters:
+				log_warning(f"New model is invalid because {parameters=} > {self.max_parameters}")
+				return False
+		return True
+
+	def validate_cnn(self, phenotype):
+		""" validate the phenotype by generating keras layers anc compiling the model in keras. Will throw an exception for an invalid model. """
+		start_time = time()
+
+		keras_layers, keras_learning = self.construct_keras_layers(phenotype)
+
+		model = self.assemble_network(keras_layers, self.input_size)
+		opt = self.assemble_optimiser(keras_learning)
+		model.compile(optimizer=opt,
+						loss='sparse_categorical_crossentropy',
+						metrics=['accuracy'])
+		is_valid = self.is_model_valid(Evaluator.get_model_parameters(model))
+		del model
+		log(f"Validated in {time() - start_time:.2f}")
+		return is_valid
+
+
+	def evaluate_cnn(self, phenotype, dataset, stat, for_k_folds_validation=False):
 		"""
-			Evaluates the keras model using the keras optimiser
+			Evaluates the phenotype with keras
 
 			Parameters
 			----------
 			phenotype : str
-				individual phenotype
-			load_prev_weights : bool
-				resume training from a previous train or not
+				individual phenotypes (one or more)
 			dataset : dict
 				train and test datasets
 			stat : RunStatistics
 				for recording statistics
 			for_k_folds_validation : bool
 				suppress caching, logging and early stopping for k-folds validation
-			input_size : tuple
-				dataset input shape
 
 			Returns
 			-------
 			result : CnnEvalResult
 				contains all result metrics
+				or True/False in validate_only mode
+			The function throws exceptions if the keras model is invalid, or some resources are exhausted
 		"""
 		# Using mixed precision slows down LeNet training by 50%. Is this because this model is too small?
 		# tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
 		start_time = time()
 
-		# only allocate as much GPU memory as needed
-		gpu_devices = tf.config.experimental.list_physical_devices('GPU')
-		tf.config.experimental.set_memory_growth(gpu_devices[0], True)
-
 		keras_layers, keras_learning = self.construct_keras_layers(phenotype)
-		keras_layers_count = len(keras_layers)
-		batch_size = int(keras_learning['batch_size'])
 
-		initial_epoch = 0
-		model = self.assemble_network(keras_layers, input_size)
+		model = self.assemble_network(keras_layers, self.input_size)
 		opt = self.assemble_optimiser(keras_learning)
 		model.compile(optimizer=opt,
 						loss='sparse_categorical_crossentropy',
 						metrics=['accuracy'])
 
-		model_build_time = time() - start_time
 
-		if validate_only:
-			del model
-			log(f"Validated in {model_build_time:.2f}")
-			return True
+		keras_layers_count = len(keras_layers)
+		batch_size = int(keras_learning['batch_size'])
 
 		model_summary = Evaluator.get_model_summary(model)
-
 		model_layers = len(model.get_config()['layers'])
-		# parameters = count_params(model.trainable_weights)                    ! Deprecated !
-		parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.trainable_weights])
-		# non_trainable_parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.non_trainable_weights])  # not used
+		parameters = Evaluator.get_model_parameters(model)
+
+		if not self.is_model_valid(parameters):
+			del model
+			return None
 
 		# time based stopping
 		timed_stopping = TimedStopping(seconds=self.max_training_time)
@@ -717,7 +763,7 @@ class Evaluator:
 										validation_data=(self.data_generator_test.flow(x_val, y_val, batch_size=batch_size)),
 										validation_steps=(x_val.shape[0] // batch_size),
 										callbacks=callbacks_list,
-										initial_epoch=initial_epoch,
+										initial_epoch=0,
 										verbose=LOG_MODEL_TRAINING)
 		else:
 			score = model.fit(x=x_train,
@@ -727,7 +773,7 @@ class Evaluator:
 								steps_per_epoch=(x_train.shape[0] // batch_size),
 								validation_data=(x_val, y_val),
 								callbacks=callbacks_list,
-								initial_epoch=initial_epoch,
+								initial_epoch=0,
 								verbose=LOG_MODEL_TRAINING)
 
 		training_time = time() - training_start_time
@@ -748,7 +794,7 @@ class Evaluator:
 		final_test_accuracy, final_test_time, million_inferences_time = self.test_model_with_data(model, x_final_test, y_final_test)
 
 		del model
-		keras.backend.clear_session()
+		# keras.backend.clear_session()
 
 		eval_time = time() - start_time
 
@@ -760,18 +806,18 @@ class Evaluator:
 		return result
 
 
-	def evaluate_cnn_init_seeds(self, phenotype, name, metrics, n_seeds, dataset, stat, input_size=(28, 28, 1)):
+	def evaluate_cnn_init_seeds(self, phenotype, name, metrics, n_seeds, dataset, stat):
 		""" evaluate individual for different initialisation seeds """
 
 		k_folds_result = KFoldEvalResult()
 
 		for seed in range(0, n_seeds):
-			result = self.evaluate_cnn(phenotype, '', dataset, stat, for_k_folds_validation=True, input_size=input_size)
+			result = self.evaluate_cnn(phenotype, '', dataset, stat, for_k_folds_validation=True)
 			k_folds_result.append_cnn_eval_result(result)
 
 		return k_folds_result
 
-	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, stat, input_size=(28, 28, 1)):
+	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, stat):
 		""" evaluate individual for k-folds, using cache """
 
 		cache_key = self.cache_key(phenotype)
@@ -807,7 +853,7 @@ class Evaluator:
 				'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
 				'x_final_test': self.dataset['x_final_test'], 'y_final_test': self.dataset['y_final_test']
 			}
-			result = self.evaluate_cnn(phenotype, '', fold_dataset, stat, for_k_folds_validation=True, input_size=input_size)
+			result = self.evaluate_cnn(phenotype, fold_dataset, stat, for_k_folds_validation=True)
 			fold_number += 1
 			k_folds_result.append_cnn_eval_result(result)
 
@@ -959,6 +1005,9 @@ class Individual:
 			result += f" σ: {self.step_width:.4f}"
 		return result
 
+	def id_and_layer_description(self):
+		return f"{self.id} layers: {len(self.modules_including_macro[0].layers)} + {len(self.modules_including_macro[1].layers)} "
+
 	def log_long_description(self, title, with_history=False):
 		""" output long description to log, with phenotype, model summary and evolution history """
 		log('\n----------------------------------------------------------------------------------------------------------------------------------------')
@@ -1011,7 +1060,7 @@ class Individual:
 
 			Parameters
 			----------
-			grammar : Grammar
+			grammar : StepperGrammar
 				grammar instances that stores the expansion rules
 			init_max : dict
 				number of layers per module for random initialisation
@@ -1151,7 +1200,9 @@ class Individual:
 		self.phenotype_lines = phenotype.split('\n')
 		return phenotype
 
+
 	def validate_individual(self, grammar, cnn_eval, stat, use_cache=True):
+
 		phenotype = self.get_phenotype(grammar)
 
 		# look up in cache first - entries in cache are valid
@@ -1166,7 +1217,7 @@ class Individual:
 
 		is_valid = False
 		try:
-			is_valid = cnn_eval.validate_cnn(phenotype, stat)
+			is_valid = cnn_eval.validate_cnn(phenotype)
 
 		except tf.errors.ResourceExhaustedError as e:
 			log_warning(f"Validating {self.id} : ResourceExhaustedError {e}")
@@ -1199,8 +1250,6 @@ class Individual:
 			fitness : float
 		"""
 
-		log_training_nolf(f"{self.id} layers: {len(self.modules_including_macro[0].layers)}+{len(self.modules_including_macro[1].layers)} ")
-
 		# generate phenotype
 		phenotype = self.get_phenotype(grammar)
 
@@ -1212,32 +1261,63 @@ class Individual:
 			random_state = store_random_state()
 
 			# evaluate and catch exceptions
-			try:
-				metrics = cnn_eval.evaluate_cnn(phenotype, cnn_eval.dataset, stat)
+# 			try:
+			metrics = cnn_eval.evaluate_cnn(phenotype, cnn_eval.dataset, stat)
+			if metrics:
 				cnn_eval.cache_update(phenotype, metrics, self.id)
 				self.set_metrics(metrics, cnn_eval)
 
-			except tf.errors.ResourceExhaustedError as e:
-				log_warning(f"{self.id} : ResourceExhaustedError {e}")
-				keras.backend.clear_session()
-				stat.record_evaluation(is_invalid=True)
-			except (TypeError, ValueError) as e:
-				log_warning(f"{self.id} : caught exception {e}")
-				keras.backend.clear_session()
-				stat.record_evaluation(is_invalid=True)
+#			except tf.errors.ResourceExhaustedError as e:
+#				log_warning(f"{self.id} : ResourceExhaustedError {e}")
+#				keras.backend.clear_session()
+#				stat.record_evaluation(is_invalid=True)
+#			except (TypeError, ValueError) as e:
+#				log_warning(f"{self.id} : caught exception {e}")
+#				keras.backend.clear_session()
+#				stat.record_evaluation(is_invalid=True)
 
 			restore_random_state(random_state)
 
 		return self.metrics is not None
 
+		# phenotype_list = [ind.get_phenotype(grammar) for ind in individual_list]
+		# results = [x for x in executor.map(cnn_eval.evaluate_cnn, phenotype_list)]
+
+	@staticmethod
+	def eval_one_individual(gpu, ind, grammar, cnn_eval, stat):
+		with tf.device(gpu):
+			log_bold(f"{ind.id_and_layer_description()} starts on {gpu.name}")
+			result = ind.evaluate_individual(grammar, cnn_eval, stat, use_cache=False)
+		return result
+
+	@staticmethod
+	def evaluate_multiple_individuals(individual_list, grammar, cnn_eval, stat):
+		""" evaluate multiple individuals with multithreading """
+		ok = True
+		if Evaluator.get_n_gpus() > 1:
+			if len(individual_list):
+				with concurrent.futures.ThreadPoolExecutor(len(individual_list)) as executor:
+					future_to_evaluate_individual = {executor.submit(Individual.eval_one_individual, gpu, ind, grammar, cnn_eval, stat) : ind for ind, gpu in zip(individual_list, logical_gpus)}
+					for future in concurrent.futures.as_completed(future_to_evaluate_individual):
+						result = future_to_evaluate_individual[future]
+						if not result:
+							log_warning(f"Invalid multiple evaluation in list starting with {individual_list[0].id}")
+							ok = False
+		else:
+			for ind in individual_list:
+				result = ind.evaluate_individual(grammar, cnn_eval, stat)
+				if not result:
+					log_warning(f"Invalid multiple evaluation in list starting with {individual_list[0].id}")
+					ok = False
+		return ok
+
 	def set_metrics(self, metrics, cnn_eval, log_suffix=None):
 		""" set metrics to individual after evaluation or cache lookup, and calculate fitness """
 		self.metrics = metrics
 		self.fitness = cnn_eval.calculate_fitness(self)
-		log_training(self.metrics.summary(f" ({log_suffix})" if log_suffix else ''))
+		log_training(self.id_and_layer_description() + self.metrics.summary(f" ({log_suffix})" if log_suffix else ''))
 		if not self.metrics.training_epochs:
 			log_warning(f"*** {self.id}: no training epoch completed ***")
-
 
 	def evaluate_individual_k_folds(self, grammar, cnn_eval, nfolds, stat):
 		"""
@@ -1245,7 +1325,7 @@ class Individual:
 
 			Parameters
 			----------
-			grammar : Grammar
+			grammar : StepperGrammar
 				grammar instance that stores the expansion rules
 			cnn_eval : Evaluator
 				Evaluator instance used to train the networks
@@ -1361,3 +1441,5 @@ class Individual:
 		for module in self.modules_including_macro:
 			if len(module.step_history):
 				stepwidth_stats.append((module.module_name, 'structure', module.step_history))
+
+

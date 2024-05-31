@@ -40,15 +40,12 @@ class Var:
 
 class StepperGrammar:
 	"""
-		Dynamic Structured Grammatical Evolution (DSGE) code. F-DENSER++ uses a BNF
-		grammar to define the search space, and DSGE is applied to perform the
-		genotype/phenotype mapping of the inner-level of the genotype.
+		Stepper Grammar uses a BNF grammar to define the search space.
 
 		Attributes
 		----------
 		rules : dict
-			object where the grammar is stored, and later used for initialisation,
-			and decoding of the individuals.
+			The grammar is read from a file and stored in the form of rules
 	"""
 
 	def __init__(self, path):

@@ -3,7 +3,7 @@
 "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored. This is overridden if main_multiple_runs.py is used
-    "experiment_name" : "Parallel test 2",
+    "experiment_name" : "Parallel test",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "lenet",
@@ -18,13 +18,13 @@
     "random_seed" : 100,
 
     //Maximum number of generations
-    "num_generations": 5,
+    "num_generations": 3,
 
     // my - number of parents
     "my" : 1,
 
     //lambda - number of offspring
-    "lambda": 5,
+    "lambda": 4,
 
     //comma strategy means no parents in selection
     "comma_strategy": false,
@@ -32,8 +32,11 @@
    // NAS strategy to use: "Random", "F-DENSER", "Stepper-Decay" or "Stepper-Adaptive"
     "nas_strategy": "Stepper-Decay",
 
+    // Maximum number of trainable parameters of a generated architecture. A larger architecture is considered invalid for NAS. 0 for no limit.
+    "max_parameters": 62500,
+
    // initial step width for Stepper-Decay and Stepper-Adaptive
-   "stepper_initial_sigma" : 0.066
+   "stepper_initial_sigma" : 0.033
   },
 
   //network specific parameters
@@ -56,7 +59,7 @@
     // use cache file for storing and retrieving evaluated network configurations
     // The cache file path is relative to the data file path. A global cache for all experiments with 10 epochs is used.
     "use_evaluation_cache": true,
-    "evaluation_cache_file": "../cache_10.pkl",
+    "evaluation_cache_file": "../cache_test.pkl",
 
     //data augmentation generator for the training data - keras interpretable
     //set to "None" if no data augmentation is to be used
@@ -70,7 +73,7 @@
     // "datagen_test": "ImageDataGenerator()",
 
     //maximum training time for each network architecture (in seconds)
-    "max_training_time": 15,
+    "max_training_time": 50,
     //maximum training epochs for each network architecture
     "max_training_epochs": 10,
 

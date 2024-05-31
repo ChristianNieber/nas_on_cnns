@@ -1,7 +1,8 @@
-from time import time
+from time import time, strftime, gmtime
 import json
 import numpy as np
 import random
+from logger import *
 
 
 # The fitness metric used in experiments
@@ -12,6 +13,11 @@ def fitness_metric_with_size_penalty(accuracy, parameters):
 def average_standard_deviation(numlist):
 	""" Take the average of a list of standard deviations """
 	return np.sqrt(np.sum([i ** 2 for i in numlist]) / len(numlist))
+
+
+def hms(seconds):
+	""" from time given in (fractional) seconds, return string in HH:MM:SS format """
+	return strftime("%H:%M:%S", gmtime(seconds))
 
 
 class RunStatistics:
@@ -117,6 +123,7 @@ class RunStatistics:
 		self.generation_parameters = []
 		self.generation_fitness = []
 		self.generation_eval_time = []
+		self.eval_time_of_generation = []
 		# run state
 		self.run_generation = -1
 		self.run_time = 0
@@ -248,7 +255,7 @@ class RunStatistics:
 		self.generation_accuracy.append([ind.metrics.accuracy for ind in generation_list])
 		self.generation_fitness.append([ind.fitness for ind in generation_list])
 		self.generation_parameters.append([ind.metrics.parameters for ind in generation_list])
-		self.generation_eval_time.append(np.sum([ind.metrics.eval_time for ind in generation_list]))
+		self.generation_eval_time.append([ind.metrics.eval_time for ind in generation_list])
 		self.run_time = self.session_previous_runtime + time() - self.session_start_time
 
 	def record_evaluation(self, seconds=.0, is_cache_hit=False, is_k_folds=False, is_invalid=False):
@@ -272,10 +279,30 @@ class RunStatistics:
 		return json.dumps(self, default=lambda o: o.__dict__, sort_keys=True, indent=4)
 
 	def save_to_json_file(self, save_path):
-		""" save statistics """
+		""" save statistics to json - currently unused """
 		json_dump = self.to_json()
 		with open(save_path + 'statistics.json', 'w') as f_json:
 			f_json.write(json_dump)
+
+	def log_run_summary(stat):
+		log(f"{stat.evaluations_total} evaluations, {stat.evaluations_cache_hits} cache hits, {stat.evaluations_invalid} invalid")
+		log(f"runtime {hms(stat.run_time)}, evaluation time {hms(stat.eval_time)} (this run {hms(stat.eval_time_this_run)})")
+
+	def log_statistics_summary(self, start_generation=0):
+
+		self.log_run_summary()
+		total_eval_time = 0
+		ngenerations = len(self.eval_time_of_generation)
+		nindividuals = len(self.generation_accuracy[0])
+		for generation in range(start_generation, ngenerations):
+			eval_time = self.eval_time_of_generation[generation]
+			total_eval_time += eval_time
+			log_bold(f"Generation {generation}: {eval_time :.2f} sec")
+			for idx in range(nindividuals):
+				log(f"{generation}-{idx}:  p: {self.generation_parameters[generation][idx]:6d} acc: {self.generation_accuracy[generation][idx]:.5f} fitness: {self.generation_fitness[generation][idx]:.5f} t: {self.generation_eval_time[generation][idx]:.2f}")
+
+		log_bold(f"Total eval time: {total_eval_time:.2f} sec")
+
 
 
 class CnnEvalResult:
