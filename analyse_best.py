@@ -129,6 +129,7 @@ def evaluate_best(log_file='evaluate_best.log', generation_size=4, n_gpus=0):
 	ngenerations = len(population_generations)
 
 	original_accuracy = [[ind.metrics.accuracy for ind in population_generations[generation]] for generation in range(ngenerations)]
+	original_final_test_accuracy = [[ind.metrics.final_test_accuracy for ind in population_generations[generation]] for generation in range(ngenerations)]
 	original_fitness = [[ind.metrics.fitness for ind in population_generations[generation]] for generation in range(ngenerations)]
 	original_eval_time = [[ind.metrics.eval_time for ind in population_generations[generation]] for generation in range(ngenerations)]
 
@@ -140,7 +141,7 @@ def evaluate_best(log_file='evaluate_best.log', generation_size=4, n_gpus=0):
 		cnn_eval.flush_evaluation_cache()
 		stat.record_generation(individuals_list)
 
-	log_bold(f"{n_gpus} GPUS, {generation_size=}")
+	log_bold(f"\n{n_gpus} GPUS, uint8\n=============")
 	stat.log_run_summary()
 
 	total_eval_time = 0
@@ -151,10 +152,10 @@ def evaluate_best(log_file='evaluate_best.log', generation_size=4, n_gpus=0):
 		total_eval_time += eval_time
 		log_bold(f"Generation {generation}: {eval_time :.2f} sec")
 		for idx in range(nindividuals):
-			log(f"{generation}-{idx}:  p: {stat.generation_parameters[generation][idx]:6d} acc: {stat.generation_accuracy[generation][idx]:.5f} ({original_accuracy[generation][idx]:.5f}) fitness: {stat.generation_fitness[generation][idx]:.5f} ({original_fitness[generation][idx]:.5f}) t: {stat.generation_eval_time[generation][idx]:.2f} ({original_eval_time[generation][idx]:.2f})")
+			log(f"{generation}-{idx}:  p: {stat.generation_parameters[generation][idx]:6d} acc: {stat.generation_accuracy[generation][idx]:.5f} ({original_accuracy[generation][idx]:.5f}) final: {stat.generation_final_test_accuracy[generation][idx]:.5f} ({original_final_test_accuracy[generation][idx]:.5f}) fitness: {stat.generation_fitness[generation][idx]:.5f} ({original_fitness[generation][idx]:.5f}) t: {stat.generation_eval_time[generation][idx]:.2f} ({original_eval_time[generation][idx]:.2f})")
 
 	log_bold(f"Total eval time: {total_eval_time:.2f} sec")
 
 if __name__ == "__main__":
-	N_GPUS=1
+	N_GPUS=6
 	evaluate_best(f'evaluate_best_12_{N_GPUS}.log', generation_size = 12, n_gpus=N_GPUS)

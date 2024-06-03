@@ -7,16 +7,13 @@ import os
 import pickle
 from enum import Enum
 
-from utilities.data import load_dataset
+from utilities.data import Dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
 import concurrent.futures
 
 from runstatistics import RunStatistics, CnnEvalResult
 from logger import *
-
-# possible test: impose memory constraints
-# tf.config.experimental.set_virtual_device_configuration(gpus[0], [tf.config.experimental.VirtualDeviceConfiguration(memory_limit=50)])
 
 N_GPUS = 1          # number of GPUs to simulate for parallel evaluation
 
@@ -41,6 +38,10 @@ logical_gpus = []
 def init_gpu(n_gpus=N_GPUS):
 	global N_GPUS
 	global logical_gpus
+
+	# tf.keras.mixed_precision.set_global_policy("mixed_float16") # using mixed precision made training about 30% slower on average ?!?
+	# tf.config.optimizer.set_jit(True)
+
 	if n_gpus <= 0:
 		n_gpus = 1
 	N_GPUS = n_gpus
@@ -229,14 +230,14 @@ class Evaluator:
 		def set_k_fold_metrics(self, k_fold_metrics):
 			self.k_fold_metrics = k_fold_metrics
 
-	def __init__(self, dataset, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, max_parameters = 0, input_size=(28, 28, 1), for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
-					evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, n_gpus=0):
+	def __init__(self, dataset_name, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, max_parameters = 0, input_size=(28, 28, 1), for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
+	             evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, n_gpus=0):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
 			Parameters
 			----------
-			dataset : str
+			dataset_name : str
 				dataset to be loaded
 			data_generator : keras.preprocessing.image.ImageDataGenerator
 				Data augmentation method image data generator
@@ -245,7 +246,9 @@ class Evaluator:
 			fitness_func : function
 				calculates fitness from accuracy and number of trainable weights
 		"""
-		self.dataset = load_dataset(dataset, for_k_fold_validation)
+		init_gpu(n_gpus=n_gpus)
+
+		self.dataset = Dataset(dataset_name, for_k_fold_validation)
 		self.fitness_func = fitness_func
 		self.max_training_time = max_training_time
 		self.max_training_epochs = max_training_epochs
@@ -273,7 +276,6 @@ class Evaluator:
 			else:
 				log_bold(f"will create new evaluation cache {self.evaluation_cache_path}")
 
-		init_gpu(n_gpus=n_gpus)
 
 	def init_options(self, early_stop_patience, early_stop_delta):
 		self.early_stop_patience = early_stop_patience
@@ -692,7 +694,7 @@ class Evaluator:
 		return is_valid
 
 
-	def evaluate_cnn(self, phenotype, dataset, stat, for_k_folds_validation=False):
+	def evaluate_cnn(self, phenotype: str, dataset: Dataset, stat, for_k_folds_validation=False):
 		"""
 			Evaluates the phenotype with keras
 
@@ -700,7 +702,7 @@ class Evaluator:
 			----------
 			phenotype : str
 				individual phenotypes (one or more)
-			dataset : dict
+			dataset : Dataset
 				train and test datasets
 			stat : RunStatistics
 				for recording statistics
@@ -729,7 +731,8 @@ class Evaluator:
 
 
 		keras_layers_count = len(keras_layers)
-		batch_size = int(keras_learning['batch_size'])
+		# batch_size = int(keras_learning['batch_size'])
+		batch_size = 1536
 
 		model_summary = Evaluator.get_model_summary(model)
 		model_layers = len(model.get_config()['layers'])
@@ -752,26 +755,25 @@ class Evaluator:
 
 		training_start_time = time()
 
-		x_train = dataset['evo_x_train']
-		y_train = dataset['evo_y_train']
-		x_val = dataset['evo_x_val']
-		y_val = dataset['evo_y_val']
+		# x_train = dataset['evo_x_train']
+		# y_train = dataset['evo_y_train']
+		# x_val = dataset['evo_x_val']
+		# y_val = dataset['evo_y_val']
 		if self.data_generator is not None:
-			score = model.fit_generator(self.data_generator.flow(x_train, y_train, batch_size=batch_size),
-										steps_per_epoch=(x_train.shape[0] // batch_size),
+			score = model.fit_generator(self.data_generator.flow(dataset.X_train, dataset.y_train, batch_size=batch_size),
+										steps_per_epoch=(dataset.X_train.shape[0] // batch_size),
 										epochs=self.max_training_epochs,
-										validation_data=(self.data_generator_test.flow(x_val, y_val, batch_size=batch_size)),
-										validation_steps=(x_val.shape[0] // batch_size),
+										validation_data=(self.data_generator_test.flow(dataset.X_val, dataset.y_val, batch_size=batch_size)),
+										validation_steps=(dataset.X_val.shape[0] // batch_size),
 										callbacks=callbacks_list,
 										initial_epoch=0,
 										verbose=LOG_MODEL_TRAINING)
 		else:
-			score = model.fit(x=x_train,
-								y=y_train,
+			score = model.fit(dataset.X_train, dataset.y_train,
 								batch_size=batch_size,
 								epochs=self.max_training_epochs,
-								steps_per_epoch=(x_train.shape[0] // batch_size),
-								validation_data=(x_val, y_val),
+								steps_per_epoch=(dataset.X_train.shape[0] // batch_size),
+								validation_data=(dataset.X_val, dataset.y_val),
 								callbacks=callbacks_list,
 								initial_epoch=0,
 								verbose=LOG_MODEL_TRAINING)
@@ -782,16 +784,12 @@ class Evaluator:
 		early_stop_triggered = training_epochs < self.max_training_epochs and not timer_stop_triggered
 
 		# measure test accuracy
-		x_test = dataset['evo_x_test']
-		y_test = dataset['evo_y_test']
-		test_accuracy, model_test_time, million_inferences_time = self.test_model_with_data(model, x_test, y_test)
+		test_accuracy, model_test_time, million_inferences_time = self.test_model_with_data(model, dataset.X_test, dataset.y_test)
 
 		fitness = self.fitness_func(test_accuracy, parameters)
 
 		# measure final test accuracy
-		x_final_test = dataset['x_final_test']
-		y_final_test = dataset['y_final_test']
-		final_test_accuracy, final_test_time, million_inferences_time = self.test_model_with_data(model, x_final_test, y_final_test)
+		final_test_accuracy, final_test_time, million_inferences_time = self.test_model_with_data(model, dataset.X_final_test, dataset.y_final_test)
 
 		del model
 		# keras.backend.clear_session()
@@ -830,8 +828,8 @@ class Evaluator:
 			else:
 				log_debug('*** k-fold metrics not in cache entry ' + cache_entry.origin_description)
 
-		x_combined = self.dataset['x_combined']
-		y_combined = self.dataset['y_combined']
+		x_combined = self.dataset.combined_dataset
+		y_combined = self.dataset.combined_dataset
 
 		split = StratifiedShuffleSplit(n_splits=n_folds, test_size=7000)
 
@@ -1441,5 +1439,3 @@ class Individual:
 		for module in self.modules_including_macro:
 			if len(module.step_history):
 				stepwidth_stats.append((module.module_name, 'structure', module.step_history))
-
-

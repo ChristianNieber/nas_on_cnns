@@ -120,6 +120,7 @@ class RunStatistics:
 		self.generation_best_fitness = []
 		# generation
 		self.generation_accuracy = []
+		self.generation_final_test_accuracy = []
 		self.generation_parameters = []
 		self.generation_fitness = []
 		self.generation_eval_time = []
@@ -253,6 +254,7 @@ class RunStatistics:
 		self.generation_best_accuracy.append(best_in_generation.metrics.accuracy)
 		self.generation_best_parameters.append(best_in_generation.metrics.parameters)
 		self.generation_accuracy.append([ind.metrics.accuracy for ind in generation_list])
+		self.generation_final_test_accuracy.append([ind.metrics.final_test_accuracy for ind in generation_list])
 		self.generation_fitness.append([ind.fitness for ind in generation_list])
 		self.generation_parameters.append([ind.metrics.parameters for ind in generation_list])
 		self.generation_eval_time.append([ind.metrics.eval_time for ind in generation_list])
