@@ -755,10 +755,6 @@ class Evaluator:
 
 		training_start_time = time()
 
-		# x_train = dataset['evo_x_train']
-		# y_train = dataset['evo_y_train']
-		# x_val = dataset['evo_x_val']
-		# y_val = dataset['evo_y_val']
 		if self.data_generator is not None:
 			score = model.fit_generator(self.data_generator.flow(dataset.X_train, dataset.y_train, batch_size=batch_size),
 										steps_per_epoch=(dataset.X_train.shape[0] // batch_size),
@@ -768,15 +764,26 @@ class Evaluator:
 										callbacks=callbacks_list,
 										initial_epoch=0,
 										verbose=LOG_MODEL_TRAINING)
+		elif hasattr(dataset, 'train_dataset'):
+			score = model.fit(dataset.train_dataset,
+								batch_size=batch_size,
+								epochs=self.max_training_epochs,
+								steps_per_epoch=(dataset.train_dataset_size // batch_size),
+								validation_data=dataset.val_dataset,
+								callbacks=callbacks_list,
+								initial_epoch=0,
+								verbose=LOG_MODEL_TRAINING)
 		else:
 			score = model.fit(dataset.X_train, dataset.y_train,
 								batch_size=batch_size,
 								epochs=self.max_training_epochs,
-								steps_per_epoch=(dataset.X_train.shape[0] // batch_size),
+								steps_per_epoch=(dataset.train_dataset_size // batch_size),
 								validation_data=(dataset.X_val, dataset.y_val),
+								validation_steps=(dataset.X_val.shape[0] // batch_size),
 								callbacks=callbacks_list,
 								initial_epoch=0,
 								verbose=LOG_MODEL_TRAINING)
+
 
 		training_time = time() - training_start_time
 		training_epochs = len(score.epoch)

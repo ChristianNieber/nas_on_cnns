@@ -157,5 +157,5 @@ def evaluate_best(log_file='evaluate_best.log', generation_size=4, n_gpus=0):
 	log_bold(f"Total eval time: {total_eval_time:.2f} sec")
 
 if __name__ == "__main__":
-	N_GPUS=6
+	N_GPUS=4
 	evaluate_best(f'evaluate_best_12_{N_GPUS}.log', generation_size = 12, n_gpus=N_GPUS)

@@ -26,6 +26,8 @@ import sys
 # dataset paths - change if the path is different
 SVHN = 'utilities/data/svhn'
 TINY_IMAGENET = 'utilities/data/tiny-imagenet-200'
+USE_TF_DATASET = False
+TF_DATASET_BATCH_SIZE = 1536
 
 class Dataset:
 	def __init__(self, dataset_name=None, for_k_fold_validation=False, shape=(32, 32)):
@@ -91,19 +93,19 @@ class Dataset:
 			self.prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes, for_k_fold_validation)
 
 
-	def prepare_data(self, x_train, y_train, x_test, y_test, reshape_data, n_classes=10, for_k_fold_validation=False):
+	def prepare_data(self, original_X_train, original_y_train, X_final_test, y_final_test, reshape_data, n_classes=10, for_k_fold_validation=False):
 		"""
 			Split the data into independent sets
 
 			Parameters
 			----------
-			x_train : np.array
+			original_X_train : np.array
 				training instances
 			y_train : np.array
 				training labels
-			x_test : np.array
+			X_final_test : np.array
 				testing instances
-			x_test : np.array
+			X_final_test : np.array
 				testing labels
 
 			Returns
@@ -124,15 +126,30 @@ class Dataset:
 		# x_test = x_test.astype('float32') / 255.0
 
 		if reshape_data:
-			x_train = x_train.reshape((-1, 32, 32, 3))
-			x_test = x_test.reshape((-1, 32, 32, 3))
+			original_X_train = original_X_train.reshape((-1, 32, 32, 3))
+			X_final_test = X_final_test.reshape((-1, 32, 32, 3))
 
 
-		self.X_train, self.X_val, self.y_train, self.y_val = train_test_split(x_train, y_train, test_size=7776, shuffle=True, stratify=y_train)
-		self.X_val, self.X_test, self.y_val, self.y_test = train_test_split(self.X_val, self.y_val, test_size=3888, shuffle=True, stratify=self.y_val)
+		X_train, X_val, y_train, y_val = train_test_split(original_X_train, original_y_train, test_size=7776, shuffle=True, stratify=original_y_train)
+		X_val, X_test, y_val, y_test = train_test_split(X_val, y_val, test_size=4608, shuffle=True, stratify=y_val)
 
-		self.X_final_test = x_test
-		self.y_final_test = y_test
+		self.train_dataset_size = X_train.shape[0]
+		self.val_dataset_size = X_val.shape[0]
+
+		if USE_TF_DATASET:
+			self.train_dataset = tf.data.Dataset.from_tensor_slices((X_train, y_train)).batch(TF_DATASET_BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
+			self.val_dataset = tf.data.Dataset.from_tensor_slices((X_val, y_val)).batch(TF_DATASET_BATCH_SIZE).prefetch(tf.data.experimental.AUTOTUNE)
+		else:
+			self.X_train = X_train
+			self.y_train = y_train
+			self.X_val = X_val
+			self.y_val = y_val
+
+		self.X_test = X_test
+		self.y_test = y_test
+		self.X_final_test = X_final_test
+		self.y_final_test = y_final_test
+
 
 		# evo_y_train = keras.utils.to_categorical(evo_y_train, n_classes)
 		# evo_y_val = keras.utils.to_categorical(evo_y_val, n_classes
@@ -146,7 +163,7 @@ class Dataset:
 		if for_k_fold_validation:
 			# self.X_combined = np.r_[x_train, x_test]
 			# self.y_combined = np.r_[y_train, y_test]
-			self.X_combined = x_train
+			self.X_combined = original_X_train
 			self.y_combined = y_train
 
 
