@@ -11,14 +11,15 @@ from utilities.data import Dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
 import concurrent.futures
+import threading
 
 from runstatistics import RunStatistics, CnnEvalResult
 from logger import *
 
-N_GPUS = 1          # number of GPUs to simulate for parallel evaluation
+N_GPUS = None                 # number of GPUs to simulate for parallel evaluation
 
 # Tuning parameters
-PREDICT_BATCH_SIZE = 1024   # batch size used for model.predict()
+PREDICT_BATCH_SIZE = 1024   # batch size used for model.predict(), unused
 EARLY_STOP_DELTA = 0.001    # currently unused
 EARLY_STOP_PATIENCE = 3
 
@@ -33,26 +34,27 @@ class Type(Enum):
 	INT = 3
 	CAT = 4
 
-logical_gpus = []
+gpu_list = []
 
 def init_gpu(n_gpus=N_GPUS):
 	global N_GPUS
-	global logical_gpus
+	global gpu_list
 
-	# tf.keras.mixed_precision.set_global_policy("mixed_float16") # using mixed precision made training about 30% slower on average ?!?
-	# tf.config.optimizer.set_jit(True)
+	if not N_GPUS:
+		# tf.keras.mixed_precision.set_global_policy("mixed_float16") # using mixed precision made training about 30% slower on average ?!?
+		# tf.config.optimizer.set_jit(True)
 
-	if n_gpus <= 0:
-		n_gpus = 1
-	N_GPUS = n_gpus
-	gpus = tf.config.experimental.list_physical_devices('GPU')
-	# only allocate as much GPU memory as needed
-	if n_gpus == 1:
-		tf.config.experimental.set_memory_growth(gpus[0], True)
-	else:
-		tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=8000/N_GPUS) for i in range(0, N_GPUS)])
-	logical_gpus = tf.config.list_logical_devices('GPU')
-	log_bold(f"{len(gpus)} physical GPUs, {len(logical_gpus)} logical GPUs")
+		if n_gpus <= 0:
+			n_gpus = 1
+		N_GPUS = n_gpus
+		gpus = tf.config.experimental.list_physical_devices('GPU')
+		# only allocate as much GPU memory as needed
+		if n_gpus == 1:
+			tf.config.experimental.set_memory_growth(gpus[0], True)
+		else:
+			tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=8000/N_GPUS) for i in range(0, N_GPUS)])
+		gpu_list = tf.config.list_logical_devices('GPU')
+		log_bold(f"{len(gpus)} physical GPUs, {len(gpu_list)} logical GPUs")
 
 def store_random_state():
 	""" store the random state relevant for mutations """
@@ -231,7 +233,7 @@ class Evaluator:
 			self.k_fold_metrics = k_fold_metrics
 
 	def __init__(self, dataset_name, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, max_parameters = 0, input_size=(28, 28, 1), for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
-	             evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, n_gpus=0):
+					evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, use_float=False, n_gpus=None, batch_size=None):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -245,10 +247,13 @@ class Evaluator:
 				Image data generator without augmentation
 			fitness_func : function
 				calculates fitness from accuracy and number of trainable weights
+			batch_size : int
+				if given, will override batch size specified in individuals
 		"""
-		init_gpu(n_gpus=n_gpus)
+		if n_gpus is not None:
+			init_gpu(n_gpus=n_gpus)
 
-		self.dataset = Dataset(dataset_name, for_k_fold_validation)
+		self.dataset = Dataset(dataset_name, use_float=use_float, for_k_fold_validation=for_k_fold_validation)
 		self.fitness_func = fitness_func
 		self.max_training_time = max_training_time
 		self.max_training_epochs = max_training_epochs
@@ -267,6 +272,7 @@ class Evaluator:
 		self.data_generator = data_generator
 		self.data_generator_test = data_generator_test
 		self.input_size = input_size
+		self.batch_size = batch_size
 
 		if self.evaluation_cache_path:
 			if os.path.isfile(self.evaluation_cache_path):
@@ -391,22 +397,28 @@ class Evaluator:
 				keras trainable model
 		"""
 
-		# input layer
-		inputs = tf.keras.layers.Input(shape=input_size)
+		input, output = Evaluator.assemble_network_input_output(keras_layers, input_size)
 
+		model = tf.keras.models.Model(inputs=input, outputs=output)
+		return model
+
+	@staticmethod
+	def assemble_network_input_output(keras_layers, input_size):
+		# input layer
+		input = tf.keras.layers.Input(shape=input_size)
 		# Create layers -- ADD NEW LAYERS HERE
 		layers = []
 		for layer_type, layer_params in keras_layers:
 			# convolutional layer
 			if layer_type == 'conv':
 				conv_layer = tf.keras.layers.Conv2D(filters=int(layer_params['num-filters']),
-													kernel_size=(int(layer_params['filter-shape']), int(layer_params['filter-shape'])),
-													strides=(int(layer_params['stride']), int(layer_params['stride'])),
-													padding=layer_params['padding'],
-													use_bias=eval(layer_params['bias']),
-													# activation=layer_params['act'],
-													kernel_initializer='he_normal',
-													kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+				                                    kernel_size=(int(layer_params['filter-shape']), int(layer_params['filter-shape'])),
+				                                    strides=(int(layer_params['stride']), int(layer_params['stride'])),
+				                                    padding=layer_params['padding'],
+				                                    use_bias=eval(layer_params['bias']),
+				                                    # activation=layer_params['act'],
+				                                    kernel_initializer='he_normal',
+				                                    kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(conv_layer)
 
 			# batch-normalisation
@@ -418,32 +430,32 @@ class Evaluator:
 			# average pooling layer; pool-avg is for fd back compatibility
 			elif layer_type == 'pool-avg' or (layer_type == 'pooling' and layer_params['pooling-type'] == 'avg'):
 				pool_avg = tf.keras.layers.AveragePooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
-															strides=int(layer_params['stride']),
-															padding=layer_params['padding'])
+				                                            strides=int(layer_params['stride']),
+				                                            padding=layer_params['padding'])
 				layers.append(pool_avg)
 
 			# max pooling layer, pool-max is for fd back compatibility
 			elif layer_type == 'pool-max' or (layer_type == 'pooling' and layer_params['pooling-type'] == 'max'):
 				pool_max = tf.keras.layers.MaxPooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
-														strides=int(layer_params['stride']),
-														padding=layer_params['padding'])
+				                                        strides=int(layer_params['stride']),
+				                                        padding=layer_params['padding'])
 				layers.append(pool_max)
 
 			# fully-connected layer
 			elif layer_type == 'fc':
 				fc = tf.keras.layers.Dense(int(layer_params['num-units']),
-											use_bias=eval(layer_params['bias']),
-											# activation=layer_params['act'],
-											kernel_initializer='he_normal',
-											kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+				                           use_bias=eval(layer_params['bias']),
+				                           # activation=layer_params['act'],
+				                           kernel_initializer='he_normal',
+				                           kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(fc)
 
 			elif layer_type == 'output':
 				output_layer = tf.keras.layers.Dense(int(layer_params['num-units']),
-														use_bias=eval(layer_params['bias']),
-														activation='softmax',
-														kernel_initializer='he_normal',
-														kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+				                                     use_bias=eval(layer_params['bias']),
+				                                     activation='softmax',
+				                                     kernel_initializer='he_normal',
+				                                     kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(output_layer)
 
 			# dropout layer
@@ -454,55 +466,51 @@ class Evaluator:
 			# gru layer DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'gru':
 				gru = tf.keras.layers.GRU(units=int(layer_params['units']),
-											activation=layer_params['act'],
-											recurrent_activation=layer_params['rec_act'],
-											use_bias=eval(layer_params['bias']))
+				                          activation=layer_params['act'],
+				                          recurrent_activation=layer_params['rec_act'],
+				                          use_bias=eval(layer_params['bias']))
 				layers.append(gru)
 
 			# lstm layer DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'lstm':
 				lstm = tf.keras.layers.LSTM(units=int(layer_params['units']),
-											activation=layer_params['act'],
-											recurrent_activation=layer_params['rec_act'],
-											use_bias=eval(layer_params['bias']))
+				                            activation=layer_params['act'],
+				                            recurrent_activation=layer_params['rec_act'],
+				                            use_bias=eval(layer_params['bias']))
 				layers.append(lstm)
 
 			# rnn DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'rnn':
 				rnn = tf.keras.layers.SimpleRNN(units=int(layer_params['units']),
-												activation=layer_params['act'],
-												use_bias=eval(layer_params['bias']))
+				                                activation=layer_params['act'],
+				                                use_bias=eval(layer_params['bias']))
 				layers.append(rnn)
 
 			elif layer_type == 'conv1d':  # missing initializer
 				conv1d = tf.keras.layers.Conv1D(filters=int(layer_params['num-filters']),
-												kernel_size=int(layer_params['kernel-size']),
-												strides=int(layer_params['stride']),
-												padding=layer_params['padding'],
-												activation=layer_params['activation'],
-												use_bias=eval(layer_params['bias']))
+				                                kernel_size=int(layer_params['kernel-size']),
+				                                strides=int(layer_params['stride']),
+				                                padding=layer_params['padding'],
+				                                activation=layer_params['activation'],
+				                                use_bias=eval(layer_params['bias']))
 				layers.append(conv1d)
 			else:
 				raise ValueError(f"Invalid {layer_type=}")
-
 		# END ADD NEW LAYERS
-
 		# Connection between layers
 		for layer in keras_layers:
 			layer[1]['input'] = list(map(int, layer[1]['input'].split(',')))
-
 		first_fc = True
 		data_layers = []
 		invalid_layers = []
-
 		for layer_idx, layer in enumerate(layers):
 			layer_inputs = keras_layers[layer_idx][1]['input']
 			if len(layer_inputs) == 1:
 				layer_type = keras_layers[layer_idx][0]
 				layer_params = keras_layers[layer_idx][1]
 				input_idx = layer_inputs[0]
-				# use inputs for first layer, otherwise input
-				input_layer = inputs if input_idx == -1 else data_layers[input_idx]
+				# use input for first layer, otherwise input
+				input_layer = input if input_idx == -1 else data_layers[input_idx]
 				# add Flatten layer before first fc layer
 				if layer_type == 'fc' and first_fc:
 					first_fc = False
@@ -542,11 +550,11 @@ class Evaluator:
 				merge_signals = []
 				for input_idx in layer_inputs:
 					if input_idx == -1:
-						if inputs.shape[-3:][0] > minimum_shape:
-							actual_shape = int(inputs.shape[-3:][0])
-							merge_signals.append(tf.keras.layers.MaxPooling2D(pool_size=(actual_shape - (minimum_shape - 1), actual_shape - (minimum_shape - 1)), strides=1)(inputs))
+						if input.shape[-3:][0] > minimum_shape:
+							actual_shape = int(input.shape[-3:][0])
+							merge_signals.append(tf.keras.layers.MaxPooling2D(pool_size=(actual_shape - (minimum_shape - 1), actual_shape - (minimum_shape - 1)), strides=1)(input))
 						else:
-							merge_signals.append(inputs)
+							merge_signals.append(input)
 
 					elif input_idx not in invalid_layers:
 						if data_layers[input_idx].shape[-3:][0] > minimum_shape:
@@ -563,9 +571,7 @@ class Evaluator:
 					merged_signal = data_layers[-1]
 
 				data_layers.append(layer(merged_signal))
-
-		model = tf.keras.models.Model(inputs=inputs, outputs=data_layers[-1])
-		return model
+		return input, data_layers[-1]
 
 	@staticmethod
 	def calculate_model_multiplications(model):
@@ -729,10 +735,8 @@ class Evaluator:
 						loss='sparse_categorical_crossentropy',
 						metrics=['accuracy'])
 
-
 		keras_layers_count = len(keras_layers)
-		# batch_size = int(keras_learning['batch_size'])
-		batch_size = 1536
+		batch_size = self.batch_size if self.batch_size else int(keras_learning['batch_size'])
 
 		model_summary = Evaluator.get_model_summary(model)
 		model_layers = len(model.get_config()['layers'])
@@ -1289,9 +1293,11 @@ class Individual:
 		# results = [x for x in executor.map(cnn_eval.evaluate_cnn, phenotype_list)]
 
 	@staticmethod
-	def eval_one_individual(gpu, ind, grammar, cnn_eval, stat):
-		with tf.device(gpu):
-			log_bold(f"{ind.id_and_layer_description()} starts on {gpu.name}")
+	def evaluate_in_thread(ind, grammar, cnn_eval, stat):
+		thread_name =  threading.current_thread().name
+		thread_number = int(thread_name[thread_name.rindex("_") + 1:])
+		with tf.device(gpu_list[thread_number]):
+			log_bold(f"{ind.id_and_layer_description()} starts on {gpu_list[thread_number].name} in thread {thread_name}")
 			result = ind.evaluate_individual(grammar, cnn_eval, stat, use_cache=False)
 		return result
 
@@ -1299,15 +1305,14 @@ class Individual:
 	def evaluate_multiple_individuals(individual_list, grammar, cnn_eval, stat):
 		""" evaluate multiple individuals with multithreading """
 		ok = True
-		if Evaluator.get_n_gpus() > 1:
-			if len(individual_list):
-				with concurrent.futures.ThreadPoolExecutor(len(individual_list)) as executor:
-					future_to_evaluate_individual = {executor.submit(Individual.eval_one_individual, gpu, ind, grammar, cnn_eval, stat) : ind for ind, gpu in zip(individual_list, logical_gpus)}
-					for future in concurrent.futures.as_completed(future_to_evaluate_individual):
-						result = future_to_evaluate_individual[future]
-						if not result:
-							log_warning(f"Invalid multiple evaluation in list starting with {individual_list[0].id}")
-							ok = False
+		if N_GPUS > 1 and len(individual_list):
+			with concurrent.futures.ThreadPoolExecutor(max_workers=N_GPUS, thread_name_prefix='Evaluator') as executor:
+				future_to_evaluate_individual = {executor.submit(Individual.evaluate_in_thread, ind, grammar, cnn_eval, stat) : ind for ind in individual_list}
+				for future in concurrent.futures.as_completed(future_to_evaluate_individual):
+					result = future_to_evaluate_individual[future]
+					if not result:
+						log_warning(f"Invalid multiple evaluation in list starting with {individual_list[0].id}")
+						ok = False
 		else:
 			for ind in individual_list:
 				result = ind.evaluate_individual(grammar, cnn_eval, stat)

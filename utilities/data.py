@@ -30,7 +30,7 @@ USE_TF_DATASET = False
 TF_DATASET_BATCH_SIZE = 1536
 
 class Dataset:
-	def __init__(self, dataset_name=None, for_k_fold_validation=False, shape=(32, 32)):
+	def __init__(self, dataset_name=None, use_float=False, for_k_fold_validation=False, shape=(32, 32)):
 		"""
 			Load a specific dataset
 
@@ -90,6 +90,10 @@ class Dataset:
 				print('Error: the dataset is not valid')
 				sys.exit(-1)
 
+			if use_float:
+				x_train = x_train.astype(np.float16) / 255.0    # converting from uint8 to float slows training down
+				x_test = x_test.astype(np.float16) / 255.0
+
 			self.prepare_data(x_train, y_train, x_test, y_test, reshape_data, n_classes, for_k_fold_validation)
 
 
@@ -122,16 +126,14 @@ class Dataset:
 						- x_test and y_test : for measuring the effectiveness of the model on unseen data
 		"""
 
-		# x_train = x_train.astype('float32') / 255.0    # converting from uint8 to float slows training down
-		# x_test = x_test.astype('float32') / 255.0
 
 		if reshape_data:
 			original_X_train = original_X_train.reshape((-1, 32, 32, 3))
 			X_final_test = X_final_test.reshape((-1, 32, 32, 3))
 
-
-		X_train, X_val, y_train, y_val = train_test_split(original_X_train, original_y_train, test_size=7776, shuffle=True, stratify=original_y_train)
-		X_val, X_test, y_val, y_test = train_test_split(X_val, y_val, test_size=4608, shuffle=True, stratify=y_val)
+		# for batch_size=1536, better use test_size=7776, test_size=4608
+		X_train, X_val, y_train, y_val = train_test_split(original_X_train, original_y_train, test_size=6752, shuffle=True, stratify=original_y_train)
+		X_val, X_test, y_val, y_test = train_test_split(X_val, y_val, test_size=3680, shuffle=True, stratify=y_val)
 
 		self.train_dataset_size = X_train.shape[0]
 		self.val_dataset_size = X_val.shape[0]
@@ -164,7 +166,7 @@ class Dataset:
 			# self.X_combined = np.r_[x_train, x_test]
 			# self.y_combined = np.r_[y_train, y_test]
 			self.X_combined = original_X_train
-			self.y_combined = y_train
+			self.y_combined = original_y_train
 
 
 	@staticmethod

@@ -195,10 +195,10 @@ def evaluate_generation(generation_list: list[Individual], grammar: StepperGramm
 			ind.metrics = None
 		if ind.metrics is None:
 			parallel_list.append(ind)
-			if len(parallel_list) >= cnn_eval.get_n_gpus():
-				if not Individual.evaluate_multiple_individuals(parallel_list, grammar, cnn_eval, stat):
-					return False
-				parallel_list = []
+			# if len(parallel_list) >= cnn_eval.get_n_gpus():
+			# 	if not Individual.evaluate_multiple_individuals(parallel_list, grammar, cnn_eval, stat):
+			# 		return False
+			# 	parallel_list = []
 
 	result = Individual.evaluate_multiple_individuals(parallel_list, grammar, cnn_eval, stat)
 
@@ -335,7 +335,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	if USE_EVALUATION_CACHE:
 		evaluation_cache_path = Path(save_path, EVALUATION_CACHE_FILE).resolve()
 	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, max_parameters=MAX_PARAMETERS, for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY, test_init_seeds=TEST_INIT_SEEDS,
-							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test)
+							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test, n_gpus=0)
 
 	if unpickle is None:
 		# pickle_evaluator(cnn_eval, save_path_with_run) # save evaluator
