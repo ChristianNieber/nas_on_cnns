@@ -6,6 +6,7 @@ import numpy as np
 import os
 import pickle
 from enum import Enum
+import pynvml
 
 from utilities.data import Dataset
 from sklearn.metrics import accuracy_score
@@ -16,16 +17,13 @@ import threading
 from runstatistics import RunStatistics, CnnEvalResult
 from logger import *
 
-N_GPUS = None                 # number of GPUs to simulate for parallel evaluation
+N_GPUS = 1                  # number of GPUs to simulate for parallel evaluation
 
 # Tuning parameters
-PREDICT_BATCH_SIZE = 1024   # batch size used for model.predict(), unused
 EARLY_STOP_DELTA = 0.001    # currently unused
 EARLY_STOP_PATIENCE = 3
 
-LOG_MODEL_TRAINING = 0		# training progress: 1 for progress bar, 2 for one line per epoch
-LOG_EARLY_STOPPING = False	# log early stopping
-LOG_MODEL_SAVE = 1			# log for saving after each epoch
+LOG_MODEL_TRAINING = 0		# training progress: 0 none, 1 for progress bar, 2 for one line per epoch
 
 class Type(Enum):
 	NONTERMINAL = 0
@@ -36,23 +34,33 @@ class Type(Enum):
 
 gpu_list = []
 
+def get_gpu_total_memory_mb(gpu_index):
+	pynvml.nvmlInit()
+	handle = pynvml.nvmlDeviceGetHandleByIndex(int(gpu_index))
+	mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
+	log_bold(f"Physical GPU: total {mem_info.total / 1024 ** 2:.2f} MB, used {mem_info.used / 1024 ** 2:.2f} MB, free {mem_info.free / 1024 ** 2:.2f} MB")
+	return int(mem_info.total // 1024**2)
+
 def init_gpu(n_gpus=N_GPUS):
 	global N_GPUS
 	global gpu_list
 
-	if not N_GPUS:
+	if len(gpu_list) == 0:
 		# tf.keras.mixed_precision.set_global_policy("mixed_float16") # using mixed precision made training about 30% slower on average ?!?
 		# tf.config.optimizer.set_jit(True)
 
 		if n_gpus <= 0:
-			n_gpus = 1
+			n_gpus = N_GPUS
+
 		N_GPUS = n_gpus
+		gpu_total_memory_mb = get_gpu_total_memory_mb(0)
 		gpus = tf.config.experimental.list_physical_devices('GPU')
 		# only allocate as much GPU memory as needed
 		if n_gpus == 1:
 			tf.config.experimental.set_memory_growth(gpus[0], True)
 		else:
-			tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=8000/N_GPUS) for i in range(0, N_GPUS)])
+			tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=gpu_total_memory_mb//N_GPUS) for i in range(0, N_GPUS)])
+			log_bold(f"Splitting 1 physical GPU ({gpu_total_memory_mb} MB) into {N_GPUS} logical GPUs ({gpu_total_memory_mb//N_GPUS} MB)")
 		gpu_list = tf.config.list_logical_devices('GPU')
 		log_bold(f"{len(gpus)} physical GPUs, {len(gpu_list)} logical GPUs")
 
@@ -233,7 +241,7 @@ class Evaluator:
 			self.k_fold_metrics = k_fold_metrics
 
 	def __init__(self, dataset_name, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, max_parameters = 0, input_size=(28, 28, 1), for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
-					evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, use_float=False, n_gpus=None, batch_size=None):
+	             evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, use_float=False, n_gpus=None, override_batch_size=None):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -247,7 +255,7 @@ class Evaluator:
 				Image data generator without augmentation
 			fitness_func : function
 				calculates fitness from accuracy and number of trainable weights
-			batch_size : int
+			override_batch_size : int
 				if given, will override batch size specified in individuals
 		"""
 		if n_gpus is not None:
@@ -272,7 +280,7 @@ class Evaluator:
 		self.data_generator = data_generator
 		self.data_generator_test = data_generator_test
 		self.input_size = input_size
-		self.batch_size = batch_size
+		self.override_batch_size = override_batch_size
 
 		if self.evaluation_cache_path:
 			if os.path.isfile(self.evaluation_cache_path):
@@ -645,7 +653,7 @@ class Evaluator:
 		cache_key = self.cache_key(phenotype)
 		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
 			cache_entry = self.evaluation_cache[cache_key]
-			if self.is_model_valid(cache_entry.metrics.parameters):
+			if self.check_model_constraints(cache_entry.metrics.parameters):
 				log_debug('using cached metrics from ' + cache_entry.origin_description)
 				if stat:
 					stat.record_evaluation(seconds=cache_entry.metrics.eval_time, is_cache_hit=True)
@@ -677,10 +685,10 @@ class Evaluator:
 		# non_trainable_parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.non_trainable_weights])  # not used
 		return parameters
 
-	def is_model_valid(self, parameters):
+	def check_model_constraints(self, parameters):
 		if self.max_parameters > 0 and parameters > self.max_parameters:
-				log_warning(f"New model is invalid because {parameters=} > {self.max_parameters}")
-				return False
+			log(f"New model is invalid because {parameters=} > {self.max_parameters}")
+			return False
 		return True
 
 	def validate_cnn(self, phenotype):
@@ -693,10 +701,11 @@ class Evaluator:
 		opt = self.assemble_optimiser(keras_learning)
 		model.compile(optimizer=opt,
 						loss='sparse_categorical_crossentropy',
-						metrics=['accuracy'])
-		is_valid = self.is_model_valid(Evaluator.get_model_parameters(model))
+						metrics=['accuracy'],
+						)
+		is_valid = self.check_model_constraints(Evaluator.get_model_parameters(model))
 		del model
-		log(f"Validated in {time() - start_time:.2f}")
+		# log(f"Validated in {time() - start_time:.2f}")
 		return is_valid
 
 
@@ -731,19 +740,21 @@ class Evaluator:
 
 		model = self.assemble_network(keras_layers, self.input_size)
 		opt = self.assemble_optimiser(keras_learning)
+		# opt = tf.keras.mixed_precision.LossScaleOptimizer(opt) # for mixed precision
 		model.compile(optimizer=opt,
 						loss='sparse_categorical_crossentropy',
 						metrics=['accuracy'])
 
 		keras_layers_count = len(keras_layers)
-		batch_size = self.batch_size if self.batch_size else int(keras_learning['batch_size'])
+		batch_size = self.override_batch_size if self.override_batch_size else (int(keras_learning['batch_size']) if 'batch_size' in keras_learning else 512)
 
 		model_summary = Evaluator.get_model_summary(model)
 		model_layers = len(model.get_config()['layers'])
 		parameters = Evaluator.get_model_parameters(model)
 
-		if not self.is_model_valid(parameters):
+		if not self.check_model_constraints(parameters):
 			del model
+			stat.record_evaluation(constraints_violated=True)
 			return None
 
 		# time based stopping
@@ -808,7 +819,7 @@ class Evaluator:
 		eval_time = time() - start_time
 
 		result = CnnEvalResult(score.history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered,
-								parameters, keras_layers_count, model_layers, test_accuracy, fitness, model_summary)
+								parameters, keras_layers_count, model_layers, test_accuracy, fitness, batch_size, model_summary)
 
 		stat.record_evaluation(seconds=eval_time, is_k_folds=for_k_folds_validation)
 
@@ -893,8 +904,10 @@ class Evaluator:
 
 		return accuracy
 
+	# Unused function
 	@staticmethod
 	def test_model_with_data(model, x_test, y_test, datagen_test=None):
+		PREDICT_BATCH_SIZE = 1024
 		model_test_start_time = time()
 		if datagen_test is None:
 			y_pred = model.predict(x_test, batch_size=PREDICT_BATCH_SIZE, verbose=0)
@@ -1209,6 +1222,20 @@ class Individual:
 		self.phenotype_lines = phenotype.split('\n')
 		return phenotype
 
+	@staticmethod
+	def pretty_exception_text(e):
+		error_text = str(e)
+		if "Negative dimension size" in error_text:
+			error_text = "Negative dimension size"
+		else:
+			i = error_text.find("OOM when allocating tensor")
+			if i > 0:
+				j = error_text.find('\n', i + 1)
+				k = error_text.find('\n', j + 1)
+				if j > 0 and k > 0:
+					error_text = error_text[i:k]
+			error_text = '\n' + error_text
+		return error_text
 
 	def validate_individual(self, grammar, cnn_eval, stat, use_cache=True):
 
@@ -1227,13 +1254,8 @@ class Individual:
 		is_valid = False
 		try:
 			is_valid = cnn_eval.validate_cnn(phenotype)
-
-		except tf.errors.ResourceExhaustedError as e:
-			log_warning(f"Validating {self.id} : ResourceExhaustedError {e}")
-			keras.backend.clear_session()
-			stat.record_evaluation(is_invalid=True)
-		except (TypeError, ValueError) as e:
-			log_warning(f"Validating {self.id} : caught exception {e}")
+		except (TypeError, ValueError, tf.errors.ResourceExhaustedError) as e:
+			log_warning(f"While validating {self.id} caught exception: {Individual.pretty_exception_text(e)}")
 			keras.backend.clear_session()
 			stat.record_evaluation(is_invalid=True)
 
@@ -1270,23 +1292,17 @@ class Individual:
 			random_state = store_random_state()
 
 			# evaluate and catch exceptions
-# 			try:
-			metrics = cnn_eval.evaluate_cnn(phenotype, cnn_eval.dataset, stat)
-			if metrics:
-				cnn_eval.cache_update(phenotype, metrics, self.id)
-				self.set_metrics(metrics, cnn_eval)
-
-#			except tf.errors.ResourceExhaustedError as e:
-#				log_warning(f"{self.id} : ResourceExhaustedError {e}")
-#				keras.backend.clear_session()
-#				stat.record_evaluation(is_invalid=True)
-#			except (TypeError, ValueError) as e:
-#				log_warning(f"{self.id} : caught exception {e}")
-#				keras.backend.clear_session()
-#				stat.record_evaluation(is_invalid=True)
-
-			restore_random_state(random_state)
-
+			try:
+				metrics = cnn_eval.evaluate_cnn(phenotype, cnn_eval.dataset, stat)
+				if metrics:
+					cnn_eval.cache_update(phenotype, metrics, self.id)
+					self.set_metrics(metrics, cnn_eval)
+			except Exception as e:
+				log_warning(f"While evaluating {self.id} caught exception: {Individual.pretty_exception_text(e)}")
+				keras.backend.clear_session()
+				stat.record_evaluation(is_invalid=True)
+			finally:
+				restore_random_state(random_state)
 		return self.metrics is not None
 
 		# phenotype_list = [ind.get_phenotype(grammar) for ind in individual_list]
@@ -1298,8 +1314,7 @@ class Individual:
 		thread_number = int(thread_name[thread_name.rindex("_") + 1:])
 		with tf.device(gpu_list[thread_number]):
 			log_bold(f"{ind.id_and_layer_description()} starts on {gpu_list[thread_number].name} in thread {thread_name}")
-			result = ind.evaluate_individual(grammar, cnn_eval, stat, use_cache=False)
-		return result
+			ind.evaluate_individual(grammar, cnn_eval, stat, use_cache=False)
 
 	@staticmethod
 	def evaluate_multiple_individuals(individual_list, grammar, cnn_eval, stat):
@@ -1310,15 +1325,9 @@ class Individual:
 				future_to_evaluate_individual = {executor.submit(Individual.evaluate_in_thread, ind, grammar, cnn_eval, stat) : ind for ind in individual_list}
 				for future in concurrent.futures.as_completed(future_to_evaluate_individual):
 					result = future_to_evaluate_individual[future]
-					if not result:
-						log_warning(f"Invalid multiple evaluation in list starting with {individual_list[0].id}")
-						ok = False
 		else:
 			for ind in individual_list:
 				result = ind.evaluate_individual(grammar, cnn_eval, stat)
-				if not result:
-					log_warning(f"Invalid multiple evaluation in list starting with {individual_list[0].id}")
-					ok = False
 		return ok
 
 	def set_metrics(self, metrics, cnn_eval, log_suffix=None):

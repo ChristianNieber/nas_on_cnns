@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored. This is overridden if main_20_runs.py is used
-    "experiment_name" : "XXX",
+    "experiment_name" : "Random Search",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
@@ -44,7 +44,7 @@
     //macro blocks: currently only learning
     "macro_structure": ["learning"],
 
-    //number of layers for all initialisation. NOTE: This is also used to generate all random individuals, and is different from the other strategies.
+    //number of layers for all initialisation. NOTE: In Random stragy, this is also used to generate all random individuals (unlike all other strategies).
     "network_structure_init": {"features":[2,3,4,5], "classification":[1]}
   },
 
@@ -53,7 +53,7 @@
     // use cache file for storing and retrieving evaluated network configurations
     // The cache file path is relative to the data file path. A global cache for all experiments with 10 epochs is used.
     "use_evaluation_cache": true,
-    "evaluation_cache_file": "../../cache_10.pkl",
+    "evaluation_cache_file": "../cache_10.pkl",
 
     //data augmentation generator for the training data - keras interpretable
     //set to "None" if no data augmentation is to be used

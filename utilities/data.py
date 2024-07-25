@@ -57,11 +57,7 @@ class Dataset:
 				(x_train, y_train), (x_test, y_test) = tf.keras.datasets.fashion_mnist.load_data()
 				n_classes = 10
 
-				x_train = 255 - x_train
-				x_test = 255 - x_test
-
-				x_train = self.resize_data((x_train, shape))
-				x_test = self.resize_data((x_test, shape))
+				reshape_data = False
 
 			# 255, unbalanced
 			elif dataset_name == 'svhn':
@@ -131,9 +127,9 @@ class Dataset:
 			original_X_train = original_X_train.reshape((-1, 32, 32, 3))
 			X_final_test = X_final_test.reshape((-1, 32, 32, 3))
 
-		# for batch_size=1536, better use test_size=7776, test_size=4608
-		X_train, X_val, y_train, y_val = train_test_split(original_X_train, original_y_train, test_size=6752, shuffle=True, stratify=original_y_train)
-		X_val, X_test, y_val, y_test = train_test_split(X_val, y_val, test_size=3680, shuffle=True, stratify=y_val)
+		# for batch_size=512, better use test_size=6752, test_size=3680
+		X_train, X_val, y_train, y_val = train_test_split(original_X_train, original_y_train, test_size=7000, shuffle=True, stratify=original_y_train)
+		X_val, X_test, y_val, y_test = train_test_split(X_val, y_val, test_size=3500, shuffle=True, stratify=y_val)
 
 		self.train_dataset_size = X_train.shape[0]
 		self.val_dataset_size = X_val.shape[0]

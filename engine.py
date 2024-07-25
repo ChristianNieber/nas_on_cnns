@@ -19,16 +19,14 @@ from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar, StepperStrategy, RandomSearchStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-DEBUG_CONFIGURATION = 0				# use config_debug.json default configuration file instead of config.json
-LOG_DEBUG = 0						# log debug messages (about caching)
+LOG_DEBUG = 1						# log debug messages (about caching)
 LOG_MUTATIONS = 0					# log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 0			# log long description of new best individual
 SAVE_MILESTONE_GENERATIONS = 50     # save milestone every 50 generations
-EXPERIMENTAL_MULTITHREADING = False # use multithreading
+EXPERIMENTAL_MULTITHREADING = True  # use multithreading when multiple (physical or logical) GPUS are available
 
-# turn off annoying keras log messages
-# os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
-
+# turn off Keras log messages
+os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 def pickle_evaluator(evaluator: Evaluator, save_path):
 	""" Save the Evaluator instance to later enable resuming evolution - currently unused"""
@@ -187,8 +185,10 @@ def load_config(config_file):
 	return config
 
 def evaluate_generation(generation_list: list[Individual], grammar: StepperGrammar, cnn_eval: Evaluator, stat: RunStatistics, force_reevaluation=False):
-	""" Evaluate a whole generation of individuals """
-	generation_start_time = time()
+	"""
+	  Evaluate a whole generation of individuals
+	  Will only evaluate individuals where metrics is None, unless force_reevaluation is True.
+	"""
 	parallel_list = []
 	for ind in generation_list:
 		if force_reevaluation:
@@ -200,15 +200,11 @@ def evaluate_generation(generation_list: list[Individual], grammar: StepperGramm
 			# 		return False
 			# 	parallel_list = []
 
-	result = Individual.evaluate_multiple_individuals(parallel_list, grammar, cnn_eval, stat)
-
-	generation_time = time() - generation_start_time
-	log_bold(f"Generation evaluation time: {generation_time:.2f}")
-	stat.eval_time_of_generation.append(generation_time)
-	return result
+	return Individual.evaluate_multiple_individuals(parallel_list, grammar, cnn_eval, stat)
 
 
-def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, dataset='mnist', config_file='config/config.json', grammar_file='config/lenet.grammar', override_experiment_name=None, override_random_seed=None):
+def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, dataset='mnist', config_file='config/config.json',
+                  override_experiment_name=None, override_random_seed=None, override_evaluation_cache_file=None, return_after_generations=0):
 	"""
 		do (my+/,lambda)-ES for NAS search
 
@@ -222,18 +218,17 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			dataset to be solved
 		config_file : str
 			path to the configuration file
-		grammar_file : str
-			path to the grammar file
 		override_experiment_name : bool
 			overrides EXPERIMENT_NAME from config file if set
 		override_random_seed : bool
 			overrides RANDOM_SEED from config file if set
+		return_after_generations : int
+			0 or max number of completed generations after which the function returns
+		returns: bool
+			True - completed search
+			False - not completed because max_generations were process
 	"""
 
-	if DEBUG_CONFIGURATION and config_file == 'config/config.json':
-		config_file = 'config/config_debug.json'
-
-	# load config file
 	config = load_config(config_file)
 	EXPERIMENT_NAME = config['EVOLUTIONARY']['experiment_name']
 	if override_experiment_name is not None:
@@ -249,8 +244,12 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	LAMBDA = config['EVOLUTIONARY']['lambda']
 	COMMA_STRATEGY = config['EVOLUTIONARY']['comma_strategy']
 	NAS_STRATEGY = config['EVOLUTIONARY']['nas_strategy']
+	grammar_file = config['EVOLUTIONARY']['grammar'] if 'grammar' in config['EVOLUTIONARY'].keys() else 'lenet.grammar'
+	i = config_file.rfind('/')
+	if i:
+		grammar_file = config_file[:i+1] + grammar_file
 	MAX_PARAMETERS = config['EVOLUTIONARY']['max_parameters'] if 'max_parameters' in config['EVOLUTIONARY'].keys() else 0
-	INITIAL_SIGMA = config['EVOLUTIONARY']['stepper_initial_sigma'] if 'stepper_initial_sigma' in config['EVOLUTIONARY'].keys() else 0.5
+	STEPPER_INITIAL_SIGMA = config['EVOLUTIONARY']['stepper_initial_sigma'] if 'stepper_initial_sigma' in config['EVOLUTIONARY'].keys() else 0.5
 
 	NETWORK_STRUCTURE = config['NETWORK']['network_structure']
 	MACRO_STRUCTURE = config['NETWORK']['macro_structure']
@@ -259,8 +258,14 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 	USE_EVALUATION_CACHE = config['TRAINING']['use_evaluation_cache']
 	EVALUATION_CACHE_FILE = config['TRAINING']['evaluation_cache_file']
+	if override_evaluation_cache_file is not None:
+		EVALUATION_CACHE_FILE = override_evaluation_cache_file
+
+	OVERRIDE_BATCH_SIZE = config['TRAINING']['batch_size'] if 'batch_size' in config['TRAINING'].keys() else None
+
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
+
 	K_FOLDS = config['TRAINING']['k_folds']
 	SELECT_BEST_WITH_K_FOLDS_ACCURACY = config['TRAINING']['select_best_with_k_folds_accuracy']
 	TEST_INIT_SEEDS = config['TRAINING']['test_init_seeds']
@@ -284,12 +289,12 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		nas_strategy = FDENSERStrategy()
 	elif NAS_STRATEGY == "Stepper-Decay" or NAS_STRATEGY == "Stepper-Adaptive":
 		grammar = StepperGrammar(grammar_file)
-		nas_strategy = StepperStrategy(NAS_STRATEGY == "Stepper-Adaptive", initial_sigma=INITIAL_SIGMA)
+		nas_strategy = StepperStrategy(NAS_STRATEGY == "Stepper-Adaptive", initial_sigma=STEPPER_INITIAL_SIGMA)
 	elif NAS_STRATEGY == "Random":
 		grammar = StepperGrammar(grammar_file)
 		nas_strategy = RandomSearchStrategy(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, NETWORK_STRUCTURE_INIT)
 	else:
-		raise TypeError("nas_strategy must be 'Random', 'F-DENSER' or 'Stepper'")
+		raise TypeError("nas_strategy must be 'Random', 'F-DENSER', 'Stepper-Adaptive', or 'Stepper-Decay'")
 
 	nas_strategy.set_grammar(grammar)
 
@@ -298,6 +303,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 	population = []
 	last_gen = -1
+	generation_time = 0
 	# load previous population content (if any)
 	unpickle = unpickle_population_and_statistics(save_path_with_run, RESUME_GENERATION) if RESUME else None
 	# if there is not a previous population/statistics file
@@ -316,14 +322,12 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		stat = RunStatistics(RANDOM_SEED)
 		stat.init_session()
 
-		log_bold(f"[Experiment {EXPERIMENT_NAME} in folder {save_path} run#{run_number:02}]")
-
 	else:
 		logger_configure_overwrite(False)
 		last_gen, population, stat = unpickle
 		if last_gen + 1 >= NUM_GENERATIONS:
-			print(f'{EXPERIMENT_NAME} run#{run_number:02} in folder {save_path} is already complete, generation {last_gen}')
-			return
+			print(f'{EXPERIMENT_NAME} run#{run_number:02} is already complete ({last_gen+1} generations)')
+			return True
 
 	# set random seeds
 	if RANDOM_SEED != -1:
@@ -334,8 +338,10 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	evaluation_cache_path = None
 	if USE_EVALUATION_CACHE:
 		evaluation_cache_path = Path(save_path, EVALUATION_CACHE_FILE).resolve()
-	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, max_parameters=MAX_PARAMETERS, for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY, test_init_seeds=TEST_INIT_SEEDS,
-							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test, n_gpus=0)
+	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, max_parameters=MAX_PARAMETERS,
+	                     for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY, test_init_seeds=TEST_INIT_SEEDS,
+	                     evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test,
+	                     override_batch_size=OVERRIDE_BATCH_SIZE, n_gpus=0)
 
 	if unpickle is None:
 		# pickle_evaluator(cnn_eval, save_path_with_run) # save evaluator
@@ -347,7 +353,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 		initial_population_size = LAMBDA if INITIAL_INDIVIDUALS == 'random' else 1
 		start_time = time()
-		log(f'Creating the initial population of {initial_population_size}')
+		log_bold(f"[{EXPERIMENT_NAME} run#{run_number:02} in folder '{save_path}', {RANDOM_SEED=}: Creating the initial population of {initial_population_size}]")
 		for idx in range(initial_population_size):
 			while True:
 				new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
@@ -365,8 +371,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			population.append(new_individual)
 			cnn_eval.flush_evaluation_cache()  # flush after every created individual
 
-		stat.eval_time_of_generation = [time() - start_time]
-		log()
+		generation_time = time() - start_time
+		stat.eval_time_of_generation = [generation_time]
 
 	# in case there is a previous population, load it
 	else:
@@ -378,28 +384,31 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		new_parents = select_new_parents(population, MY)
 		population = new_parents
 
-		log('\n========================================================================================================')
-		log_bold(f'Resuming experiment {EXPERIMENT_NAME} run#{run_number:02} in folder {save_path} after generation {last_gen}')
+		log_bold(f"[Resuming experiment {EXPERIMENT_NAME} run#{run_number:02} at generation {last_gen + 1} in folder '{save_path}']")
 
+	completed_generations = 0
 	generation_list = []
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
 		if gen:
+			generation_start_time = time()
 			if EXPERIMENTAL_MULTITHREADING:
+				idx = 0
 				while True:
-					for idx in range(LAMBDA):
+					while len(generation_list) < LAMBDA:
 						parent = select_parent(population[0:MY])
 						while True:
 							new_individual = nas_strategy.mutation(parent, gen, idx)
-							if new_individual.validate_individual(grammar, cnn_eval, stat, use_cache=False):
+							if new_individual.validate_individual(grammar, cnn_eval, stat, use_cache=True):
 								break
+						idx += 1
 						generation_list.append(new_individual)
-					if evaluate_generation(generation_list, grammar, cnn_eval, stat):
+					evaluate_generation(generation_list, grammar, cnn_eval, stat)
+					generation_list = [ind for ind in generation_list if ind.metrics]   # delete individuals without metrics. This indicates an exception occurred.
+					if len(generation_list) >= LAMBDA:                                  # fill up with new individuals if any were deleted
 						break
-					log_bold("Invalid generation created, trying again for whole generation")
-					generation_list = []
+					log_bold('Individual evaluation in generation caused exception, filling up with new individual')
 			else:
-				generation_start_time = time()
 				for idx in range(LAMBDA):
 					parent = select_parent(population[0:MY])
 					while True:
@@ -407,8 +416,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 						if new_individual.evaluate_individual(grammar, cnn_eval, stat, use_cache=False):
 							break
 					generation_list.append(new_individual)
-				stat.eval_time_of_generation.append(time() - generation_start_time)
-
+			generation_time = time() - generation_start_time
+			stat.eval_time_of_generation.append(generation_time)
 		# select candidates for parents
 		population += generation_list
 		if gen and COMMA_STRATEGY:
@@ -417,7 +426,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			selection_pool = population
 		new_parents = select_new_parents(selection_pool, MY)
 
-		log_nolf(f'[Generation %d in {EXPERIMENT_NAME}] ' % gen)
+		log_nolf(f"[Generation {gen} in {EXPERIMENT_NAME} run#{run_number:02} took {generation_time:.2f} s] ")
 
 		# if there are new parent candidates, do K-fold validation on them
 		new_parent_candidates_count = 0
@@ -476,7 +485,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			generation_list.append(population[0])
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
-		if NAS_STRATEGY == "Stepper":
+		if NAS_STRATEGY.startswith("Stepper"):
 			best_in_generation.record_stepwidth_statistics(stat.stepwidth_stats)
 		if COMMA_STRATEGY:
 			best_individual_overall.record_statistics(stat.best)
@@ -506,6 +515,11 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		for parent in population:
 			parent.is_parent = True
 
+		completed_generations += 1
+		if return_after_generations and completed_generations >= return_after_generations and gen < NUM_GENERATIONS-1:
+			log_bold(f"[Exiting after {completed_generations} completed generations, {EXPERIMENT_NAME} run#{run_number} after generation {gen}]")
+			return False
+
 	parent = population[0]
 	parent.log_long_description('Final Individual')
 
@@ -515,9 +529,11 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 	stat.log_statistics_summary(1)
 
+	log_bold(f"[{EXPERIMENT_NAME} Run#{run_number} completed]")
+
+	return True
 	# if NAS_STRATEGY == "F-DENSER":
 	# 	nas_strategy.dump_mutated_variables(stat.evaluations_total)
-
 
 
 def test_saved_model(save_path, name='best.h5'):

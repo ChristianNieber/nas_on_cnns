@@ -9,8 +9,9 @@ import glob
 import pandas as pd
 import matplotlib.colors as mc
 import colorsys
+import scipy
 
-from runstatistics import RunStatistics, hms
+from runstatistics import RunStatistics, decimal_hours
 
 # plot colors and alpha channel
 COLOR_DOTS = '#808080'
@@ -21,6 +22,7 @@ ALPHA_BEST_IN_GEN = 0.3
 
 # global variables
 DEFAULT_EXPERIMENT_PATH = "D:/experiments/"
+# in colab use '/content/gdrive/MyDrive/experiments/'
 DEFAULT_SAVE_PATH = "D:/experiments/graphs/"
 EXPERIMENT_NAMES = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']   # All experiment folders used in plots
 SAVE_ALL_PICTURES_FORMAT = None
@@ -41,7 +43,6 @@ def load_stats(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH, max_run
 	while stats[-1].run_generation < stats[0].run_generation:   # delete last stat if incomplete
 		del stats[-1]
 	return stats
-
 
 def calculate_statistics(stats, m):
 	values = [run.best.metric(m)[-1] for run in stats]    # get metric of best of last generation over all runs
@@ -66,13 +67,14 @@ def print_statistics(stats, experiment_name):
 	k_fold_evaluations = sum(stat.evaluations_k_folds for stat in stats)
 	cache_hits = sum(stat.evaluations_cache_hits for stat in stats)
 	invalid = sum(stat.evaluations_invalid for stat in stats)
-	print(f"{total_evaluations} evaluations, " + (f" {k_fold_evaluations} for k-folds), " if k_fold_evaluations else "") + f"{cache_hits} cache hits, {invalid} invalid")
+	constraints_violated = sum(stat.evaluations_constraints_violated for stat in stats) if hasattr(stat, 'evaluations_constraints_violated') else -1
 	run_time = sum(stat.run_time for stat in stats)
 	eval_time = sum(stat.eval_time for stat in stats)
 	eval_time_this_run = sum(stat.eval_time_this_run for stat in stats)
 	eval_time_k_folds = sum(stat.eval_time_k_folds for stat in stats)
 	eval_time_k_folds_this_run = sum(stat.eval_time_k_folds_this_run for stat in stats)
-	print(f"runtime {hms(run_time)}, evaluation time {hms(eval_time)} (this run {hms(eval_time_this_run)})" + (f", k-folds: {hms(eval_time_k_folds)} (this run {hms(eval_time_k_folds_this_run)})" if eval_time_k_folds else ""))
+	print(f"{total_evaluations} evaluations, " + (f" {k_fold_evaluations} for k-folds), " if k_fold_evaluations else "") + f"{cache_hits} cache hits, {invalid} invalid, {constraints_violated} constraints violated, avg evaluation time: {run_time/total_evaluations:.2f} s")
+	print(f"runtime {decimal_hours(run_time)}, evaluation time {decimal_hours(eval_time)} (this run {decimal_hours(eval_time_this_run)})" + (f", k-folds: {decimal_hours(eval_time_k_folds)} (this run {decimal_hours(eval_time_k_folds_this_run)})" if eval_time_k_folds else ""))
 	print()
 	columns = ['', 'Average', 'Median', 'Std', 'Worst', 'Best', 'Best run']
 	data = []
@@ -80,8 +82,11 @@ def print_statistics(stats, experiment_name):
 		mean, median, std, worst, best, best_index = calculate_statistics(stats, m)
 		data.append([RunStatistics.metric_name(m), mean, median, std, worst, best, best_index])
 	# pd.options.display.float_format = '{: .4f}'.format
+	pd.set_option('display.max_columns', None)
+	pd.set_option('display.max_colwidth', None)
+	pd.set_option("expand_frame_repr", False)
 	df = pd.DataFrame(data, columns=columns)
-	df = df.round(decimals=2).astype(object)
+	df = df.round(decimals=2)    # .astype(object)
 	print(df)
 
 
@@ -417,7 +422,7 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 		for stats in stats_list:
 			values = [run.best.metric(m)[-1] for run in stats]  # get metric of best of last generation over all runs
 			values_list.append(values)
-		bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names, medianprops=medianprops)
+		bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names, medianprops=medianprops, notch=True)
 		if m == 0:
 			ax.set_ylim(0)
 		if m == 1:
@@ -430,18 +435,39 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	plt.savefig(save_path + f"Box Plots Fitness Error Parameters." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
 	plt.show()
 
+def run_nonparametric_tests(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
+
+	names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
+
+	stats_list = []
+	for name in names:
+		stats = load_stats(name, max_runs=20)
+		stats_list.append(stats)
+
+	for i in range(0, 2+1):
+		m = [2, 0, 1][i]
+		print(f"\nParameter {RunStatistics.metric_name(m)}:")
+		values_list = []
+		for stats in stats_list:
+			values = [run.best.metric(m)[-1] for run in stats]  # get metric of best of last generation over all runs
+			values_list.append(values)
+
+		for (exp1, exp2) in [(1, 0), (2, 1), (3, 1), (3, 2)]:
+			result = scipy.stats.mannwhitneyu(values_list[exp1], values_list[exp2], alternative=('greater' if m==2 else 'less'))
+			print(f"{names[exp1]} > {names[exp2]}: p={result[1]:.6f}")
+			# result = scipy.stats.mannwhitneyu(values_list[exp1], values_list[exp2])
+			# print(f"{names[exp1]} = {names[exp2]}: p={result[1]:.6f}")
+
 
 # Module's main function. Call this and uncomment to generate different plots.
 if __name__ == "__main__":
-	# experiments_path = 'D:/experiments/'
-	# experiments_path = '/content/gdrive/MyDrive/experiments/'
-
 	name = 'Stepper-Adaptive'
 
 	stats = load_stats(name)
 	print_statistics(stats, name)
-	do_all_plots(stats, experiment_name=name, plot_individual_runs=True, plot_best_run=True, group_pictures=True)
+	# do_all_plots(stats, experiment_name=name, plot_individual_runs=True, plot_best_run=True, group_pictures=True)
 
+	# run_nonparametric_tests()
 	box_plots_3()
 	# box_plot(2)
 	# box_plot(0)

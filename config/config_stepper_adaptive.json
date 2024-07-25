@@ -3,7 +3,7 @@
   "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored. This is overridden if main_20_runs.py is used
-    "experiment_name" : "Stepper-Adaptive test",
+    "experiment_name" : "Stepper-Adaptive",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
@@ -30,8 +30,14 @@
     "comma_strategy": false,
 
     // NAS strategy to use: "Random", "F-DENSER", "Stepper-Decay" or "Stepper-Adaptive"
-    "nas_strategy": "Stepper-Adaptive"
-  },
+    "nas_strategy": "Stepper-Adaptive",
+
+    // 0, or maximum number of trainable parameters of a generated architecture. A larger architecture is considered invalid for NAS. 0 for no limit.
+    "max_parameters": 0,
+
+   // initial step width for Stepper-Decay and Stepper-Adaptive
+   "stepper_initial_sigma" : 0.5
+},
 
   //network specific parameters
   "NETWORK": {
@@ -44,7 +50,7 @@
     //macro blocks: currently only learning
     "macro_structure": ["learning"],
 
-    //number of layers on random initialisation
+    //number of layers for random initialisation
     "network_structure_init": {"features":[2,3,4], "classification":[1]}
   },
 

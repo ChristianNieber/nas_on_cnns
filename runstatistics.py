@@ -15,9 +15,9 @@ def average_standard_deviation(numlist):
 	return np.sqrt(np.sum([i ** 2 for i in numlist]) / len(numlist))
 
 
-def hms(seconds):
-	""" from time given in (fractional) seconds, return string in HH:MM:SS format """
-	return strftime("%H:%M:%S", gmtime(seconds))
+def decimal_hours(seconds):
+	""" from time given in (fractional) seconds, return string in <hours>h:MM:SS format """
+	return f"{seconds/3600:.2f} h"
 
 
 class RunStatistics:
@@ -132,10 +132,11 @@ class RunStatistics:
 		self.eval_time_this_run = 0
 		self.eval_time_k_folds = 0
 		self.eval_time_k_folds_this_run = 0
-		self.evaluations_total = 0
-		self.evaluations_k_folds = 0
+		self.evaluations_total = 0              # evaluations excluding invalid evaluations
+		self.evaluations_k_folds = 0            # evaluations for folds
 		self.evaluations_cache_hits = 0
-		self.evaluations_invalid = 0
+		self.evaluations_invalid = 0            # usually means keras error during model construction
+		self.evaluations_constraints_violated = 0
 		self.session_start_time = time()
 		self.session_previous_runtime = 0
 		self.random_state = random.getstate()
@@ -260,8 +261,10 @@ class RunStatistics:
 		self.generation_eval_time.append([ind.metrics.eval_time for ind in generation_list])
 		self.run_time = self.session_previous_runtime + time() - self.session_start_time
 
-	def record_evaluation(self, seconds=.0, is_cache_hit=False, is_k_folds=False, is_invalid=False):
-		if is_invalid:
+	def record_evaluation(self, seconds=.0, is_cache_hit=False, is_k_folds=False, is_invalid=False, constraints_violated=False):
+		if constraints_violated:
+			self.evaluations_constraints_violated += 1
+		elif is_invalid:
 			self.evaluations_invalid += 1
 		else:
 			self.evaluations_total += 1
@@ -287,8 +290,8 @@ class RunStatistics:
 			f_json.write(json_dump)
 
 	def log_run_summary(stat):
-		log(f"{stat.evaluations_total} evaluations, {stat.evaluations_cache_hits} cache hits, {stat.evaluations_invalid} invalid")
-		log(f"runtime {hms(stat.run_time)}, evaluation time {hms(stat.eval_time)} (this run {hms(stat.eval_time_this_run)})")
+		log(f"{stat.evaluations_total} evaluations, {stat.evaluations_cache_hits} cache hits, {stat.evaluations_invalid} invalid,  avg evaluation time: {stat.eval_time/stat.evaluations_total:.2f} s")
+		log(f"runtime {decimal_hours(stat.run_time)}, evaluation time {decimal_hours(stat.eval_time)} (this run {decimal_hours(stat.eval_time_this_run)})")
 
 	def log_statistics_summary(self, start_generation=0):
 
@@ -310,7 +313,7 @@ class RunStatistics:
 class CnnEvalResult:
 	""" results returned by Evaluator.evaluate_cnn """
 
-	def __init__(self, history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered, parameters, keras_layers, model_layers, accuracy, fitness, model_summary):
+	def __init__(self, history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered, parameters, keras_layers, model_layers, accuracy, fitness, batch_size, model_summary):
 		self.final_test_accuracy = final_test_accuracy
 		self.eval_time = eval_time
 		self.training_time = training_time
@@ -323,6 +326,7 @@ class CnnEvalResult:
 		self.model_layers = model_layers
 		self.accuracy = accuracy
 		self.fitness = fitness
+		self.batch_size = batch_size
 		self.model_summary = model_summary
 		self.train_accuracy = 0
 		self.train_loss = 0
@@ -350,8 +354,8 @@ class CnnEvalResult:
 		return self.summary()
 
 	def summary(self, suffix=''):
-		return f"p: {self.parameters:6d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness:0.5f} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} epochs: {self.training_epochs:2d} t: {self.training_time:0.2f}s{suffix}"
+		return f"p: {self.parameters:6d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness:0.5f} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} epochs: {self.training_epochs:2d} t: {self.training_time:0.2f}s{suffix}{f' batch_size: {self.batch_size}' if hasattr(self, 'batch_size') else ''}"
 
 	@staticmethod
 	def dummy_eval_result():
-		return CnnEvalResult(None, 0, 0, 0, 0, 0, False, False, 0, 0, 0, 0, 0, '')
+		return CnnEvalResult(None, 0, 0, 0, 0, 0, False, False, 0, 0, 0, 0, 0, 0, '')

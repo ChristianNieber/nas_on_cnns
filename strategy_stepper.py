@@ -756,7 +756,7 @@ class StepperStrategy(NasStrategy):
 		if self.IS_ADAPTIVE:
 			ind.step_width = min(mutation_state.calculate_derandomized_sigma(), self.MAX_STEP_WIDTH)
 
-		ind.compute_mutated_variables_statistics([])
+		ind.compute_mutated_variables_statistics(mutable_vars)
 
 		return ind
 

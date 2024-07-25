@@ -27,3 +27,6 @@ I rewrote most of the code and extended the project to add features:
 To run all tests:
 
 `python -m unittest discover -s tests`
+
+# To do:
+- fix k-folds

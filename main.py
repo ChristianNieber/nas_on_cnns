@@ -1,8 +1,6 @@
 import engine
 
-engine.do_nas_search(config_file='config/config.json', grammar_file='config/lenet_fixed_learning.grammar')
-
-# engine.do_nas_search(config_file='config/config_fdenser.json', grammar_file='config/lenet_smallspace_fdenser.grammar')
+engine.do_nas_search(config_file='config/config.json')
 
 # from tests.test_utils import Test
 # test = Test()
@@ -14,10 +12,11 @@ engine.do_nas_search(config_file='config/config.json', grammar_file='config/lene
 '''
 To do
 
+fix k-fold tests
 add more test code
 
-multiple runs with different random seeds
-
+later
+-----
 - more activation functions and parameters?
 - numeric default values
 - ES integers
@@ -54,7 +53,5 @@ Done
 - save/restore random state
 - save log
 - colored log
-- early stopping
-- early stop parameter?
 - simplify layer representation
 '''
