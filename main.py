@@ -1,6 +1,6 @@
 import engine
 
-engine.do_nas_search(config_file='config/config.json')
+engine.do_nas_search(experiments_path='D:/experiments', config_file='config/config_debug.json', dataset='mnist', grammar_file='lenet.grammar')
 
 # from tests.test_utils import Test
 # test = Test()
@@ -12,7 +12,6 @@ engine.do_nas_search(config_file='config/config.json')
 '''
 To do
 
-fix k-fold tests
 add more test code
 
 later

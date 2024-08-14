@@ -1,80 +1,72 @@
 {
-  //Evolutionary algorithm parameters
-  "EVOLUTIONARY": {
+  //NAS algorithm parameters. Start main.py to run.
+"EVOLUTIONARY": {
 
-    // Experiment name is used for folder name where all files are stored
-    "experiment_name" : "Debug",
+    // Experiment name is used for folder name where all files are stored. This is overridden if main_20_runs.py is used
+    "experiment_name" : "Stepper-Adaptive test",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
 
-    // resume from saved state
+    // allow resume from saved state
     "resume": false,
 
-    // can resume at a certain generation (10, 20, ...)
+    // can resume at a certain generation (50, 100, ...)
     "resume_generation": 0,
 
-    // random seed for Random and numpy modules, -1 for none
+    // random seed for Random and numpy modules, -1 for none. This is incremented before each run if main_multiple_runs.py is used
     "random_seed" : 100,
 
     //Maximum number of generations
-    "num_generations": 20,
+    "num_generations": 100,
 
     // my - number of parents
     "my" : 1,
 
     //lambda - number of offspring
-    "lambda": 5,
+    "lambda": 3,
 
-    //comma strategy - no parents in selection
+    //comma strategy means no parents in selection
     "comma_strategy": false,
 
     // NAS strategy to use: "Random", "F-DENSER", "Stepper-Decay" or "Stepper-Adaptive"
-    "nas_strategy": "Stepper-Decay"
-  },
+    "nas_strategy": "Stepper-Adaptive",
+
+    // 0, or maximum number of trainable parameters of a generated architecture. A larger architecture is considered invalid for NAS. 0 for no limit.
+    "max_parameters": 0,
+
+   // initial step width for Stepper-Decay and Stepper-Adaptive
+   "stepper_initial_sigma" : 0.5
+},
 
   //network specific parameters
   "NETWORK": {
-    //structure fo the hidden layers of the network [[non-terminal, min, max], ...]
+    //structure of the layers groups of the network [[non-terminal, min, max], ...], i.e. we have 1 to 10 feature layers followed by 1 to 5 classification layers
     "network_structure": [["features", 1, 10], ["classification", 1, 5]],
 
-    //output layer
+    //output layer is added at the end
     "output": "output",
 
     //macro blocks: currently only learning
     "macro_structure": ["learning"],
 
-    //number of layers on random initialisation
+    //number of layers for random initialisation
     "network_structure_init": {"features":[2,3,4], "classification":[1]}
   },
 
   //training parameters
   "TRAINING": {
     // use cache file for storing and retrieving evaluated network configurations
+    // The cache file path is relative to the data file path. A global cache for all experiments with 10 epochs is used.
     "use_evaluation_cache": true,
-    "evaluation_cache_file": "../cache_debug.pkl",
+    "evaluation_cache_file": "../cache_test.pkl",
 
-    //data augmentation generator for the training data - keras interpretable
-    //set to "None" if no data augmentation is to be used
-    "datagen": "None",
-    // "datagen":"ImageDataGenerator(preprocessing_function=augmentation)",
-
-    //data augmentation generator for the validation and testing data - keras interpretable
-    //Has to be similar to datagen but without data augmentation
-    //set to "None" if no data augmentation is to be used
-    "datagen_test": "None",
-    // "datagen_test": "ImageDataGenerator()",
-
-    //maximum training time for each network (in seconds)
+    //maximum training time for each network architecture (in seconds)
     "max_training_time": 2,
-    //maximum training epochs for each network
+    //maximum training epochs for each network architecture
     "max_training_epochs": 2,
 
-    // find K folds accuracy for best individual, this specifies the number of folds or 0
-    "k_folds" : 0,
-    // select new parents on average K folds fitness
-    "select_best_with_k_folds_accuracy" : false,
-    // test different initialisation seeds (alternatively to k_folds). This specifies the number of different seeds to test or 0 for no seeds test
-    "test_init_seeds" : 0
+    // use data augmentation (defined in data_augmentation.py)
+    "use_data_augmentation": false
   }
 }

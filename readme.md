@@ -29,4 +29,5 @@ To run all tests:
 `python -m unittest discover -s tests`
 
 # To do:
-- fix k-folds
+- metric arrays as numpy
+- unity evaluation

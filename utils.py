@@ -11,10 +11,12 @@ import pynvml
 from utilities.data import Dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
+from keras.preprocessing.image import ImageDataGenerator
+from utilities.data_augmentation import augmentation
 import concurrent.futures
 import threading
 
-from runstatistics import RunStatistics, CnnEvalResult
+from runstatistics import RunStatistics, CnnEvalResult, format_fitness, format_accuracy
 from logger import *
 
 N_GPUS = 1                  # number of GPUs to simulate for parallel evaluation
@@ -25,6 +27,7 @@ EARLY_STOP_PATIENCE = 3
 
 LOG_MODEL_TRAINING = 0		# training progress: 0 none, 1 for progress bar, 2 for one line per epoch
 
+
 class Type(Enum):
 	NONTERMINAL = 0
 	TERMINAL = 1
@@ -32,7 +35,6 @@ class Type(Enum):
 	INT = 3
 	CAT = 4
 
-gpu_list = []
 
 def get_gpu_total_memory_mb(gpu_index):
 	pynvml.nvmlInit()
@@ -40,6 +42,10 @@ def get_gpu_total_memory_mb(gpu_index):
 	mem_info = pynvml.nvmlDeviceGetMemoryInfo(handle)
 	log_bold(f"Physical GPU: total {mem_info.total / 1024 ** 2:.2f} MB, used {mem_info.used / 1024 ** 2:.2f} MB, free {mem_info.free / 1024 ** 2:.2f} MB")
 	return int(mem_info.total // 1024**2)
+
+
+gpu_list = []
+
 
 def init_gpu(n_gpus=N_GPUS):
 	global N_GPUS
@@ -59,18 +65,21 @@ def init_gpu(n_gpus=N_GPUS):
 		if n_gpus == 1:
 			tf.config.experimental.set_memory_growth(gpus[0], True)
 		else:
-			tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=gpu_total_memory_mb//N_GPUS) for i in range(0, N_GPUS)])
+			tf.config.set_logical_device_configuration(gpus[0], [tf.config.LogicalDeviceConfiguration(memory_limit=gpu_total_memory_mb//N_GPUS) for _ in range(0, N_GPUS)])
 			log_bold(f"Splitting 1 physical GPU ({gpu_total_memory_mb} MB) into {N_GPUS} logical GPUs ({gpu_total_memory_mb//N_GPUS} MB)")
 		gpu_list = tf.config.list_logical_devices('GPU')
 		log_bold(f"{len(gpus)} physical GPUs, {len(gpu_list)} logical GPUs")
 
+
 def store_random_state():
 	""" store the random state relevant for mutations """
-	return (random.getstate(), np.random.get_state())
+	return random.getstate(), np.random.get_state()
 
-def restore_random_state(random_state : tuple):
+
+def restore_random_state(random_state: tuple):
 	random.setstate(random_state[0])
 	np.random.set_state(random_state[1])
+
 
 class TimedStopping(keras.callbacks.Callback):
 	"""
@@ -240,8 +249,8 @@ class Evaluator:
 		def set_k_fold_metrics(self, k_fold_metrics):
 			self.k_fold_metrics = k_fold_metrics
 
-	def __init__(self, dataset_name, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, max_parameters = 0, input_size=(28, 28, 1), for_k_fold_validation=False, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=False,
-	             evaluation_cache_path='', experiment_name='', data_generator=None, data_generator_test=None, use_float=False, n_gpus=None, override_batch_size=None):
+	def __init__(self, dataset_name, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, max_parameters=0, for_k_fold_validation=False,
+					evaluation_cache_path='', experiment_name='', use_float=False, use_augmentation=False, n_gpus=None, override_batch_size=None):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -249,10 +258,6 @@ class Evaluator:
 			----------
 			dataset_name : str
 				dataset to be loaded
-			data_generator : keras.preprocessing.image.ImageDataGenerator
-				Data augmentation method image data generator
-			data_generator_test : keras.preprocessing.image.ImageDataGenerator
-				Image data generator without augmentation
 			fitness_func : function
 				calculates fitness from accuracy and number of trainable weights
 			override_batch_size : int
@@ -261,7 +266,8 @@ class Evaluator:
 		if n_gpus is not None:
 			init_gpu(n_gpus=n_gpus)
 
-		self.dataset = Dataset(dataset_name, use_float=use_float, for_k_fold_validation=for_k_fold_validation)
+		self.dataset = Dataset(dataset_name, use_float=use_float, use_augmentation=use_augmentation, for_k_fold_validation=for_k_fold_validation)
+		self.input_size = self.dataset.input_size
 		self.fitness_func = fitness_func
 		self.max_training_time = max_training_time
 		self.max_training_epochs = max_training_epochs
@@ -270,17 +276,19 @@ class Evaluator:
 		self.early_stop_delta = EARLY_STOP_DELTA
 		self.early_stop_patience = EARLY_STOP_PATIENCE
 
-		self.calculate_fitness_with_k_folds = calculate_fitness_with_k_folds_accuracy
-		self.test_init_seeds = test_init_seeds
 		self.evaluation_cache_path = evaluation_cache_path
 		self.evaluation_cache = {}
 		self.evaluation_cache_changed = False
 
 		self.experiment_name = experiment_name
-		self.data_generator = data_generator
-		self.data_generator_test = data_generator_test
-		self.input_size = input_size
+
 		self.override_batch_size = override_batch_size
+
+		self.data_generator = None
+		self.data_generator_test = None
+		if use_augmentation:
+			self.data_generator = ImageDataGenerator(preprocessing_function=augmentation)
+			self.data_generator_test = ImageDataGenerator()
 
 		if self.evaluation_cache_path:
 			if os.path.isfile(self.evaluation_cache_path):
@@ -289,7 +297,6 @@ class Evaluator:
 				log_bold(f"loaded {len(self.evaluation_cache)} cache entries from {self.evaluation_cache_path}")
 			else:
 				log_bold(f"will create new evaluation cache {self.evaluation_cache_path}")
-
 
 	def init_options(self, early_stop_patience, early_stop_delta):
 		self.early_stop_patience = early_stop_patience
@@ -302,7 +309,7 @@ class Evaluator:
 
 	def flush_evaluation_cache(self):
 		""" if evaluation cache entries have been added, write all to file """
-		if self.evaluation_cache_path and self.evaluation_cache_changed and self.test_init_seeds == 0:
+		if self.evaluation_cache_path and self.evaluation_cache_changed:
 			self.evaluation_cache_changed = False
 			with open(self.evaluation_cache_path, 'wb') as fh:
 				pickle.dump(self.evaluation_cache, fh, protocol=pickle.HIGHEST_PROTOCOL)
@@ -420,13 +427,13 @@ class Evaluator:
 			# convolutional layer
 			if layer_type == 'conv':
 				conv_layer = tf.keras.layers.Conv2D(filters=int(layer_params['num-filters']),
-				                                    kernel_size=(int(layer_params['filter-shape']), int(layer_params['filter-shape'])),
-				                                    strides=(int(layer_params['stride']), int(layer_params['stride'])),
-				                                    padding=layer_params['padding'],
-				                                    use_bias=eval(layer_params['bias']),
-				                                    # activation=layer_params['act'],
-				                                    kernel_initializer='he_normal',
-				                                    kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+													kernel_size=(int(layer_params['filter-shape']), int(layer_params['filter-shape'])),
+													strides=(int(layer_params['stride']), int(layer_params['stride'])),
+													padding=layer_params['padding'],
+													use_bias=eval(layer_params['bias']),
+													# activation=layer_params['act'],
+													kernel_initializer='he_normal',
+													kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(conv_layer)
 
 			# batch-normalisation
@@ -438,32 +445,32 @@ class Evaluator:
 			# average pooling layer; pool-avg is for fd back compatibility
 			elif layer_type == 'pool-avg' or (layer_type == 'pooling' and layer_params['pooling-type'] == 'avg'):
 				pool_avg = tf.keras.layers.AveragePooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
-				                                            strides=int(layer_params['stride']),
-				                                            padding=layer_params['padding'])
+															strides=int(layer_params['stride']),
+															padding=layer_params['padding'])
 				layers.append(pool_avg)
 
 			# max pooling layer, pool-max is for fd back compatibility
 			elif layer_type == 'pool-max' or (layer_type == 'pooling' and layer_params['pooling-type'] == 'max'):
 				pool_max = tf.keras.layers.MaxPooling2D(pool_size=(int(layer_params['kernel-size']), int(layer_params['kernel-size'])),
-				                                        strides=int(layer_params['stride']),
-				                                        padding=layer_params['padding'])
+														strides=int(layer_params['stride']),
+														padding=layer_params['padding'])
 				layers.append(pool_max)
 
 			# fully-connected layer
 			elif layer_type == 'fc':
 				fc = tf.keras.layers.Dense(int(layer_params['num-units']),
-				                           use_bias=eval(layer_params['bias']),
-				                           # activation=layer_params['act'],
-				                           kernel_initializer='he_normal',
-				                           kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+											use_bias=eval(layer_params['bias']),
+											# activation=layer_params['act'],
+											kernel_initializer='he_normal',
+											kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(fc)
 
 			elif layer_type == 'output':
 				output_layer = tf.keras.layers.Dense(int(layer_params['num-units']),
-				                                     use_bias=eval(layer_params['bias']),
-				                                     activation='softmax',
-				                                     kernel_initializer='he_normal',
-				                                     kernel_regularizer=tf.keras.regularizers.l2(0.0005))
+														use_bias=eval(layer_params['bias']),
+														activation='softmax',
+														kernel_initializer='he_normal',
+														kernel_regularizer=tf.keras.regularizers.l2(0.0005))
 				layers.append(output_layer)
 
 			# dropout layer
@@ -474,33 +481,33 @@ class Evaluator:
 			# gru layer DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'gru':
 				gru = tf.keras.layers.GRU(units=int(layer_params['units']),
-				                          activation=layer_params['act'],
-				                          recurrent_activation=layer_params['rec_act'],
-				                          use_bias=eval(layer_params['bias']))
+											activation=layer_params['act'],
+											recurrent_activation=layer_params['rec_act'],
+											use_bias=eval(layer_params['bias']))
 				layers.append(gru)
 
 			# lstm layer DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'lstm':
 				lstm = tf.keras.layers.LSTM(units=int(layer_params['units']),
-				                            activation=layer_params['act'],
-				                            recurrent_activation=layer_params['rec_act'],
-				                            use_bias=eval(layer_params['bias']))
+											activation=layer_params['act'],
+											recurrent_activation=layer_params['rec_act'],
+											use_bias=eval(layer_params['bias']))
 				layers.append(lstm)
 
 			# rnn DENSERTODO: initializers, recurrent dropout, dropout, unroll, reset_after
 			elif layer_type == 'rnn':
 				rnn = tf.keras.layers.SimpleRNN(units=int(layer_params['units']),
-				                                activation=layer_params['act'],
-				                                use_bias=eval(layer_params['bias']))
+												activation=layer_params['act'],
+												use_bias=eval(layer_params['bias']))
 				layers.append(rnn)
 
 			elif layer_type == 'conv1d':  # missing initializer
 				conv1d = tf.keras.layers.Conv1D(filters=int(layer_params['num-filters']),
-				                                kernel_size=int(layer_params['kernel-size']),
-				                                strides=int(layer_params['stride']),
-				                                padding=layer_params['padding'],
-				                                activation=layer_params['activation'],
-				                                use_bias=eval(layer_params['bias']))
+												kernel_size=int(layer_params['kernel-size']),
+												strides=int(layer_params['stride']),
+												padding=layer_params['padding'],
+												activation=layer_params['activation'],
+												use_bias=eval(layer_params['bias']))
 				layers.append(conv1d)
 			else:
 				raise ValueError(f"Invalid {layer_type=}")
@@ -604,7 +611,7 @@ class Evaluator:
 		return '\n'.join(stringlist)
 
 	@staticmethod
-	def assemble_optimiser(learning):
+	def assemble_optimizer(learning):
 		"""
 			Maps the learning into a keras optimiser
 
@@ -615,8 +622,8 @@ class Evaluator:
 
 			Returns
 			-------
-			optimiser : keras.optimizers.Optimizer
-				keras optimiser that will be later used to train the model
+			optimizer : keras.optimizers.Optimizer
+				keras optimizer that will be later used to train the model
 		"""
 
 		if learning['learning'] == 'rmsprop':
@@ -636,11 +643,8 @@ class Evaluator:
 	def calculate_fitness(self, ind):
 		""" calculate fitness of individual """
 		accuracy = None
-		if self.calculate_fitness_with_k_folds and ind.k_fold_metrics is not None:
-			accuracy = ind.k_fold_metrics.accuracy
-		elif ind.metrics is not None:
+		if ind.metrics is not None:
 			accuracy = ind.metrics.accuracy
-
 		fitness = self.fitness_func(accuracy, ind.metrics.parameters) if accuracy is not None else None
 		return fitness
 
@@ -693,23 +697,20 @@ class Evaluator:
 
 	def validate_cnn(self, phenotype):
 		""" validate the phenotype by generating keras layers anc compiling the model in keras. Will throw an exception for an invalid model. """
-		start_time = time()
 
 		keras_layers, keras_learning = self.construct_keras_layers(phenotype)
 
 		model = self.assemble_network(keras_layers, self.input_size)
-		opt = self.assemble_optimiser(keras_learning)
+		opt = self.assemble_optimizer(keras_learning)
 		model.compile(optimizer=opt,
 						loss='sparse_categorical_crossentropy',
 						metrics=['accuracy'],
 						)
 		is_valid = self.check_model_constraints(Evaluator.get_model_parameters(model))
 		del model
-		# log(f"Validated in {time() - start_time:.2f}")
 		return is_valid
 
-
-	def evaluate_cnn(self, phenotype: str, dataset: Dataset, stat, for_k_folds_validation=False):
+	def evaluate_cnn(self, phenotype: str, dataset, stat, for_k_folds_validation=False):
 		"""
 			Evaluates the phenotype with keras
 
@@ -717,7 +718,7 @@ class Evaluator:
 			----------
 			phenotype : str
 				individual phenotypes (one or more)
-			dataset : Dataset
+			dataset : (Dataset|dict)
 				train and test datasets
 			stat : RunStatistics
 				for recording statistics
@@ -739,7 +740,7 @@ class Evaluator:
 		keras_layers, keras_learning = self.construct_keras_layers(phenotype)
 
 		model = self.assemble_network(keras_layers, self.input_size)
-		opt = self.assemble_optimiser(keras_learning)
+		opt = self.assemble_optimizer(keras_learning)
 		# opt = tf.keras.mixed_precision.LossScaleOptimizer(opt) # for mixed precision
 		model.compile(optimizer=opt,
 						loss='sparse_categorical_crossentropy',
@@ -799,7 +800,6 @@ class Evaluator:
 								initial_epoch=0,
 								verbose=LOG_MODEL_TRAINING)
 
-
 		training_time = time() - training_start_time
 		training_epochs = len(score.epoch)
 		timer_stop_triggered = timed_stopping.timer_stop_triggered
@@ -825,14 +825,14 @@ class Evaluator:
 
 		return result
 
-
 	def evaluate_cnn_init_seeds(self, phenotype, name, metrics, n_seeds, dataset, stat):
 		""" evaluate individual for different initialisation seeds """
 
 		k_folds_result = KFoldEvalResult()
 
 		for seed in range(0, n_seeds):
-			result = self.evaluate_cnn(phenotype, '', dataset, stat, for_k_folds_validation=True)
+			result = self.evaluate_cnn(phenotype, dataset, stat, for_k_folds_validation=True)
+			log_training(f"Seed #{seed}" + result.summary(''))
 			k_folds_result.append_cnn_eval_result(result)
 
 		return k_folds_result
@@ -840,47 +840,28 @@ class Evaluator:
 	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, stat):
 		""" evaluate individual for k-folds, using cache """
 
-		cache_key = self.cache_key(phenotype)
-		if self.evaluation_cache_path and cache_key in self.evaluation_cache:
-			cache_entry = self.evaluation_cache[cache_key]
-			if cache_entry.k_fold_metrics is not None:
-				log_debug('k-fold cached metrics from ' + cache_entry.origin_description)
-				stat.record_evaluation(seconds=cache_entry.k_fold_metrics.total_eval_time, is_cache_hit=True, is_k_folds=True)
-				return cache_entry.k_fold_metrics
-			else:
-				log_debug('*** k-fold metrics not in cache entry ' + cache_entry.origin_description)
-
-		x_combined = self.dataset.combined_dataset
-		y_combined = self.dataset.combined_dataset
+		X_train = self.dataset.X_combined
+		y_train = self.dataset.y_combined
 
 		split = StratifiedShuffleSplit(n_splits=n_folds, test_size=7000)
 
 		k_folds_result = KFoldEvalResult()
 
 		fold_number = 1
-		for train_index, test_index in split.split(x_combined, y_combined):
-			evo_x_train, x_val = x_combined[train_index], x_combined[test_index]
-			evo_y_train, y_val = y_combined[train_index], y_combined[test_index]
+		for train_index, test_index in split.split(X_train, y_train):
+			evo_x_train, x_val = X_train[train_index], X_train[test_index]
+			evo_y_train, y_val = y_train[train_index], y_train[test_index]
 
 			val_test_split = StratifiedShuffleSplit(n_splits=1, test_size=3500)
 			for train_index2, test_index2 in val_test_split.split(x_val, y_val):
 				evo_x_val, evo_x_test = x_val[train_index2], x_val[test_index2]
 				evo_y_val, evo_y_test = y_val[train_index2], y_val[test_index2]
 
-			fold_dataset = {
-				'evo_x_train': evo_x_train, 'evo_y_train': evo_y_train,
-				'evo_x_val': evo_x_val, 'evo_y_val': evo_y_val,
-				'evo_x_test': evo_x_test, 'evo_y_test': evo_y_test,
-				'x_final_test': self.dataset['x_final_test'], 'y_final_test': self.dataset['y_final_test']
-			}
+			fold_dataset = Dataset.from_data(evo_x_train, evo_y_train, evo_x_val, evo_y_val, evo_x_test, evo_y_test, self.dataset.X_final_test, self.dataset.y_final_test)
 			result = self.evaluate_cnn(phenotype, fold_dataset, stat, for_k_folds_validation=True)
+			log_training(f"Fold #{fold_number}" + result.summary(''))
 			fold_number += 1
 			k_folds_result.append_cnn_eval_result(result)
-
-		if self.evaluation_cache_path and metrics is not None:
-			new_cache_entry = Evaluator.EvaluationCacheEntry(f"{self.experiment_name}:{name}", metrics, k_folds_result)
-			self.evaluation_cache[cache_key] = new_cache_entry
-			self.evaluation_cache_changed = True
 
 		return k_folds_result
 
@@ -1014,21 +995,23 @@ class Individual:
 	def description(self):
 		""" return short description of individual with fitness, k-fold accuracy and final test accuracy if calculated,
 			test accuracy and number of parameters """
-		result = f"{self.id} "
-		if self.fitness:
-			result += f"{self.fitness:.5f} "
-		if self.k_fold_metrics:
-			result += f"k-folds: {self.k_fold_metrics.accuracy:.5f} (SD:{self.k_fold_metrics.accuracy_std:.5f}) "
+		result = self.id_and_layer_description()
 		if self.metrics:
+			result += f"{self.metrics.parameters / 1000.0:6.1f}k "
+		if self.fitness:
+			result += format_fitness(self.fitness) + ' '
+		if self.k_fold_metrics:
+			result += f"k-folds:{format_accuracy(self.k_fold_metrics.accuracy)} (SD:{self.k_fold_metrics.accuracy_std:5.2%}) "
+		if self.metrics:
+			result += f"err:{format_accuracy(self.metrics.accuracy)} "
 			if self.metrics.final_test_accuracy:
-				result += f"final: {self.metrics.final_test_accuracy:.5f} "
-			result += f"acc: {self.metrics.accuracy:.5f} p: {self.metrics.parameters}"
+				result += f"final:{format_accuracy(self.metrics.final_test_accuracy)} "
 		if hasattr(self, 'step_width') and self.step_width:
-			result += f" σ: {self.step_width:.4f}"
+			result += f" σ:{self.step_width:.2f}"
 		return result
 
 	def id_and_layer_description(self):
-		return f"{self.id} layers: {len(self.modules_including_macro[0].layers)} + {len(self.modules_including_macro[1].layers)} "
+		return f"{self.id:<6} {len(self.modules_including_macro[0].layers)}+{len(self.modules_including_macro[1].layers)} "
 
 	def log_long_description(self, title, with_history=False):
 		""" output long description to log, with phenotype, model summary and evolution history """
@@ -1263,7 +1246,7 @@ class Individual:
 
 		return is_valid
 
-	def evaluate_individual(self, grammar, cnn_eval, stat, use_cache = True):
+	def evaluate_individual(self, grammar, cnn_eval, stat, use_cache=True):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1271,10 +1254,11 @@ class Individual:
 			----------
 			grammar : Grammar
 				grammar instance that stores the expansion rules
-			stat : RunStatistics
-				for recording statistics
 			cnn_eval : Evaluator
 				Evaluator instance used to train the networks
+			stat : RunStatistics
+				for recording statistics
+			use_cache : bool
 
 			Returns
 			-------
@@ -1310,7 +1294,7 @@ class Individual:
 
 	@staticmethod
 	def evaluate_in_thread(ind, grammar, cnn_eval, stat):
-		thread_name =  threading.current_thread().name
+		thread_name = threading.current_thread().name
 		thread_number = int(thread_name[thread_name.rindex("_") + 1:])
 		with tf.device(gpu_list[thread_number]):
 			log_bold(f"{ind.id_and_layer_description()} starts on {gpu_list[thread_number].name} in thread {thread_name}")
@@ -1322,7 +1306,7 @@ class Individual:
 		ok = True
 		if N_GPUS > 1 and len(individual_list):
 			with concurrent.futures.ThreadPoolExecutor(max_workers=N_GPUS, thread_name_prefix='Evaluator') as executor:
-				future_to_evaluate_individual = {executor.submit(Individual.evaluate_in_thread, ind, grammar, cnn_eval, stat) : ind for ind in individual_list}
+				future_to_evaluate_individual = {executor.submit(Individual.evaluate_in_thread, ind, grammar, cnn_eval, stat): ind for ind in individual_list}
 				for future in concurrent.futures.as_completed(future_to_evaluate_individual):
 					result = future_to_evaluate_individual[future]
 		else:
@@ -1338,7 +1322,7 @@ class Individual:
 		if not self.metrics.training_epochs:
 			log_warning(f"*** {self.id}: no training epoch completed ***")
 
-	def evaluate_individual_k_folds(self, grammar, cnn_eval, nfolds, stat):
+	def evaluate_individual_k_folds(self, grammar, cnn_eval, stat, num_folds=10, num_random_seeds=0):
 		"""
 			Performs the evaluation of a candidate solution
 
@@ -1348,8 +1332,10 @@ class Individual:
 				grammar instance that stores the expansion rules
 			cnn_eval : Evaluator
 				Evaluator instance used to train the networks
-			nfolds : int
+			num_folds : int
 				number of folds
+			num_random_seeds : int
+				if given, run with same data but different random seeds instead of k-folds
 			stat : RunStatistics
 				keeps statistics
 
@@ -1362,55 +1348,25 @@ class Individual:
 
 		phenotype = self.get_phenotype(grammar)
 
-		self.k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, nfolds, stat)
-		self.k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
-		old_fitness = self.fitness
-		self.fitness = cnn_eval.calculate_fitness(self)
+		log(f"Starting {f'{num_random_seeds} seeds' if num_random_seeds else f'{num_folds} folds'} on {self.id_and_layer_description()}")
+		if num_random_seeds:
+			k_fold_metrics = cnn_eval.evaluate_cnn_init_seeds(phenotype, self.id, self.metrics, num_random_seeds, cnn_eval.dataset, stat)
+		else:
+			k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, num_folds, stat)
 
-		stat.k_fold_accuracy_stds.append(self.k_fold_metrics.accuracy_std)
-		stat.k_fold_final_accuracy_stds.append(self.k_fold_metrics.final_accuracy_std)
-		stat.k_fold_fitness_stds.append(self.k_fold_metrics.fitness_std)
-
-		log_bold(f"--> {self.id} with {nfolds} folds: acc: {self.metrics.accuracy:0.5f} -> {self.k_fold_metrics.accuracy:0.5f} (SD:{self.k_fold_metrics.accuracy_std:0.5f}), final acc: {self.k_fold_metrics.final_accuracy:0.5f} (SD:{self.k_fold_metrics.final_accuracy_std:0.5f}), fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
+		k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
 
 		restore_random_state(random_state)
 
-	def evaluate_individual_init_seeds(self, grammar, cnn_eval, n_seeds, stat):
-		"""
-			Performs the evaluation of a candidate solution
+		stat.k_fold_accuracy_stds.append(k_fold_metrics.accuracy_std)
+		stat.k_fold_final_accuracy_stds.append(k_fold_metrics.final_accuracy_std)
+		stat.k_fold_fitness_stds.append(k_fold_metrics.fitness_std)
 
-			Parameters
-			----------
-			grammar : Grammar
-				grammar instance that stores the expansion rules
-			cnn_eval : Evaluator
-				Evaluator instance used to train the networks
-			n_seeds : int
-				number of seeds to test
-			stat : RunStatistics
-				records statistics
+		self.log_k_folds_result(num_folds, k_fold_metrics)
+		return k_fold_metrics
 
-			Returns
-			-------
-			fitness : float
-		"""
-
-		random_state = store_random_state()
-
-		phenotype = self.get_phenotype(grammar)
-
-		self.k_fold_metrics = cnn_eval.evaluate_cnn_init_seeds(phenotype, self.id, self.metrics, n_seeds, cnn_eval.dataset, stat)
-		self.k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
-		old_fitness = self.fitness
-		self.fitness = cnn_eval.calculate_fitness(self)
-
-		stat.k_fold_accuracy_stds.append(self.k_fold_metrics.accuracy_std)
-		stat.k_fold_final_accuracy_stds.append(self.k_fold_metrics.final_accuracy_std)
-		stat.k_fold_fitness_stds.append(self.k_fold_metrics.fitness_std)
-
-		log_bold(f"--> {self.id} with {n_seeds} seeds: acc: {self.metrics.accuracy:0.5f} -> {self.k_fold_metrics.accuracy:0.5f} (SD:{self.k_fold_metrics.accuracy_std:0.5f}), final acc: {self.k_fold_metrics.final_accuracy:0.5f} (SD:{self.k_fold_metrics.final_accuracy_std:0.5f}), fitness: {old_fitness:0.5f} -> {self.fitness:0.5f}")
-
-		restore_random_state(random_state)
+	def log_k_folds_result(self, num_folds, k_fold_metrics):
+		log_bold(f"--> {self.id_and_layer_description()} with {num_folds} folds: err: {format_accuracy(self.metrics.accuracy)} -> {format_accuracy(k_fold_metrics.accuracy)} (SD:{k_fold_metrics.accuracy_std:5.2%}), final: {format_accuracy(k_fold_metrics.final_accuracy)} (SD:{k_fold_metrics.final_accuracy_std:5.2%}), fitness: {format_fitness(self.fitness)} -> {format_fitness(k_fold_metrics.fitness)}")
 
 	def compute_mutated_variables_statistics(self, mutable_vars):
 		""" record layers and variable statistics for individual """

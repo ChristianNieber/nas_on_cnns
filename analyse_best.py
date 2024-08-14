@@ -2,7 +2,10 @@
 
 import pickle
 import glob
+
+# import numpy as np
 import pandas as pd
+from os import path
 
 from runstatistics import *
 from plot_statistics import DEFAULT_EXPERIMENT_PATH, lighten_color
@@ -10,6 +13,8 @@ from logger import *
 from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar
 from engine import evaluate_generation
+
+from scipy.stats import gmean
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
 
@@ -17,7 +22,7 @@ NUM_INDIVIDUALS = 20
 LOG_FILE = 'analyse.log'
 EXPERIMENTS_PATH = "D:/experiments.NAS_PAPER/"
 PICTURE_SAVE_PATH = EXPERIMENTS_PATH + "graphs2/"
-EXPERIMENT_LIST = ['Stepper-Adaptive', 'Stepper-Decay', 'Random Search']
+EXPERIMENT_LIST = ['Stepper-Adaptive', 'Stepper-Decay', 'Random Search']    # evaluate_cnn currently cannot handle 'F-DENSER' architectures
 GRAMMAR_FILE = 'config/lenet.grammar'
 # parameters for training
 DATASET = 'mnist'
@@ -28,36 +33,49 @@ MAX_TRAINING_TIME = 100
 MAX_TRAINING_EPOCHS = 10
 
 
-def load_best_individuals(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH):
-	""" load the best individuals of all runs in an experiment """
-	file_list = sorted(glob.glob(experiment_path + experiment_name + "/r??_best_parent.pkl"))
+def individual_name_prefix(experiment_name):
+	""" extract name prefix A, D, F, R, X from experiment name Stepper-Adaptive, Stepper-Decay, F-DENSER, Random Search, Unknown """
+	if experiment_name.startswith('Stepper-'):
+		experiment_name = experiment_name[8:]
+	return experiment_name[0]
+
+
+def load_best_individuals(experiment_name, experiments_path=DEFAULT_EXPERIMENT_PATH):
+	"""
+		load the best individuals of all runs in an experiment
+	"""
+	if not experiments_path.endswith('/'):
+		experiments_path += '/'
+	file_list = sorted(glob.glob(experiments_path + experiment_name + "/r??_population.pkl"))
 	population = []
 	for file in file_list:
 		with open(file, 'rb') as f:
-			population.append(pickle.load(f))
+			run_population = pickle.load(f)
+			best_ind = run_population[0]
+			best_ind.id = individual_name_prefix(experiment_name) + best_ind.id
+			population.append(best_ind)
 	if not population:
-		raise FileNotFoundError(f"No best individuals found in {experiment_path}")
+		raise FileNotFoundError(f"No best individuals found in {experiments_path}")
 	return population
 
 
-def init_eval_environment(log_file="analyse.log", use_test_cache=False, use_float=False, n_gpus=0, batch_size=None):
-	init_logger(DEFAULT_EXPERIMENT_PATH + log_file)
+def init_eval_environment(log_file="analyse.log", dataset=DATASET, use_test_cache=False, max_training_epochs=MAX_TRAINING_EPOCHS, for_k_fold_validation=0, use_float=False, use_augmentation=False, n_gpus=0, batch_size=None):
+	if '/' not in log_file and '\\' not in log_file:
+		log_file = DEFAULT_EXPERIMENT_PATH + log_file
+	init_logger(log_file)
 	stat = RunStatistics(RANDOM_SEED)
 	grammar = StepperGrammar(GRAMMAR_FILE)
 	evaluation_cache_path = DEFAULT_EXPERIMENT_PATH + "cache_test.pkl" if use_test_cache else None
-	cnn_eval = Evaluator(DATASET, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, for_k_fold_validation=0, calculate_fitness_with_k_folds_accuracy=False, test_init_seeds=TEST_INIT_SEEDS,
-	                     evaluation_cache_path=evaluation_cache_path, experiment_name='Analyse Results', use_float=use_float, n_gpus=n_gpus, override_batch_size=batch_size)
+	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, max_training_epochs, for_k_fold_validation=for_k_fold_validation,
+							evaluation_cache_path=evaluation_cache_path, experiment_name='Analyse Results', use_float=use_float, use_augmentation=use_augmentation, n_gpus=n_gpus, override_batch_size=batch_size)
 	return stat, grammar, cnn_eval
 
 
-def get_population():
+def find_best_of_experiment(experiments_path=EXPERIMENTS_PATH):
 	best_list = []
 	for experiment in EXPERIMENT_LIST:
-		best_individuals = load_best_individuals(experiment, experiment_path=EXPERIMENTS_PATH)
+		best_individuals = load_best_individuals(experiment, experiments_path=experiments_path)
 		best_list += best_individuals
-	# for ind in population:
-	# 	log_bold(ind.description())
-	# 	log('\n'.join(ind.phenotype_lines) + '\n')
 	return best_list
 
 
@@ -99,7 +117,7 @@ def learning_stats(num_individuals=NUM_INDIVIDUALS, list_population=False, log_f
 	init_logger(DEFAULT_EXPERIMENT_PATH + log_file)
 	logger_configuration(logger_log_training=True)
 
-	population = select_best_from_population(get_population(), num_individuals)
+	population = select_best_from_population(find_best_of_experiment(), num_individuals)
 	if list_population:
 		for ind in population:
 			log(ind.description())
@@ -107,31 +125,6 @@ def learning_stats(num_individuals=NUM_INDIVIDUALS, list_population=False, log_f
 		# log('\n'.join(ind.phenotype_lines) + '\n')
 	return analyse_learning_statistics(population)
 
-
-def evaluate_k_folds(log_file='K-folds.log'):
-	stat, grammar, cnn_eval = init_eval_environment(log_file=log_file)
-	population = select_best_from_population(get_population(), 10)
-	start_time = time()
-	for ind in population:
-		eval_start_time = time()
-		ind.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat)
-		eval_time = time() - eval_start_time
-		log_blue(f"K-folds time: {eval_time/K_FOLDS:.2f} original: {ind.metrics.eval_time:.2f}")
-	run_time = time() - start_time
-	log_blue(f"{stat.evaluations_total} evaluations, " + f" {stat.evaluations_k_folds} for k-folds")
-	log_blue(f"runtime {run_time:.2f}, evaluation time {stat.eval_time_k_folds:.2f}")
-
-	if len(stat.k_fold_accuracy_stds) > 1:
-		log(f"Average folds accuracy SD: {average_standard_deviation(stat.k_fold_accuracy_stds):.5f} {stat.k_fold_accuracy_stds}")
-		log(f"Average folds final accuracy SD: {average_standard_deviation(stat.k_fold_final_accuracy_stds):.5f} {stat.k_fold_final_accuracy_stds}")
-		log(f"Average folds fitness SD: {average_standard_deviation(stat.k_fold_fitness_stds):.5f} {stat.k_fold_fitness_stds}")
-
-
-def err(accuracy):
-	return f"{(1.0 - accuracy) * 100.0:.2f}"
-
-def percent(diff):
-	return f"{diff * 100.0:.2f}"
 
 class BenchmarkStatistics:
 	def __init__(self, title):
@@ -169,15 +162,16 @@ class BenchmarkStatistics:
 		self.std_final_accuracy_diff.append(std_final_accuracy_diff)
 		self.time_per_individual.append(time_per_individual)
 
-		description = f"{MAX_TRAINING_EPOCHS} epochs t={total_eval_time:.2f}  Test error: {err(mean_accuracy)}±{percent(std_accuracy)}  final error: {err(mean_final_test_accuracy)}±{percent(std_final_test_accuracy)}\n\
-	                     Test diff {percent(mean_accuracy_diff)}±{percent(std_accuracy_diff)}  Final diff {percent(mean_final_accuracy_diff)}±{percent(std_final_accuracy_diff)}"
+		description = f"{MAX_TRAINING_EPOCHS} epochs t={total_eval_time:.2f}  Test error: {format_accuracy(mean_accuracy)} ± {std_accuracy:4.2%}  final error: {format_accuracy(mean_final_test_accuracy)} ± {std_final_test_accuracy:4.2%}\n" + \
+			f"                     Test diff {mean_accuracy_diff:4.2%} ± {std_accuracy_diff:4.2%}  Final diff {mean_final_accuracy_diff:4.2%} ± {std_final_accuracy_diff:4.2%}"
 		log_bold(f"Total eval time: {total_eval_time:.2f} s (original {total_original_eval_time:.2f}, factor {total_eval_time / total_original_eval_time:.3f}), per individual: {time_per_individual :.2f} s")
 		log_bold(description)
 		return description
 
-def evaluate_best(stat, grammar, cnn_eval, benchmark_stat : BenchmarkStatistics, experiment_name='evaluate_best', generation_size=10, num_individuals=20, plot_history=False):
-	population = select_best_from_population(get_population(), num_individuals)
-	population_generations = [ population[x:x+generation_size] for x in range(0, len(population), generation_size) ]
+
+def evaluate_best(stat, grammar, cnn_eval, benchmark_stat: BenchmarkStatistics, experiment_name='evaluate_best', generation_size=10, num_individuals=20, plot_history=False):
+	population = select_best_from_population(find_best_of_experiment(), num_individuals)
+	population_generations = [population[x:x+generation_size] for x in range(0, len(population), generation_size)]
 	ngenerations = len(population_generations)
 
 	original_accuracy = np.array([[ind.metrics.accuracy for ind in population_generations[generation]] for generation in range(ngenerations)])
@@ -225,15 +219,16 @@ def evaluate_best(stat, grammar, cnn_eval, benchmark_stat : BenchmarkStatistics,
 	if plot_history:
 		plot_training_history(population, f"\n{experiment_name}\n{description}", experiment_name)
 
+
 def benchmark_batch_sizes():
-	N_GPUS=1
-	USE_FLOAT=False
+	N_GPUS = 1
+	USE_FLOAT = False
 	# BATCH_SIZE=1024
 	title = f"Benchmark epochs={MAX_TRAINING_EPOCHS} GPUs={N_GPUS} {'float16' if USE_FLOAT else 'uint8'}"
 	stat, grammar, cnn_eval = init_eval_environment(log_file=title + ".log", use_test_cache=False, use_float=USE_FLOAT, n_gpus=N_GPUS)
 
 	# warm up GPU with best individual
-	best_individual = select_best_from_population(get_population(), 1)[0]
+	best_individual = select_best_from_population(find_best_of_experiment(), 1)[0]
 	best_individual.evaluate_individual(grammar, cnn_eval, stat, use_cache=False)
 
 	benchmark_stat = BenchmarkStatistics(title)
@@ -248,7 +243,15 @@ def benchmark_batch_sizes():
 		pickle.dump(benchmark_stat, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def plot_training_history(population: list[Individual], title: str, experiment_name: str=''):
+def list_best(experiments_path=EXPERIMENTS_PATH):
+	population = select_best_from_population(find_best_of_experiment(experiments_path=experiments_path), -1)
+	log(f"best individuals in {experiments_path}:")
+	for ind in population:
+		log(ind.description())
+		# log('\n'.join(ind.phenotype_lines) + '\n')
+
+
+def plot_training_history(population: list[Individual], title: str, experiment_name: str = ''):
 	nindividuals = len(population)
 	ncols = 6
 	nrows = (nindividuals + 3) // ncols
@@ -267,7 +270,7 @@ def plot_training_history(population: list[Individual], title: str, experiment_n
 		if i == 0:
 			ax1.legend(fontsize=10)
 			ax2.legend(fontsize=10)
-		ax1.set_title(f'VLoss= {percent(ind.metrics.history_val_loss[-1])} VErr= {err(ind.metrics.history_val_accuracy[-1])} TErr= {err(ind.metrics.accuracy)}', fontsize=12)
+		ax1.set_title(f'VLoss= {format_accuracy(ind.metrics.history_val_loss[-1])} VErr= {format_accuracy(ind.metrics.history_val_accuracy[-1])} TErr= {format_accuracy(ind.metrics.accuracy)}', fontsize=12)
 		ax1.set_ylim(0.8, 1.0)
 		ax1.yaxis.set_major_locator(ticker.MultipleLocator(0.02))
 		ax2.set_ylim(0, 0.5)
@@ -282,6 +285,7 @@ def plot_training_history(population: list[Individual], title: str, experiment_n
 		plt.savefig(DEFAULT_EXPERIMENT_PATH + experiment_name + '.svg', format='svg', dpi=1200)
 	plt.show()
 
+
 def plot_accuracy_and_std(ax1, xscale, accuracy_list, accuracy_std_list, color, label, invert=False):
 	mean_error = np.array(accuracy_list) * 100.0
 	if invert:
@@ -289,6 +293,7 @@ def plot_accuracy_and_std(ax1, xscale, accuracy_list, accuracy_std_list, color, 
 	std = np.array(accuracy_std_list) * 100.0
 	ax1.plot(xscale, mean_error, '-', color=color, label=label)
 	ax1.fill_between(xscale, mean_error - std, mean_error + std, color=lighten_color(color), alpha=0.5)
+
 
 def plot_benchmark_results():
 	with open(EXPERIMENTS_PATH + 'benchmark_statistics.pkl', 'rb') as handle_statistics:
@@ -315,6 +320,160 @@ def plot_benchmark_results():
 	plt.show()
 
 
+def evaluate_k_folds(log_file='K-folds.log'):
+	stat, grammar, cnn_eval = init_eval_environment(log_file=log_file)
+	population = select_best_from_population(find_best_of_experiment(), 10)
+	start_time = time()
+	for ind in population:
+		eval_start_time = time()
+		ind.evaluate_individual_k_folds(grammar, cnn_eval, stat, num_folds=K_FOLDS)
+		eval_time = time() - eval_start_time
+		log_blue(f"K-folds time: {eval_time/K_FOLDS:.2f} original: {ind.metrics.eval_time:.2f}")
+	run_time = time() - start_time
+	log_blue(f"{stat.evaluations_total} evaluations, " + f" {stat.evaluations_k_folds} for k-folds")
+	log_blue(f"runtime {run_time:.2f}, evaluation time {stat.eval_time_k_folds:.2f}")
+
+	if len(stat.k_fold_accuracy_stds) > 1:
+		log(f"Average folds accuracy SD: {average_standard_deviation(stat.k_fold_accuracy_stds):.5f} {stat.k_fold_accuracy_stds}")
+		log(f"Average folds final accuracy SD: {average_standard_deviation(stat.k_fold_final_accuracy_stds):.5f} {stat.k_fold_final_accuracy_stds}")
+		log(f"Average folds fitness SD: {average_standard_deviation(stat.k_fold_fitness_stds):.5f} {stat.k_fold_fitness_stds}")
+
+
+def reevaluation_description(num_folds=10, num_random_seeds=0, num_epochs=10, use_float=False, batch_size=0, use_augmentation=False):
+	return f"{f'seeds{num_random_seeds}' if num_random_seeds else f'folds{num_folds}'}_epochs{num_epochs}{'_float' if use_float else ''}{f'_b{batch_size}' if batch_size else ''}{'_aug' if use_augmentation else ''}"
+
+
+def reevaluate_best(experiments_path=EXPERIMENTS_PATH, dataset=DATASET, num_individuals=10, num_folds=10, num_random_seeds=0, max_training_epochs=MAX_TRAINING_EPOCHS, use_float=False, batch_size=0, use_augmentation=False):
+	if not experiments_path.endswith('/'):
+		experiments_path += '/'
+	description = reevaluation_description(num_folds, num_random_seeds, max_training_epochs, use_float, batch_size, use_augmentation)
+	stat, grammar, cnn_eval = init_eval_environment(log_file=experiments_path + description + ".log", dataset=dataset, max_training_epochs=max_training_epochs, for_k_fold_validation=num_folds, use_test_cache=False, use_float=use_float, use_augmentation=use_augmentation)
+
+	reevaluate_file_name = experiments_path + 'reevaluated_individuals.pkl'
+	if path.isfile(reevaluate_file_name):
+		with open(reevaluate_file_name, 'rb') as handle_pop:
+			population = pickle.load(handle_pop)
+		log_bold(f"[Starting {description}: loaded {len (population)} individuals from {reevaluate_file_name}]")
+	else:
+		population = select_best_from_population(find_best_of_experiment(experiments_path), -1)
+		log_bold(f"[Starting {description}: found {len (population)} best individuals in {experiments_path}]")
+
+	n_reevaluated = 0
+	last = min(len(population), num_individuals)
+	for i in range(0, last):
+		ind = population[i]
+		if not hasattr(ind, 'reevaluation_metrics'):
+			ind.reevaluation_metrics = {}
+		if description not in ind.reevaluation_metrics:
+			eval_start_time = time()
+			k_fold_metrics = ind.evaluate_individual_k_folds(grammar, cnn_eval, stat, num_folds, num_random_seeds)
+			eval_time = time() - eval_start_time
+			log_blue(f"{description} {i+1}/{last} K-folds time: {eval_time/max(num_folds, num_random_seeds):.2f} original: {ind.metrics.eval_time:.2f}")
+			ind.reevaluation_metrics[description] = k_fold_metrics
+			n_reevaluated += 1
+			with open(reevaluate_file_name, 'wb') as handle_pop:
+				pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
+		else:
+			log_blue(f"{i+1}/{last} already computed:")
+			ind.log_k_folds_result(num_folds, ind.reevaluation_metrics[description])
+
+
+def reevaluation_get_accuracies(population, description: str, sort_by_parameters=False, sort_by_batch_size=False):
+	sorted_population = [ind for ind in population if hasattr(ind, 'reevaluation_metrics') and description in ind.reevaluation_metrics]
+	if sort_by_batch_size:
+		sorted_population = sorted(sorted_population, key=lambda ind: ind.metrics.batch_size)
+	elif sort_by_parameters:
+		sorted_population = sorted(sorted_population, key=lambda ind: ind.metrics.parameters)
+
+	parameters = []
+	batch_size = []
+	original_accuracy = []
+	original_final_accuracy = []
+	accuracy = []
+	accuracy_std = []
+	accuracy_diff = []
+	final_accuracy = []
+	final_accuracy_std = []
+	final_accuracy_diff = []
+	avg_eval_time = 0
+	for ind in sorted_population:
+		original_accuracy.append(ind.metrics.accuracy)
+		original_final_accuracy.append(ind.metrics.final_test_accuracy)
+		parameters.append(ind.metrics.parameters)
+		batch_size.append(ind.metrics.batch_size if hasattr(ind.metrics, 'batch_size') else -1)
+		k_fold_metrics = ind.reevaluation_metrics[description]
+		avg_eval_time += k_fold_metrics.total_eval_time / len(k_fold_metrics.folds_eval_time)
+		accuracy.append(k_fold_metrics.accuracy)
+		accuracy_std.append(k_fold_metrics.accuracy_std)
+		accuracy_diff.append(ind.metrics.accuracy - k_fold_metrics.accuracy)
+		final_accuracy.append(k_fold_metrics.final_accuracy)
+		final_accuracy_std.append(k_fold_metrics.final_accuracy_std)
+		final_accuracy_diff.append(ind.metrics.final_test_accuracy - k_fold_metrics.final_accuracy)
+	log(f"{description:24}:{len(parameters):3}  {format_accuracy(np.mean(accuracy))} ± {gmean(accuracy_std):5.2%} (original {format_accuracy(np.mean(original_accuracy))}, diff {np.mean(accuracy_diff):5.2%}), "
+		+ f"final {format_accuracy(np.mean(final_accuracy))} ± {gmean(final_accuracy_std):5.2%} (original {format_accuracy(np.mean(original_final_accuracy))}, diff {np.mean(final_accuracy_diff):5.2%})  avg {avg_eval_time/len(population):.2f} s")
+	return parameters, batch_size, original_accuracy, original_final_accuracy, accuracy, accuracy_std, accuracy_diff, final_accuracy, final_accuracy_std, final_accuracy_diff
+
+
+def plot_reevaluation_variant(ax, population, description, by_parameters=False, by_batch_size=False):
+	parameters, batch_size, original_accuracy, original_final_accuracy, accuracy, accuracy_std, accuracy_diff, final_accuracy, final_accuracy_std, final_accuracy_diff =\
+		reevaluation_get_accuracies(population, description, sort_by_parameters=by_parameters, sort_by_batch_size=by_batch_size)
+
+	xscale = parameters if by_parameters else range(0, len(accuracy))
+
+	ax.set_title(description + (' by Parameters' if by_parameters else ' by Rank'))
+	plot_accuracy_and_std(ax, xscale, accuracy, accuracy_std, 'red', 'error Rate', invert=True)
+	# plot_accuracy_and_std(ax, xscale, final_accuracy, final_accuracy_std, 'magenta', 'final error rate', invert=True)
+	original_accuracy = 100.0 - np.array(original_accuracy) * 100.0
+	original_final_accuracy = 100.0 - np.array(original_final_accuracy) * 100.0
+	accuracy_diff = np.array(accuracy_diff) * 100.0
+	final_accuracy_diff = np.array(final_accuracy_diff) * 100.0
+	ax.plot(xscale, original_accuracy, label='Orig. error', color='blue')
+	# ax.plot(xscale, original_final_accuracy, label='Orig. final error', color='cyan')
+	ax.plot(xscale, accuracy_diff, label='Diff')
+	ax.plot(xscale, final_accuracy_diff, label='Final diff')
+	ax.grid()
+	ax.set_ylim(-0.5, 4)
+
+
+def plot_reevaluation_results(experiments_path=EXPERIMENTS_PATH):
+	if not experiments_path.endswith('/'):
+		experiments_path += '/'
+	reevaluate_file_name = experiments_path + 'reevaluated_individuals.pkl'
+	with open(reevaluate_file_name, 'rb') as handle_pop:
+		population = pickle.load(handle_pop)
+	log_bold(f"[Plot reevaluation: loaded {len(population)} individuals from {reevaluate_file_name}]")
+
+	by_parameters = False
+	by_batch_size = False
+	fig, (ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8) = plt.subplots(1, 8, figsize=(40, 3.5))
+	plot_reevaluation_variant(ax1, population, reevaluation_description(), by_parameters, by_batch_size)
+	ax1.legend(fontsize=8)
+	plot_reevaluation_variant(ax2, population, reevaluation_description(num_random_seeds=10, batch_size=256), by_parameters, by_batch_size)
+	plot_reevaluation_variant(ax3, population, reevaluation_description(num_random_seeds=10, batch_size=384), by_parameters, by_batch_size)
+	plot_reevaluation_variant(ax4, population, reevaluation_description(num_random_seeds=10, batch_size=512), by_parameters, by_batch_size)
+	plot_reevaluation_variant(ax5, population, reevaluation_description(use_float=True), by_parameters, by_batch_size)
+	plot_reevaluation_variant(ax6, population, reevaluation_description(num_random_seeds=10), by_parameters, by_batch_size)
+	# plot_reevaluation_variant(ax7, population, reevaluation_description(num_random_seeds=10, use_float=True), by_parameters, by_batch_size)
+	plot_reevaluation_variant(ax7, population, reevaluation_description(num_epochs=30), by_parameters, by_batch_size)
+	plot_reevaluation_variant(ax8, population, reevaluation_description(num_epochs=30, use_float=True), by_parameters, by_batch_size)
+	plt.show()
+
+
 if __name__ == "__main__":
-	benchmark_batch_sizes()
-	plot_benchmark_results()
+	n_individuals = 50
+	EXPERIMENTS_PATH = 'D:/experiments.NAS_PAPER'
+	DATASET = 'mnist'
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, batch_size=256)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, batch_size=384)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, batch_size=512)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, use_float=False)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, use_float=True)
+	# # reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, use_float=False)
+	# # reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, use_float=True)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, max_training_epochs=30, use_float=False)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, max_training_epochs=30, use_float=True)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, batch_size=256, use_augmentation=True)
+	plot_reevaluation_results(EXPERIMENTS_PATH)
+	# list_best("D:/experiments.Fashion-MNIST")
+	# benchmark_batch_sizes()
+	# plot_benchmark_results()

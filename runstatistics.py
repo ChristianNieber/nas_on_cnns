@@ -1,4 +1,4 @@
-from time import time, strftime, gmtime
+from time import time
 import json
 import numpy as np
 import random
@@ -100,8 +100,13 @@ class RunStatistics:
 			elif index == 2:
 				return np.array(self.k_fold_fitness_std)
 
-	def __init__(self, random_seed=-1):
+	def __init__(self, random_seed=-1, run_nas_strategy='', run_number=-1, run_dataset=''):
 		self.random_seed = random_seed
+
+		# Data only recorded for displaying in statistics later
+		self.run_nas_strategy = run_nas_strategy
+		self.run_number = run_number
+		self.run_dataset = run_dataset
 
 		# best individual (the best overall for comma strategy)
 		self.best = self.IndividualStatistics()
@@ -212,19 +217,19 @@ class RunStatistics:
 	@staticmethod
 	def metric_ylimits(index):
 		if index == 0:
-			return (0.0, 8.0)
+			return 0.0, 8.0
 		elif index == 1:
-			return (0, 100000)
+			return 0, 100000
 		elif index == 2:
-			return (-8, 2.3)
+			return -8, 2.3
 		elif index == 3:
-			return (0, 0.6)
+			return 0, 0.6
 		elif index == 4:
-			return (0, 10)
+			return 0, 10
 		elif index == 5:
-			return (0, 40)
+			return 0, 40
 		elif index == -1:
-			return (0.0, 5.0)
+			return 0.0, 5.0
 
 	@staticmethod
 	def metric_ticks(index):
@@ -289,12 +294,12 @@ class RunStatistics:
 		with open(save_path + 'statistics.json', 'w') as f_json:
 			f_json.write(json_dump)
 
-	def log_run_summary(stat):
-		log(f"{stat.evaluations_total} evaluations, {stat.evaluations_cache_hits} cache hits, {stat.evaluations_invalid} invalid,  avg evaluation time: {stat.eval_time/stat.evaluations_total:.2f} s")
-		log(f"runtime {decimal_hours(stat.run_time)}, evaluation time {decimal_hours(stat.eval_time)} (this run {decimal_hours(stat.eval_time_this_run)})")
+	def log_run_summary(self):
+		log(f"{self.evaluations_total} evaluations, {self.evaluations_cache_hits} cache hits, {self.evaluations_invalid} invalid,  avg evaluation time: {self.eval_time / self.evaluations_total:.2f} s")
+		log(f"runtime {decimal_hours(self.run_time)}, evaluation time {decimal_hours(self.eval_time)} (this run {decimal_hours(self.eval_time_this_run)})")
 
 	def log_statistics_summary(self, start_generation=0):
-
+		""" log a summary of statistics listing all generations """
 		self.log_run_summary()
 		total_eval_time = 0
 		ngenerations = len(self.eval_time_of_generation)
@@ -308,6 +313,18 @@ class RunStatistics:
 
 		log_bold(f"Total eval time: {total_eval_time:.2f} sec")
 
+
+def format_accuracy(acc):
+	return f"{1.0-acc:6.2%}"
+
+
+def format_fitness(value):
+	if value > 0:
+		return f"{value:+6.2f}"
+	elif value > -1000.0:
+		return f"{value:+6.1f}"
+	else:
+		return f"{value:+6.0f}"
 
 
 class CnnEvalResult:
@@ -354,7 +371,7 @@ class CnnEvalResult:
 		return self.summary()
 
 	def summary(self, suffix=''):
-		return f"p: {self.parameters:6d} acc: {self.accuracy:0.5f} val: {self.val_accuracy:0.5f} final: {self.final_test_accuracy:0.5f} fitness: {self.fitness:0.5f} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} epochs: {self.training_epochs:2d} t: {self.training_time:0.2f}s{suffix}{f' batch_size: {self.batch_size}' if hasattr(self, 'batch_size') else ''}"
+		return f"{format_fitness(self.fitness)} {(self.parameters/1000.0):6.1f}k err:{format_accuracy(self.accuracy)} val:{format_accuracy(self.val_accuracy)} final:{format_accuracy(self.final_test_accuracy)} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} ep: {self.training_epochs:2d} t: {self.training_time:0.1f}{f' b: {self.batch_size}' if hasattr(self, 'batch_size') else ''}{suffix}"
 
 	@staticmethod
 	def dummy_eval_result():

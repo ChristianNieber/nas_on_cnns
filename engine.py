@@ -1,8 +1,7 @@
 # NAS engine main module. Call do_nas_search() to run.
 
-from os import makedirs
 import pickle
-import os
+from os import makedirs, remove, path
 from shutil import copyfile
 from glob import glob
 from jsmin import jsmin
@@ -19,14 +18,16 @@ from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar, StepperStrategy, RandomSearchStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-LOG_DEBUG = 1						# log debug messages (about caching)
-LOG_MUTATIONS = 0					# log all mutations
-LOG_NEW_BEST_INDIVIDUAL = 0			# log long description of new best individual
-SAVE_MILESTONE_GENERATIONS = 50     # save milestone every 50 generations
-EXPERIMENTAL_MULTITHREADING = True  # use multithreading when multiple (physical or logical) GPUS are available
+LOG_DEBUG = 0						    # log debug messages (about caching)
+LOG_MUTATIONS = 0					    # log all mutations
+LOG_NEW_BEST_INDIVIDUAL = 0			    # log long description of new best individual
+SAVE_MILESTONE_GENERATIONS = 50         # save milestone every 50 generations
+EXPERIMENTAL_MULTITHREADING = False     # use multithreading when multiple (physical or logical) GPUS are available
 
 # turn off Keras log messages
-os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# from os import environ
+# environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+
 
 def pickle_evaluator(evaluator: Evaluator, save_path):
 	""" Save the Evaluator instance to later enable resuming evolution - currently unused"""
@@ -34,7 +35,7 @@ def pickle_evaluator(evaluator: Evaluator, save_path):
 		pickle.dump(evaluator, handle, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def pickle_population_and_statistics(path, population, stat: RunStatistics):
+def pickle_population_and_statistics(save_path, population, stat: RunStatistics):
 	"""
 		Save the objects (pickle) necessary to later resume evolution:
 		Pickled objects:
@@ -45,7 +46,7 @@ def pickle_population_and_statistics(path, population, stat: RunStatistics):
 
 		Parameters
 		----------
-		path: str
+		save_path: str
 			path to the json file
 		population : list
 			a list of Individuals
@@ -55,10 +56,10 @@ def pickle_population_and_statistics(path, population, stat: RunStatistics):
 
 	stat.random_state = random.getstate()
 	stat.random_state_numpy = np.random.get_state()
-	with open(path + 'statistics.pkl', 'wb') as handle_statistics:
+	with open(save_path + 'statistics.pkl', 'wb') as handle_statistics:
 		pickle.dump(stat, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
 
-	with open(path + 'population.pkl', 'wb') as handle_pop:
+	with open(save_path + 'population.pkl', 'wb') as handle_pop:
 		pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
 
@@ -66,7 +67,7 @@ def pickle_population_and_statistics_milestone(save_path, generation, population
 	pickle_population_and_statistics(save_path + 'gen%d_' % generation, population, stat)
 
 
-def unpickle_population_and_statistics(path, resume_generation=0):
+def unpickle_population_and_statistics(load_path, resume_generation=0):
 	"""
 		Save the objects (pickle) necessary to later resume evolution.
 		Useful for later conducting more generations.
@@ -76,7 +77,7 @@ def unpickle_population_and_statistics(path, resume_generation=0):
 
 		Parameters
 		----------
-		path: str
+		load_path: str
 			path where the objects needed to resume evolution are stored.
 		resume_generation : int
 			0 for last, or number of milestone generation (50, 100 or 150) where computation should resume
@@ -98,15 +99,15 @@ def unpickle_population_and_statistics(path, resume_generation=0):
 	"""
 
 	gen_prefix = f"gen{resume_generation}_" if resume_generation else ''
-	if os.path.isfile(path + gen_prefix + 'statistics.pkl'):
-		with open(path + gen_prefix + 'statistics.pkl', 'rb') as handle_statistics:
+	if path.isfile(load_path + gen_prefix + 'statistics.pkl'):
+		with open(load_path + gen_prefix + 'statistics.pkl', 'rb') as handle_statistics:
 			pickled_statistics = pickle.load(handle_statistics)
 		last_generation = pickled_statistics.run_generation
 
 		# with open(path + 'evaluator.pkl', 'rb') as handle_eval:
 		# pickled_evaluator = pickle.load(handle_eval)
 
-		with open(path + gen_prefix + 'population.pkl', 'rb') as handle_pop:
+		with open(load_path + gen_prefix + 'population.pkl', 'rb') as handle_pop:
 			pickled_population = pickle.load(handle_pop)
 
 		return last_generation, pickled_population, pickled_statistics
@@ -135,7 +136,7 @@ def select_parent(parents):
 	return parents[idx]
 
 
-def select_new_parents(population, number_of_parents, after_k_folds_evaluation=False):
+def select_new_parents(population, number_of_parents):
 	"""
 		Select the parent to seed the next generation.
 
@@ -145,21 +146,14 @@ def select_new_parents(population, number_of_parents, after_k_folds_evaluation=F
 			list of instances of Individual
 		number_of_parents : int
 			number of parents
-		after_k_folds_evaluation : bool
-			select only from candidates with k_fold_metrics
 
 		Returns
 		-------
 		new_parents : list
 			individual that seeds the next generation
 	"""
-
-	if after_k_folds_evaluation:
-		candidates = [ind for ind in population if ind.k_fold_metrics]		# only individuals where k folds evaluation has been done
-	else:
-		candidates = population
 	# candidates ordered by fitness
-	sorted_candidates = sorted(candidates, key=lambda ind: ind.fitness, reverse=True)
+	sorted_candidates = sorted(population, key=lambda ind: ind.fitness, reverse=True)
 	return sorted_candidates[0:number_of_parents]
 
 
@@ -184,10 +178,11 @@ def load_config(config_file):
 	config = json.loads(minified)
 	return config
 
+
 def evaluate_generation(generation_list: list[Individual], grammar: StepperGrammar, cnn_eval: Evaluator, stat: RunStatistics, force_reevaluation=False):
 	"""
-	  Evaluate a whole generation of individuals
-	  Will only evaluate individuals where metrics is None, unless force_reevaluation is True.
+		Evaluate a whole generation of individuals
+		Will only evaluate individuals where metrics is None, unless force_reevaluation is True.
 	"""
 	parallel_list = []
 	for ind in generation_list:
@@ -203,8 +198,8 @@ def evaluate_generation(generation_list: list[Individual], grammar: StepperGramm
 	return Individual.evaluate_multiple_individuals(parallel_list, grammar, cnn_eval, stat)
 
 
-def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, dataset='mnist', config_file='config/config.json',
-                  override_experiment_name=None, override_random_seed=None, override_evaluation_cache_file=None, return_after_generations=0):
+def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, dataset='mnist', config_file='config/config.json', grammar_file='lenet.grammar',
+					override_experiment_name=None, override_random_seed=None, override_evaluation_cache_file=None, return_after_generations=0):
 	"""
 		do (my+/,lambda)-ES for NAS search
 
@@ -218,13 +213,18 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			dataset to be solved
 		config_file : str
 			path to the configuration file
+		grammar_file : str
+			name of the grammar file (searched in same path as config file)
 		override_experiment_name : bool
-			overrides EXPERIMENT_NAME from config file if set
-		override_random_seed : bool
-			overrides RANDOM_SEED from config file if set
+			overrides experiment_name from config file if set
+		override_random_seed : int
+			overrides random_seed from config file if set
+		override_evaluation_cache_file : str
+			overrides evaluation_cache_file from config file if set
 		return_after_generations : int
 			0 or max number of completed generations after which the function returns
-		returns: bool
+
+		returns bool:
 			True - completed search
 			False - not completed because max_generations were process
 	"""
@@ -244,7 +244,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	LAMBDA = config['EVOLUTIONARY']['lambda']
 	COMMA_STRATEGY = config['EVOLUTIONARY']['comma_strategy']
 	NAS_STRATEGY = config['EVOLUTIONARY']['nas_strategy']
-	grammar_file = config['EVOLUTIONARY']['grammar'] if 'grammar' in config['EVOLUTIONARY'].keys() else 'lenet.grammar'
+	grammar_file = config['EVOLUTIONARY']['grammar'] if 'grammar' in config['EVOLUTIONARY'].keys() else grammar_file
 	i = config_file.rfind('/')
 	if i:
 		grammar_file = config_file[:i+1] + grammar_file
@@ -266,15 +266,13 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
 	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
 
-	K_FOLDS = config['TRAINING']['k_folds']
-	SELECT_BEST_WITH_K_FOLDS_ACCURACY = config['TRAINING']['select_best_with_k_folds_accuracy']
-	TEST_INIT_SEEDS = config['TRAINING']['test_init_seeds']
-
-	data_generator = eval(config['TRAINING']['datagen'])
-	data_generator_test = eval(config['TRAINING']['datagen_test'])
+	USE_DATA_AUGMENTATION = config['TRAINING']['use_data_augmentation']
 
 	if not experiments_path.endswith('/'):
 		experiments_path += '/'
+	if not Path(experiments_path).exists():
+		log_bold(f"Creating experiments directory {experiments_path}")
+		makedirs(experiments_path)         # create directory
 	save_path = experiments_path + EXPERIMENT_NAME + '/'
 	run_prefix = f"r{run_number:02}_"
 	save_path_with_run = save_path + run_prefix
@@ -315,11 +313,11 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		# delete old files
 		if not RESUME:
 			for f in glob(save_path_with_run + '*'):
-				os.remove(f)
+				remove(f)
 			for f in glob(save_path + '#' + run_prefix + '*'):
-				os.remove(f)
+				remove(f)
 
-		stat = RunStatistics(RANDOM_SEED)
+		stat = RunStatistics(RANDOM_SEED, run_nas_strategy=NAS_STRATEGY, run_number=run_number, run_dataset=dataset)
 		stat.init_session()
 
 	else:
@@ -339,9 +337,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	if USE_EVALUATION_CACHE:
 		evaluation_cache_path = Path(save_path, EVALUATION_CACHE_FILE).resolve()
 	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, max_parameters=MAX_PARAMETERS,
-	                     for_k_fold_validation=K_FOLDS, calculate_fitness_with_k_folds_accuracy=SELECT_BEST_WITH_K_FOLDS_ACCURACY, test_init_seeds=TEST_INIT_SEEDS,
-	                     evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, data_generator=data_generator, data_generator_test=data_generator_test,
-	                     override_batch_size=OVERRIDE_BATCH_SIZE, n_gpus=0)
+							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, use_augmentation=USE_DATA_AUGMENTATION,
+							override_batch_size=OVERRIDE_BATCH_SIZE, n_gpus=0)
 
 	if unpickle is None:
 		# pickle_evaluator(cnn_eval, save_path_with_run) # save evaluator
@@ -428,20 +425,6 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 		log_nolf(f"[Generation {gen} in {EXPERIMENT_NAME} run#{run_number:02} took {generation_time:.2f} s] ")
 
-		# if there are new parent candidates, do K-fold validation on them
-		new_parent_candidates_count = 0
-		if SELECT_BEST_WITH_K_FOLDS_ACCURACY:
-			for idx, parent in enumerate(new_parents):
-				if not parent.is_parent:
-					log_bold(f"K-folds evaluation of candidate for {'best' if idx==0 else f'rank #{idx+1}'} {parent.description()}")
-					parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
-					new_parent_candidates_count += 1
-			if new_parent_candidates_count:
-				new_parents = select_new_parents(selection_pool, MY, after_k_folds_evaluation=True)
-				count = sum(1 for parent in new_parents if not parent.is_parent)
-				if count == 0:
-					log_bold('New parent candidate fails K-folds evaluation')
-
 		for idx, parent in enumerate(new_parents):
 			if not parent.is_parent:
 				parent.is_parent = True
@@ -452,14 +435,6 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 						parent.log_mutation_summary(f"{parent.id} new #{idx+1}: [{parent.description()}] <- [{orig_parent.description()}] d_fitness={parent.fitness - orig_parent.fitness:.5f} d_acc={parent.metrics.accuracy - orig_parent.metrics.accuracy:.5f}")
 					else:
 						log_warning(f"parent {parent.parent_id} of {parent.id} not found in current population!")
-
-					if K_FOLDS and not parent.k_fold_metrics:
-						log_bold(f'*** Evaluating k folds for new parent {parent.description()} ***')
-						parent.evaluate_individual_k_folds(grammar, cnn_eval, K_FOLDS, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
-					if TEST_INIT_SEEDS:
-						parent.k_fold_metrics = None
-						log_bold(f'*** Evaluating init folds for new parent {parent.description()} ***')
-						parent.evaluate_individual_init_seeds(grammar, cnn_eval, TEST_INIT_SEEDS, stat, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS)
 
 				if best_fitness is None or parent.fitness > best_fitness:
 					if best_fitness:
@@ -522,10 +497,6 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 	parent = population[0]
 	parent.log_long_description('Final Individual')
-
-	if len(stat.k_fold_accuracy_stds) > 1:
-		log(f"Average folds accuracy SD: {average_standard_deviation(stat.k_fold_accuracy_stds):.5f} {stat.k_fold_accuracy_stds}")
-		log(f"Average folds final accuracy SD: {average_standard_deviation(stat.k_fold_final_accuracy_stds):.5f} {stat.k_fold_final_accuracy_stds}")
 
 	stat.log_statistics_summary(1)
 

@@ -1,9 +1,9 @@
 {
   //NAS algorithm parameters for multiple runs. Start main_20_runs.py to run.
-  "EVOLUTIONARY": {
+"EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored. This is overridden if main_20_runs.py is used
-    "experiment_name" : "Stepper-Decay",
+    "experiment_name" : "Stepper-Adaptive",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
@@ -11,7 +11,7 @@
     // allow resume from saved state
     "resume": true,
 
-    // can resume at a certain generation (10, 20, ...)
+    // can resume at a certain generation (50, 100, ...)
     "resume_generation": 0,
 
     // random seed for Random and numpy modules, -1 for none. This is incremented before each run if main_multiple_runs.py is used
@@ -30,8 +30,14 @@
     "comma_strategy": false,
 
     // NAS strategy to use: "Random", "F-DENSER", "Stepper-Decay" or "Stepper-Adaptive"
-    "nas_strategy": "Stepper-Decay"
-  },
+    "nas_strategy": "Stepper-Decay",
+
+    // 0, or maximum number of trainable parameters of a generated architecture. A larger architecture is considered invalid for NAS. 0 for no limit.
+    "max_parameters": 0,
+
+   // initial step width for Stepper-Decay and Stepper-Adaptive
+   "stepper_initial_sigma" : 0.5
+},
 
   //network specific parameters
   "NETWORK": {
@@ -55,27 +61,12 @@
     "use_evaluation_cache": true,
     "evaluation_cache_file": "../cache_10.pkl",
 
-    //data augmentation generator for the training data - keras interpretable
-    //set to "None" if no data augmentation is to be used
-    "datagen": "None",
-    // "datagen":"ImageDataGenerator(preprocessing_function=augmentation)",
-
-    //data augmentation generator for the validation and testing data - keras interpretable
-    //Has to be similar to datagen but without data augmentation
-    //set to "None" if no data augmentation is to be used
-    "datagen_test": "None",
-    // "datagen_test": "ImageDataGenerator()",
-
     //maximum training time for each network architecture (in seconds)
     "max_training_time": 10,
     //maximum training epochs for each network architecture
     "max_training_epochs": 10,
 
-    // find K folds accuracy for best individual, this specifies the number of folds or 0 for no K folds testing
-    "k_folds" : 0,
-    // select new parents on average K folds fitness
-    "select_best_with_k_folds_accuracy" : false,
-    // test different initialisation seeds (alternatively to k_folds). This specifies the number of different seeds to test or 0 for no seeds test
-    "test_init_seeds" : 0
+    // use data augmentation (defined in data_augmentation.py)
+    "use_data_augmentation": false
   }
 }
