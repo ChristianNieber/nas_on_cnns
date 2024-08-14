@@ -460,8 +460,6 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			generation_list.append(population[0])
 		best_in_generation_idx = np.argmax([ind.fitness for ind in generation_list])
 		best_in_generation = generation_list[best_in_generation_idx]
-		if NAS_STRATEGY.startswith("Stepper"):
-			best_in_generation.record_stepwidth_statistics(stat.stepwidth_stats)
 		if COMMA_STRATEGY:
 			best_individual_overall.record_statistics(stat.best)
 			best_individual.record_statistics(stat.best_in_gen)

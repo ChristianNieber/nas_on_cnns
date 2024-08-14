@@ -112,8 +112,6 @@ class RunStatistics:
 		self.best = self.IndividualStatistics()
 		# best in generation
 		self.best_in_gen = self.IndividualStatistics()
-		# step widths
-		self.stepwidth_stats = []
 		# k folds standard deviations
 		self.k_fold_accuracy_stds = []
 		self.k_fold_final_accuracy_stds = []

@@ -1410,9 +1410,3 @@ class Individual:
 			ind_stats.k_fold_fitness_std.append(self.k_fold_metrics.fitness_std)
 			ind_stats.k_fold_million_inferences_time.append(self.k_fold_metrics.million_inferences_time)
 			ind_stats.k_fold_million_inferences_time_std.append(self.k_fold_metrics.million_inferences_time_std)
-
-	def record_stepwidth_statistics(self, stepwidth_stats):
-		stepwidth_stats.clear()
-		for module in self.modules_including_macro:
-			if len(module.step_history):
-				stepwidth_stats.append((module.module_name, 'structure', module.step_history))

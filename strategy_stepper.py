@@ -252,7 +252,6 @@ class StepperGrammar:
 
 			self.step = None
 			self.previous_step = None
-			self.step_history = []
 
 		def initialise_module_random(self, grammar, init_max):
 			"""
@@ -474,8 +473,6 @@ class StepperStrategy(NasStrategy):
 			step = module.step
 			if step is None:
 				step = self.MUTATION_PROBABILITY_LEARNING if module.module_name == 'learning' else self.MUTATION_PROBABILITY_LAYER_IN_MODULE
-				module.step_history = [0.0] * (ind.generation-1)
-				module.step_history.append(step)
 			module.previous_step = step
 
 			if self.MUTATE_STEP_PER_PARAMETER:
@@ -483,7 +480,6 @@ class StepperStrategy(NasStrategy):
 				step = 1.0 / (1 + ((1 - step) / step) * np.exp(-tau_random_expression))
 				step = interval_transform(step, 0.3333333 / mutation_state.number_of_variables, 0.5)
 				module.step = step
-			module.step_history.append(step)
 
 			u = random.uniform(0, 1)
 			if u < step:  # mutate this layer?
