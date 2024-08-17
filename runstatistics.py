@@ -48,7 +48,6 @@ class RunStatistics:
 			self.k_fold_final_accuracy = []
 			self.k_fold_final_accuracy_std = []
 			self.k_fold_million_inferences_time = []
-			self.k_fold_million_inferences_time_std = []
 
 			self.statistic_nlayers = []
 			self.statistic_variables = []
@@ -353,10 +352,10 @@ class CnnEvalResult:
 		self.history_val_loss = []
 		self.training_epochs = 0
 		if history:
-			self.history_train_accuracy = history['accuracy']
-			self.history_train_loss = history['loss']
-			self.history_val_accuracy = history['val_accuracy']
-			self.history_val_loss = history['val_loss']
+			self.history_train_accuracy = np.array(history['accuracy'], dtype=np.float32)
+			self.history_train_loss = np.array(history['loss'], dtype=np.float32)
+			self.history_val_accuracy = np.array(history['val_accuracy'], dtype=np.float32)
+			self.history_val_loss = np.array(history['val_loss'], dtype=np.float32)
 			self.training_epochs = len(self.history_train_accuracy)
 
 		if self.training_epochs:

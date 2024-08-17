@@ -154,9 +154,15 @@ class KFoldEvalResult:
 		self.folds_val_accuracy = []
 		self.folds_train_loss = []
 		self.folds_val_loss = []
-		self.folds_million_inferences_time = []
 		self.folds_fitness = []
+
+		self.folds_history_train_accuracy = []
+		self.folds_history_train_loss = []
+		self.folds_history_val_accuracy = []
+		self.folds_history_val_loss = []
+
 		self.parameters = 0
+		self.batch_size = 0
 		self.accuracy = None
 		self.accuracy_std = None
 		self.fitness = None
@@ -164,11 +170,10 @@ class KFoldEvalResult:
 		self.final_accuracy = None
 		self.final_accuracy_std = None
 		self.million_inferences_time = .0
-		self.million_inferences_time_std = .0
-		self.total_eval_time = .0
-		self.n_mutable_variables = 0
+		self.total_eval_time = time()
 
-	def append_cnn_eval_result(self, result):
+	def append_cnn_eval_result(self, result: CnnEvalResult):
+		""" Append results from one evaluation to lists """
 		self.folds_eval_time.append(result.eval_time)
 		self.final_test_accuracy_list.append(result.final_test_accuracy)
 		self.folds_test_accuracy.append(result.accuracy)
@@ -176,22 +181,43 @@ class KFoldEvalResult:
 		self.folds_val_accuracy.append(result.val_accuracy)
 		self.folds_train_loss.append(result.train_loss)
 		self.folds_val_loss.append(result.val_loss)
-		self.folds_million_inferences_time.append(result.million_inferences_time)
-		self.parameters = result.parameters
-		self.total_eval_time += result.eval_time
 
-	def calculate_fitness_mean_std(self, k_fold_eval):
-		self.folds_fitness = []
-		for acc in self.folds_test_accuracy:
-			self.folds_fitness.append(k_fold_eval.fitness_func(acc, self.parameters))
+		self.folds_history_train_accuracy.append(result.history_train_accuracy)
+		self.folds_history_train_loss.append(result.history_train_loss)
+		self.folds_history_val_accuracy.append(result.history_val_accuracy)
+		self.folds_history_val_loss.append(result.history_val_loss)
+
+		self.parameters = result.parameters
+		self.batch_size = result.batch_size
+		self.million_inferences_time += result.million_inferences_time
+
+	def finalize(self, k_fold_eval):
+		""" finalize KFoldEvalResult: calculate fitness values, mean/std, and convert to numpy arrays """
+		self.folds_eval_time = np.array(self.folds_eval_time, dtype=np.float32)
+		self.final_test_accuracy_list = np.array(self.final_test_accuracy_list, dtype=np.float32)
+		self.folds_test_accuracy = np.array(self.folds_test_accuracy, dtype=np.float32)
+		self.folds_train_accuracy = np.array(self.folds_train_accuracy, dtype=np.float32)
+		self.folds_val_accuracy = np.array(self.folds_val_accuracy, dtype=np.float32)
+		self.folds_train_loss = np.array(self.folds_train_loss, dtype=np.float32)
+		self.folds_val_loss = np.array(self.folds_val_loss, dtype=np.float32)
+
+		self.folds_history_train_accuracy = np.asarray(self.folds_history_train_accuracy, dtype=np.float32)
+		self.folds_history_train_loss = np.asarray(self.folds_history_train_loss, dtype=np.float32)
+		self.folds_history_val_accuracy = np.asarray(self.folds_history_val_accuracy, dtype=np.float32)
+		self.folds_history_val_loss = np.asarray(self.folds_history_val_loss, dtype=np.float32)
+
+		self.folds_fitness = [k_fold_eval.fitness_func(acc, self.parameters) for acc in self.folds_test_accuracy]
+		self.folds_fitness = np.array(self.folds_fitness, dtype=np.float32)
+
 		self.accuracy = np.mean(self.folds_test_accuracy)
 		self.accuracy_std = np.std(self.folds_test_accuracy)
 		self.fitness = np.mean(self.folds_fitness)
 		self.fitness_std = np.std(self.folds_fitness)
 		self.final_accuracy = np.mean(self.final_test_accuracy_list)
 		self.final_accuracy_std = np.std(self.final_test_accuracy_list)
-		self.million_inferences_time = np.mean(self.folds_million_inferences_time)
-		self.million_inferences_time_std = np.std(self.folds_million_inferences_time)
+
+		self.total_eval_time = time() - self.total_eval_time
+		self.million_inferences_time /= len(self.folds_test_accuracy)
 
 
 def fitness_function_accuracy(accuracy, parameters):
@@ -363,7 +389,7 @@ class Evaluator:
 	def get_learning(learning):
 		"""
 			Parses the phenotype corresponding to the learning
-			Auxiliary function of the assemble_optimiser function
+			Auxiliary function of the assemble_optimizer function
 
 			Parameters
 			----------
@@ -412,15 +438,15 @@ class Evaluator:
 				keras trainable model
 		"""
 
-		input, output = Evaluator.assemble_network_input_output(keras_layers, input_size)
+		keras_input, keras_output = Evaluator.assemble_network_input_output(keras_layers, input_size)
 
-		model = tf.keras.models.Model(inputs=input, outputs=output)
+		model = tf.keras.models.Model(inputs=keras_input, outputs=keras_output)
 		return model
 
 	@staticmethod
 	def assemble_network_input_output(keras_layers, input_size):
 		# input layer
-		input = tf.keras.layers.Input(shape=input_size)
+		keras_input = tf.keras.layers.Input(shape=input_size)
 		# Create layers -- ADD NEW LAYERS HERE
 		layers = []
 		for layer_type, layer_params in keras_layers:
@@ -525,7 +551,7 @@ class Evaluator:
 				layer_params = keras_layers[layer_idx][1]
 				input_idx = layer_inputs[0]
 				# use input for first layer, otherwise input
-				input_layer = input if input_idx == -1 else data_layers[input_idx]
+				input_layer = keras_input if input_idx == -1 else data_layers[input_idx]
 				# add Flatten layer before first fc layer
 				if layer_type == 'fc' and first_fc:
 					first_fc = False
@@ -565,11 +591,11 @@ class Evaluator:
 				merge_signals = []
 				for input_idx in layer_inputs:
 					if input_idx == -1:
-						if input.shape[-3:][0] > minimum_shape:
-							actual_shape = int(input.shape[-3:][0])
-							merge_signals.append(tf.keras.layers.MaxPooling2D(pool_size=(actual_shape - (minimum_shape - 1), actual_shape - (minimum_shape - 1)), strides=1)(input))
+						if keras_input.shape[-3:][0] > minimum_shape:
+							actual_shape = int(keras_input.shape[-3:][0])
+							merge_signals.append(tf.keras.layers.MaxPooling2D(pool_size=(actual_shape - (minimum_shape - 1), actual_shape - (minimum_shape - 1)), strides=1)(keras_input))
 						else:
-							merge_signals.append(input)
+							merge_signals.append(keras_input)
 
 					elif input_idx not in invalid_layers:
 						if data_layers[input_idx].shape[-3:][0] > minimum_shape:
@@ -586,7 +612,7 @@ class Evaluator:
 					merged_signal = data_layers[-1]
 
 				data_layers.append(layer(merged_signal))
-		return input, data_layers[-1]
+		return keras_input, data_layers[-1]
 
 	@staticmethod
 	def calculate_model_multiplications(model):
@@ -710,7 +736,7 @@ class Evaluator:
 		del model
 		return is_valid
 
-	def evaluate_cnn(self, phenotype: str, dataset, stat, for_k_folds_validation=False):
+	def evaluate_cnn(self, phenotype: str, dataset, stat, epochs_for_k_folds_validation=0):
 		"""
 			Evaluates the phenotype with keras
 
@@ -722,8 +748,8 @@ class Evaluator:
 				train and test datasets
 			stat : RunStatistics
 				for recording statistics
-			for_k_folds_validation : bool
-				suppress caching, logging and early stopping for k-folds validation
+			epochs_for_k_folds_validation : int
+				if given, run for this number of epochs and suppress caching, logging, time limit and early stopping
 
 			Returns
 			-------
@@ -759,8 +785,13 @@ class Evaluator:
 			return None
 
 		# time based stopping
-		timed_stopping = TimedStopping(seconds=self.max_training_time)
+		max_training_epochs = self.max_training_epochs
+		max_training_time = self.max_training_time
+		if epochs_for_k_folds_validation:
+			max_training_epochs = epochs_for_k_folds_validation
+			max_training_time *= 10
 
+		timed_stopping = TimedStopping(seconds=max_training_time)
 		callbacks_list = [timed_stopping]
 
 		# early stopping not used
@@ -774,7 +805,7 @@ class Evaluator:
 		if self.data_generator is not None:
 			score = model.fit_generator(self.data_generator.flow(dataset.X_train, dataset.y_train, batch_size=batch_size),
 										steps_per_epoch=(dataset.X_train.shape[0] // batch_size),
-										epochs=self.max_training_epochs,
+										epochs=max_training_epochs,
 										validation_data=(self.data_generator_test.flow(dataset.X_val, dataset.y_val, batch_size=batch_size)),
 										validation_steps=(dataset.X_val.shape[0] // batch_size),
 										callbacks=callbacks_list,
@@ -783,7 +814,7 @@ class Evaluator:
 		elif hasattr(dataset, 'train_dataset'):
 			score = model.fit(dataset.train_dataset,
 								batch_size=batch_size,
-								epochs=self.max_training_epochs,
+								epochs=max_training_epochs,
 								steps_per_epoch=(dataset.train_dataset_size // batch_size),
 								validation_data=dataset.val_dataset,
 								callbacks=callbacks_list,
@@ -792,7 +823,7 @@ class Evaluator:
 		else:
 			score = model.fit(dataset.X_train, dataset.y_train,
 								batch_size=batch_size,
-								epochs=self.max_training_epochs,
+								epochs=max_training_epochs,
 								steps_per_epoch=(dataset.train_dataset_size // batch_size),
 								validation_data=(dataset.X_val, dataset.y_val),
 								validation_steps=(dataset.X_val.shape[0] // batch_size),
@@ -803,7 +834,7 @@ class Evaluator:
 		training_time = time() - training_start_time
 		training_epochs = len(score.epoch)
 		timer_stop_triggered = timed_stopping.timer_stop_triggered
-		early_stop_triggered = training_epochs < self.max_training_epochs and not timer_stop_triggered
+		early_stop_triggered = training_epochs < max_training_epochs and not timer_stop_triggered
 
 		# measure test accuracy
 		test_accuracy, model_test_time, million_inferences_time = self.test_model_with_data(model, dataset.X_test, dataset.y_test)
@@ -821,23 +852,23 @@ class Evaluator:
 		result = CnnEvalResult(score.history, final_test_accuracy, eval_time, training_time, final_test_time, million_inferences_time, timer_stop_triggered, early_stop_triggered,
 								parameters, keras_layers_count, model_layers, test_accuracy, fitness, batch_size, model_summary)
 
-		stat.record_evaluation(seconds=eval_time, is_k_folds=for_k_folds_validation)
+		stat.record_evaluation(seconds=eval_time, is_k_folds=epochs_for_k_folds_validation)
 
 		return result
 
-	def evaluate_cnn_init_seeds(self, phenotype, name, metrics, n_seeds, dataset, stat):
+	def evaluate_cnn_init_seeds(self, phenotype, name, epochs, n_seeds, dataset, stat):
 		""" evaluate individual for different initialisation seeds """
 
 		k_folds_result = KFoldEvalResult()
 
 		for seed in range(0, n_seeds):
-			result = self.evaluate_cnn(phenotype, dataset, stat, for_k_folds_validation=True)
+			result = self.evaluate_cnn(phenotype, dataset, stat, epochs_for_k_folds_validation=epochs)
 			log_training(f"Seed #{seed}" + result.summary(''))
 			k_folds_result.append_cnn_eval_result(result)
 
 		return k_folds_result
 
-	def evaluate_cnn_k_folds(self, phenotype, name, metrics, n_folds, stat):
+	def evaluate_cnn_k_folds(self, phenotype, name, epochs, n_folds, stat):
 		""" evaluate individual for k-folds, using cache """
 
 		X_train = self.dataset.X_combined
@@ -858,7 +889,7 @@ class Evaluator:
 				evo_y_val, evo_y_test = y_val[train_index2], y_val[test_index2]
 
 			fold_dataset = Dataset.from_data(evo_x_train, evo_y_train, evo_x_val, evo_y_val, evo_x_test, evo_y_test, self.dataset.X_final_test, self.dataset.y_final_test)
-			result = self.evaluate_cnn(phenotype, fold_dataset, stat, for_k_folds_validation=True)
+			result = self.evaluate_cnn(phenotype, fold_dataset, stat, epochs_for_k_folds_validation=epochs)
 			log_training(f"Fold #{fold_number}" + result.summary(''))
 			fold_number += 1
 			k_folds_result.append_cnn_eval_result(result)
@@ -1000,14 +1031,16 @@ class Individual:
 			result += f"{self.metrics.parameters / 1000.0:6.1f}k "
 		if self.fitness:
 			result += format_fitness(self.fitness) + ' '
-		if self.k_fold_metrics:
-			result += f"k-folds:{format_accuracy(self.k_fold_metrics.accuracy)} (SD:{self.k_fold_metrics.accuracy_std:5.2%}) "
 		if self.metrics:
 			result += f"err:{format_accuracy(self.metrics.accuracy)} "
+			if self.k_fold_metrics:
+				result += f"({format_accuracy(self.k_fold_metrics.accuracy)} ± {self.k_fold_metrics.accuracy_std:5.2%}) "
 			if self.metrics.final_test_accuracy:
 				result += f"final:{format_accuracy(self.metrics.final_test_accuracy)} "
+				if self.k_fold_metrics:
+					result += f"({format_accuracy(self.k_fold_metrics.final_accuracy)} ± {self.k_fold_metrics.final_accuracy_std:5.2%}) "
 		if hasattr(self, 'step_width') and self.step_width:
-			result += f" σ:{self.step_width:.2f}"
+			result += f"σ:{self.step_width:.2f}"
 		return result
 
 	def id_and_layer_description(self):
@@ -1055,7 +1088,6 @@ class Individual:
 					'k_fold_final_accuracy_std': self.k_fold_metrics.final_accuracy_std,
 					'k_fold_fitness_std': self.k_fold_metrics.fitness_std,
 					'k_fold_million_inferences_time': self.k_fold_metrics.million_inferences_time,
-					'k_fold_million_inferences_time_std': self.k_fold_metrics.million_inferences_time_std,
 				}
 			)
 		return result
@@ -1237,7 +1269,8 @@ class Individual:
 		is_valid = False
 		try:
 			is_valid = cnn_eval.validate_cnn(phenotype)
-		except (TypeError, ValueError, tf.errors.ResourceExhaustedError) as e:
+		# except (TypeError, ValueError, tf.errors.ResourceExhaustedError) as e:
+		except Exception as e:
 			log_warning(f"While validating {self.id} caught exception: {Individual.pretty_exception_text(e)}")
 			keras.backend.clear_session()
 			stat.record_evaluation(is_invalid=True)
@@ -1281,7 +1314,7 @@ class Individual:
 				if metrics:
 					cnn_eval.cache_update(phenotype, metrics, self.id)
 					self.set_metrics(metrics, cnn_eval)
-			except Exception as e:
+			except (tf.errors.ResourceExhaustedError, ValueError, TypeError) as e:
 				log_warning(f"While evaluating {self.id} caught exception: {Individual.pretty_exception_text(e)}")
 				keras.backend.clear_session()
 				stat.record_evaluation(is_invalid=True)
@@ -1322,9 +1355,9 @@ class Individual:
 		if not self.metrics.training_epochs:
 			log_warning(f"*** {self.id}: no training epoch completed ***")
 
-	def evaluate_individual_k_folds(self, grammar, cnn_eval, stat, num_folds=10, num_random_seeds=0):
+	def evaluate_individual_k_folds(self, grammar, cnn_eval, stat, epochs=10, num_folds=0, num_random_seeds=10):
 		"""
-			Performs the evaluation of a candidate solution
+			Evaluate different random seeds or k-folds on already evaluated individual
 
 			Parameters
 			----------
@@ -1333,11 +1366,13 @@ class Individual:
 			cnn_eval : Evaluator
 				Evaluator instance used to train the networks
 			num_folds : int
-				number of folds
+				if given, run with k folds instead of different random seeds (takes precedence over num_random_seeds if nonzero)
 			num_random_seeds : int
-				if given, run with same data but different random seeds instead of k-folds
+				number of different random seeds to try
 			stat : RunStatistics
 				keeps statistics
+			epochs : int
+				number of epochs used for each evaluation
 
 			Returns
 			-------
@@ -1348,13 +1383,13 @@ class Individual:
 
 		phenotype = self.get_phenotype(grammar)
 
-		log(f"Starting {f'{num_random_seeds} seeds' if num_random_seeds else f'{num_folds} folds'} on {self.id_and_layer_description()}")
-		if num_random_seeds:
-			k_fold_metrics = cnn_eval.evaluate_cnn_init_seeds(phenotype, self.id, self.metrics, num_random_seeds, cnn_eval.dataset, stat)
+		log(f"Starting {f'{num_folds} folds' if num_folds else f'{num_random_seeds} seeds'} with {epochs} epochs on {self.id_and_layer_description()}")
+		if num_folds:
+			k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, epochs, num_folds, stat)
 		else:
-			k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.metrics, num_folds, stat)
+			k_fold_metrics = cnn_eval.evaluate_cnn_init_seeds(phenotype, self.id, epochs, num_random_seeds, cnn_eval.dataset, stat)
 
-		k_fold_metrics.calculate_fitness_mean_std(cnn_eval)
+		k_fold_metrics.finalize(cnn_eval)
 
 		restore_random_state(random_state)
 
@@ -1362,11 +1397,11 @@ class Individual:
 		stat.k_fold_final_accuracy_stds.append(k_fold_metrics.final_accuracy_std)
 		stat.k_fold_fitness_stds.append(k_fold_metrics.fitness_std)
 
-		self.log_k_folds_result(num_folds, k_fold_metrics)
+		self.log_k_folds_result(num_folds, num_random_seeds, k_fold_metrics)
 		return k_fold_metrics
 
-	def log_k_folds_result(self, num_folds, k_fold_metrics):
-		log_bold(f"--> {self.id_and_layer_description()} with {num_folds} folds: err: {format_accuracy(self.metrics.accuracy)} -> {format_accuracy(k_fold_metrics.accuracy)} (SD:{k_fold_metrics.accuracy_std:5.2%}), final: {format_accuracy(k_fold_metrics.final_accuracy)} (SD:{k_fold_metrics.final_accuracy_std:5.2%}), fitness: {format_fitness(self.fitness)} -> {format_fitness(k_fold_metrics.fitness)}")
+	def log_k_folds_result(self, num_folds, num_random_seeds, k_fold_metrics):
+		log_bold(f"--> {self.id_and_layer_description()} with {f'{num_random_seeds} seeds' if num_random_seeds else f'{num_folds} folds'}: err: {format_accuracy(self.metrics.accuracy)} -> {format_accuracy(k_fold_metrics.accuracy)} ± {k_fold_metrics.accuracy_std:5.2%}, final: {format_accuracy(self.metrics.final_test_accuracy)} -> {format_accuracy(k_fold_metrics.final_accuracy)}  ± {k_fold_metrics.final_accuracy_std:5.2%}, fitness: {format_fitness(self.fitness)} -> {format_fitness(k_fold_metrics.fitness)}")
 
 	def compute_mutated_variables_statistics(self, mutable_vars):
 		""" record layers and variable statistics for individual """
@@ -1409,4 +1444,3 @@ class Individual:
 			ind_stats.k_fold_fitness.append(self.k_fold_metrics.fitness)
 			ind_stats.k_fold_fitness_std.append(self.k_fold_metrics.fitness_std)
 			ind_stats.k_fold_million_inferences_time.append(self.k_fold_metrics.million_inferences_time)
-			ind_stats.k_fold_million_inferences_time_std.append(self.k_fold_metrics.million_inferences_time_std)

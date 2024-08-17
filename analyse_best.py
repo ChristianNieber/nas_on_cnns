@@ -40,22 +40,24 @@ def individual_name_prefix(experiment_name):
 	return experiment_name[0]
 
 
-def load_best_individuals(experiment_name, experiments_path=DEFAULT_EXPERIMENT_PATH):
+def load_best_individuals(experiment_name, experiments_path=DEFAULT_EXPERIMENT_PATH, over_all_generations=False):
 	"""
 		load the best individuals of all runs in an experiment
 	"""
 	if not experiments_path.endswith('/'):
 		experiments_path += '/'
-	file_list = sorted(glob.glob(experiments_path + experiment_name + "/r??_population.pkl"))
+	file_list = sorted(glob.glob(experiments_path + experiment_name + ('/r??_best_individuals.pkl' if over_all_generations else '/r??_population.pkl')))
 	population = []
-	for file in file_list:
+	for i, file in enumerate(file_list):
 		with open(file, 'rb') as f:
 			run_population = pickle.load(f)
-			best_ind = run_population[0]
-			best_ind.id = individual_name_prefix(experiment_name) + best_ind.id
-			population.append(best_ind)
-	if not population:
-		raise FileNotFoundError(f"No best individuals found in {experiments_path}")
+			if not over_all_generations:
+				run_population = run_population[:1]
+			for ind in run_population:
+				ind.id = f"{individual_name_prefix(experiment_name)}#{i:02}/{ind.id}"
+			population += run_population
+# 	if not population:
+# 		raise FileNotFoundError(f"No best individuals found in {experiments_path}")
 	return population
 
 
@@ -71,10 +73,10 @@ def init_eval_environment(log_file="analyse.log", dataset=DATASET, use_test_cach
 	return stat, grammar, cnn_eval
 
 
-def find_best_of_experiment(experiments_path=EXPERIMENTS_PATH):
+def find_best_of_experiment(experiments_path=EXPERIMENTS_PATH, over_all_generations=False):
 	best_list = []
 	for experiment in EXPERIMENT_LIST:
-		best_individuals = load_best_individuals(experiment, experiments_path=experiments_path)
+		best_individuals = load_best_individuals(experiment, experiments_path=experiments_path, over_all_generations=over_all_generations)
 		best_list += best_individuals
 	return best_list
 
@@ -243,8 +245,8 @@ def benchmark_batch_sizes():
 		pickle.dump(benchmark_stat, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
 
 
-def list_best(experiments_path=EXPERIMENTS_PATH):
-	population = select_best_from_population(find_best_of_experiment(experiments_path=experiments_path), -1)
+def list_best(experiments_path=EXPERIMENTS_PATH, over_all_generations=False):
+	population = select_best_from_population(find_best_of_experiment(experiments_path=experiments_path, over_all_generations=over_all_generations), -1)
 	log(f"best individuals in {experiments_path}:")
 	for ind in population:
 		log(ind.description())
@@ -320,43 +322,24 @@ def plot_benchmark_results():
 	plt.show()
 
 
-def evaluate_k_folds(log_file='K-folds.log'):
-	stat, grammar, cnn_eval = init_eval_environment(log_file=log_file)
-	population = select_best_from_population(find_best_of_experiment(), 10)
-	start_time = time()
-	for ind in population:
-		eval_start_time = time()
-		ind.evaluate_individual_k_folds(grammar, cnn_eval, stat, num_folds=K_FOLDS)
-		eval_time = time() - eval_start_time
-		log_blue(f"K-folds time: {eval_time/K_FOLDS:.2f} original: {ind.metrics.eval_time:.2f}")
-	run_time = time() - start_time
-	log_blue(f"{stat.evaluations_total} evaluations, " + f" {stat.evaluations_k_folds} for k-folds")
-	log_blue(f"runtime {run_time:.2f}, evaluation time {stat.eval_time_k_folds:.2f}")
-
-	if len(stat.k_fold_accuracy_stds) > 1:
-		log(f"Average folds accuracy SD: {average_standard_deviation(stat.k_fold_accuracy_stds):.5f} {stat.k_fold_accuracy_stds}")
-		log(f"Average folds final accuracy SD: {average_standard_deviation(stat.k_fold_final_accuracy_stds):.5f} {stat.k_fold_final_accuracy_stds}")
-		log(f"Average folds fitness SD: {average_standard_deviation(stat.k_fold_fitness_stds):.5f} {stat.k_fold_fitness_stds}")
+def reevaluation_description(num_folds=0, num_random_seeds=10, num_epochs=0, use_float=False, batch_size=0, use_augmentation=False):
+	return f"{f'folds{num_folds}' if num_folds else f'seeds{num_random_seeds}'}_epochs{num_epochs}{'_float' if use_float else ''}{f'_b{batch_size}' if batch_size else ''}{'_aug' if use_augmentation else ''}"
 
 
-def reevaluation_description(num_folds=10, num_random_seeds=0, num_epochs=10, use_float=False, batch_size=0, use_augmentation=False):
-	return f"{f'seeds{num_random_seeds}' if num_random_seeds else f'folds{num_folds}'}_epochs{num_epochs}{'_float' if use_float else ''}{f'_b{batch_size}' if batch_size else ''}{'_aug' if use_augmentation else ''}"
-
-
-def reevaluate_best(experiments_path=EXPERIMENTS_PATH, dataset=DATASET, num_individuals=10, num_folds=10, num_random_seeds=0, max_training_epochs=MAX_TRAINING_EPOCHS, use_float=False, batch_size=0, use_augmentation=False):
+def reevaluate_best(experiments_path=EXPERIMENTS_PATH, dataset=DATASET, num_individuals=10, over_all_generations=False, num_folds=0, num_random_seeds=10, num_epochs=0, use_float=False, batch_size=0, use_augmentation=False):
 	if not experiments_path.endswith('/'):
 		experiments_path += '/'
-	description = reevaluation_description(num_folds, num_random_seeds, max_training_epochs, use_float, batch_size, use_augmentation)
-	stat, grammar, cnn_eval = init_eval_environment(log_file=experiments_path + description + ".log", dataset=dataset, max_training_epochs=max_training_epochs, for_k_fold_validation=num_folds, use_test_cache=False, use_float=use_float, use_augmentation=use_augmentation)
+	description = reevaluation_description(num_folds, num_random_seeds, num_epochs, use_float, batch_size, use_augmentation)
+	stat, grammar, cnn_eval = init_eval_environment(log_file=experiments_path + description + ".log", dataset=dataset, max_training_epochs=num_epochs, for_k_fold_validation=num_folds, use_test_cache=False, use_float=use_float, use_augmentation=use_augmentation)
 
-	reevaluate_file_name = experiments_path + 'reevaluated_individuals.pkl'
+	reevaluate_file_name = experiments_path + ('reevaluated_generations.pkl' if over_all_generations else 'reevaluated_individuals.pkl')
 	if path.isfile(reevaluate_file_name):
 		with open(reevaluate_file_name, 'rb') as handle_pop:
 			population = pickle.load(handle_pop)
-		log_bold(f"[Starting {description}: loaded {len (population)} individuals from {reevaluate_file_name}]")
+		log_bold(f"[{description} starts: loaded {len (population)} individuals from {reevaluate_file_name}]")
 	else:
-		population = select_best_from_population(find_best_of_experiment(experiments_path), -1)
-		log_bold(f"[Starting {description}: found {len (population)} best individuals in {experiments_path}]")
+		population = select_best_from_population(find_best_of_experiment(experiments_path, over_all_generations=over_all_generations), -1)
+		log_bold(f"[{description} starts: found {len (population)} best individuals in {experiments_path}]")
 
 	n_reevaluated = 0
 	last = min(len(population), num_individuals)
@@ -365,17 +348,20 @@ def reevaluate_best(experiments_path=EXPERIMENTS_PATH, dataset=DATASET, num_indi
 		if not hasattr(ind, 'reevaluation_metrics'):
 			ind.reevaluation_metrics = {}
 		if description not in ind.reevaluation_metrics:
-			eval_start_time = time()
-			k_fold_metrics = ind.evaluate_individual_k_folds(grammar, cnn_eval, stat, num_folds, num_random_seeds)
-			eval_time = time() - eval_start_time
-			log_blue(f"{description} {i+1}/{last} K-folds time: {eval_time/max(num_folds, num_random_seeds):.2f} original: {ind.metrics.eval_time:.2f}")
-			ind.reevaluation_metrics[description] = k_fold_metrics
-			n_reevaluated += 1
+			if ind.k_fold_metrics and description == 'seeds10_epochs0':
+				ind.reevaluation_metrics[description] = ind.k_fold_metrics
+			else:
+				eval_start_time = time()
+				k_fold_metrics = ind.evaluate_individual_k_folds(grammar, cnn_eval, stat, epochs=num_epochs if num_epochs else ind.metrics.training_epochs, num_folds=num_folds, num_random_seeds=num_random_seeds)
+				eval_time = time() - eval_start_time
+				log_blue(f"{description} {i+1}/{last} K-folds time: {eval_time/max(num_folds, num_random_seeds):.2f} original: {ind.metrics.eval_time:.2f}")
+				ind.reevaluation_metrics[description] = k_fold_metrics
+				n_reevaluated += 1
 			with open(reevaluate_file_name, 'wb') as handle_pop:
 				pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 		else:
 			log_blue(f"{i+1}/{last} already computed:")
-			ind.log_k_folds_result(num_folds, ind.reevaluation_metrics[description])
+			ind.log_k_folds_result(num_folds, num_random_seeds, ind.reevaluation_metrics[description])
 
 
 def reevaluation_get_accuracies(population, description: str, sort_by_parameters=False, sort_by_batch_size=False):
@@ -400,7 +386,7 @@ def reevaluation_get_accuracies(population, description: str, sort_by_parameters
 		original_accuracy.append(ind.metrics.accuracy)
 		original_final_accuracy.append(ind.metrics.final_test_accuracy)
 		parameters.append(ind.metrics.parameters)
-		batch_size.append(ind.metrics.batch_size if hasattr(ind.metrics, 'batch_size') else -1)
+		batch_size.append(ind.metrics.batch_size if hasattr(ind.metrics, 'batch_size') else -1)     # batch_size not present in old píckles
 		k_fold_metrics = ind.reevaluation_metrics[description]
 		avg_eval_time += k_fold_metrics.total_eval_time / len(k_fold_metrics.folds_eval_time)
 		accuracy.append(k_fold_metrics.accuracy)
@@ -410,7 +396,7 @@ def reevaluation_get_accuracies(population, description: str, sort_by_parameters
 		final_accuracy_std.append(k_fold_metrics.final_accuracy_std)
 		final_accuracy_diff.append(ind.metrics.final_test_accuracy - k_fold_metrics.final_accuracy)
 	log(f"{description:24}:{len(parameters):3}  {format_accuracy(np.mean(accuracy))} ± {gmean(accuracy_std):5.2%} (original {format_accuracy(np.mean(original_accuracy))}, diff {np.mean(accuracy_diff):5.2%}), "
-		+ f"final {format_accuracy(np.mean(final_accuracy))} ± {gmean(final_accuracy_std):5.2%} (original {format_accuracy(np.mean(original_final_accuracy))}, diff {np.mean(final_accuracy_diff):5.2%})  avg {avg_eval_time/len(population):.2f} s")
+		+ f"final {format_accuracy(np.mean(final_accuracy))} ± {gmean(final_accuracy_std):5.2%} (original {format_accuracy(np.mean(original_final_accuracy))}, diff {np.mean(final_accuracy_diff):5.2%})  avg {avg_eval_time/len(parameters):.2f} s")
 	return parameters, batch_size, original_accuracy, original_final_accuracy, accuracy, accuracy_std, accuracy_diff, final_accuracy, final_accuracy_std, final_accuracy_diff
 
 
@@ -418,13 +404,13 @@ def plot_reevaluation_variant(ax, population, description, by_parameters=False, 
 	parameters, batch_size, original_accuracy, original_final_accuracy, accuracy, accuracy_std, accuracy_diff, final_accuracy, final_accuracy_std, final_accuracy_diff =\
 		reevaluation_get_accuracies(population, description, sort_by_parameters=by_parameters, sort_by_batch_size=by_batch_size)
 
-	xscale = parameters if by_parameters else range(0, len(accuracy))
+	xscale = batch_size if by_batch_size else (parameters if by_parameters else range(0, len(accuracy)))
 
-	ax.set_title(description + (' by Parameters' if by_parameters else ' by Rank'))
+	ax.set_title(description + ('by Batch Size' if by_batch_size else (' by Parameters' if by_parameters else ' by Rank')))
 	plot_accuracy_and_std(ax, xscale, accuracy, accuracy_std, 'red', 'error Rate', invert=True)
 	# plot_accuracy_and_std(ax, xscale, final_accuracy, final_accuracy_std, 'magenta', 'final error rate', invert=True)
 	original_accuracy = 100.0 - np.array(original_accuracy) * 100.0
-	original_final_accuracy = 100.0 - np.array(original_final_accuracy) * 100.0
+	# original_final_accuracy = 100.0 - np.array(original_final_accuracy) * 100.0
 	accuracy_diff = np.array(accuracy_diff) * 100.0
 	final_accuracy_diff = np.array(final_accuracy_diff) * 100.0
 	ax.plot(xscale, original_accuracy, label='Orig. error', color='blue')
@@ -432,48 +418,61 @@ def plot_reevaluation_variant(ax, population, description, by_parameters=False, 
 	ax.plot(xscale, accuracy_diff, label='Diff')
 	ax.plot(xscale, final_accuracy_diff, label='Final diff')
 	ax.grid()
-	ax.set_ylim(-0.5, 4)
+	ax.set_ylim(-0.5, 20)
 
 
-def plot_reevaluation_results(experiments_path=EXPERIMENTS_PATH):
+def plot_reevaluation_results(experiments_path=EXPERIMENTS_PATH, over_all_generations=False):
 	if not experiments_path.endswith('/'):
 		experiments_path += '/'
-	reevaluate_file_name = experiments_path + 'reevaluated_individuals.pkl'
+	reevaluate_file_name = experiments_path + ('reevaluated_generations.pkl' if over_all_generations else 'reevaluated_individuals.pkl')
 	with open(reevaluate_file_name, 'rb') as handle_pop:
-		population = pickle.load(handle_pop)
+		population = pickle.load(handle_pop)[0:20]
 	log_bold(f"[Plot reevaluation: loaded {len(population)} individuals from {reevaluate_file_name}]")
 
 	by_parameters = False
-	by_batch_size = False
 	fig, (ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8) = plt.subplots(1, 8, figsize=(40, 3.5))
-	plot_reevaluation_variant(ax1, population, reevaluation_description(), by_parameters, by_batch_size)
+	plot_reevaluation_variant(ax1, population, reevaluation_description(), by_parameters)
 	ax1.legend(fontsize=8)
-	plot_reevaluation_variant(ax2, population, reevaluation_description(num_random_seeds=10, batch_size=256), by_parameters, by_batch_size)
-	plot_reevaluation_variant(ax3, population, reevaluation_description(num_random_seeds=10, batch_size=384), by_parameters, by_batch_size)
-	plot_reevaluation_variant(ax4, population, reevaluation_description(num_random_seeds=10, batch_size=512), by_parameters, by_batch_size)
-	plot_reevaluation_variant(ax5, population, reevaluation_description(use_float=True), by_parameters, by_batch_size)
-	plot_reevaluation_variant(ax6, population, reevaluation_description(num_random_seeds=10), by_parameters, by_batch_size)
-	# plot_reevaluation_variant(ax7, population, reevaluation_description(num_random_seeds=10, use_float=True), by_parameters, by_batch_size)
-	plot_reevaluation_variant(ax7, population, reevaluation_description(num_epochs=30), by_parameters, by_batch_size)
-	plot_reevaluation_variant(ax8, population, reevaluation_description(num_epochs=30, use_float=True), by_parameters, by_batch_size)
+	plot_reevaluation_variant(ax2, population, reevaluation_description(num_folds=10), by_parameters)
+	plot_reevaluation_variant(ax3, population, reevaluation_description(num_epochs=10), by_parameters)
+	plot_reevaluation_variant(ax4, population, reevaluation_description(use_float=True), by_parameters)
+	plot_reevaluation_variant(ax5, population, reevaluation_description(batch_size=512), by_parameters)
+	plot_reevaluation_variant(ax6, population, reevaluation_description(batch_size=1024), by_parameters)
+	plot_reevaluation_variant(ax7, population, reevaluation_description(batch_size=1536), by_parameters)
+	plot_reevaluation_variant(ax8, population, reevaluation_description(num_epochs=30), by_parameters)
+	# plot_reevaluation_variant(ax3, population, reevaluation_description(batch_size=384), by_parameters)
+	# plot_reevaluation_variant(ax5, population, reevaluation_description(batch_size=768), by_parameters)
+
+	# plot_reevaluation_variant(ax11, population, reevaluation_description(), by_parameters)
+	# plot_reevaluation_variant(ax12, population, reevaluation_description(use_float=True), by_parameters)
+	# plot_reevaluation_variant(ax13, population, reevaluation_description(num_epochs=30), by_parameters)
+	# plot_reevaluation_variant(ax14, population, reevaluation_description(num_epochs=30, use_float=True), by_parameters)
+	# plot_reevaluation_variant(ax15, population, reevaluation_description(use_float=False), by_parameters)
+	# plot_reevaluation_variant(ax16, population, reevaluation_description(use_float=True), by_parameters)
 	plt.show()
 
 
 if __name__ == "__main__":
-	n_individuals = 50
-	EXPERIMENTS_PATH = 'D:/experiments.NAS_PAPER'
-	DATASET = 'mnist'
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, batch_size=256)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, batch_size=384)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, batch_size=512)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, use_float=False)
+	n_individuals = 20
+	EXPERIMENTS_PATH = 'D:/experiments.fashion3'
+	DATASET = 'fashion-mnist'
+	all_generations = True
+	plot_reevaluation_results(EXPERIMENTS_PATH, over_all_generations=True)
+	reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=30, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, over_all_generations=over_all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, num_random_seeds=0, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=10, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=512, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=1024, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=1536, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=256)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=384)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=768)
+
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, use_float=True)
-	# # reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, use_float=False)
-	# # reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_random_seeds=10, use_float=True)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, max_training_epochs=30, use_float=False)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, max_training_epochs=30, use_float=True)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, batch_size=256, use_augmentation=True)
-	plot_reevaluation_results(EXPERIMENTS_PATH)
-	# list_best("D:/experiments.Fashion-MNIST")
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=256, use_augmentation=True)
+	# list_best("D:/experiments.fashion3", over_all_generations=True)
 	# benchmark_batch_sizes()
 	# plot_benchmark_results()

@@ -63,22 +63,6 @@ class Test(unittest.TestCase):
 
 		return ind, grammar
 
-	def test_pickle_evaluator(self):
-		from utils import Evaluator
-		import engine
-		import os
-
-		random.seed(0)
-		ind, grammar, nas_strategy = self.create_individual_stepper()
-		evaluator = Evaluator('mnist')
-
-		if not os.path.exists('./run_0/'):
-			os.makedirs('./run_0/')
-
-		engine.pickle_evaluator(evaluator, './run_0/')
-
-		self.assertTrue(os.path.exists('./run_0/evaluator.pkl'))
-
 
 	def test_save_population(self):
 		from utils import Individual, CnnEvalResult
@@ -101,7 +85,7 @@ class Test(unittest.TestCase):
 		if not os.path.exists('./run_0/'):
 			os.makedirs('./run_0/')
 
-		engine.pickle_population_and_statistics('./run_0/', [ind], stat)
+		engine.pickle_population_and_statistics('./run_0/', stat, [ind])
 
 		self.assertTrue(os.path.exists('./run_0/population.pkl'))
 		self.assertTrue(os.path.exists('./run_0/statistics.pkl'))

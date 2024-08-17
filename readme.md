@@ -29,5 +29,4 @@ To run all tests:
 `python -m unittest discover -s tests`
 
 # To do:
-- metric arrays as numpy
 - unity evaluation

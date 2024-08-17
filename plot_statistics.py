@@ -14,10 +14,12 @@ import scipy
 from runstatistics import RunStatistics, decimal_hours
 
 # plot colors and alpha channel
-COLOR_DOTS = '#808080'
-ALPHA_DOTS = 0.3
-ALPHA_DOTS_MULTIPLE_RUNS = 0.08
 ALPHA_LINES = 0.3
+COLOR_DOTS = 'black'
+ALPHA_DOTS = 0.3
+COLOR_DOTS_MULTIPLE_RUNS = '#808080'
+ALPHA_DOTS_MULTIPLE_RUNS = 0.08
+COLOR_DOTS_BEST_IN_GEN = 'magenta'
 ALPHA_BEST_IN_GEN = 0.3
 
 # global variables
@@ -31,7 +33,7 @@ picture_count = 0
 
 
 def load_stats(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH, max_runs=-1):
-	""" load statistics of all runs in an experiment """
+	""" load statistics of all runs (or max_runs if given) in an experiment """
 	if not experiment_path.endswith('/'):
 		experiment_path += '/'
 	file_list = sorted(glob.glob(experiment_path + experiment_name + "/r??_statistics.pkl"))
@@ -40,7 +42,7 @@ def load_stats(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH, max_run
 		if max_runs < 0 or i < max_runs:
 			with open(file, 'rb') as f:
 				stat = pickle.load(f)
-				# guess run properties not set in old statistics format
+				# guess run properties not set in old saved statistics
 				if not hasattr(stat, 'run_nas_strategy'):
 					stat.run_nas_strategy = experiment_name
 				if not hasattr(stat, 'run_number'):
@@ -139,17 +141,17 @@ def plot_set_limits(stat, m, ax):
 
 	ylim = RunStatistics.metric_ylimits(m)
 	yticks_distance = stat.metric_ticks(m)
-	if 'mnist' not in stat.run_dataset and m != 3:  # keep predefined ylimits only for mnist variants, and for step width plot
+	if stat.run_dataset != 'mnist' and m != 3:  # keep predefined ylimits only for mnist variants, and for step width plot
 		if m < 0:  # default ylimits for different error rates etc.
-			ylim = None
+			ylim = (0, None)
 			yticks_distance = None
 		else:
 			metric = stat.best.metric(m)
-			if ngenerations >= 20:
+			if ngenerations >= 20 and not (m == 4 or m == 5):
 				metric = metric[5:]  # for maximum calculation exclude first 5 generations if already more than 20
 			if m == 2:
 				new_ylim = np.min(metric)  # lower limit for fitness
-				print(f"limit of {stat.metric_name(m)} : {ylim[0]} -> {new_ylim}")
+				# print(f"limit of {stat.metric_name(m)} : {ylim[0]} -> {new_ylim}")
 				ylim = (new_ylim, ylim[1])
 			else:
 				new_ylim = np.max(metric)  # upper limit for other metrics
@@ -180,17 +182,16 @@ def plot_metric(stat, m, ax=None, use_transparency=False):
 	ax.set_title(title, fontsize=20)
 	population_size = 0
 	if m <= 2:
+		if len(stat.best.metric_k_fold(m)):
+			draw_mean_and_sd(ax, xscale, stat.best.metric_k_fold(m), stat.best.metric_k_fold_std(m), 'cyan' if m == 2 else 'orange', stat.metric_name(m) + ' 10 seeds')
 		generation_metric = np.array(stat.metric_generation(m))
 		(_, population_size) = generation_metric.shape
-		dot_color = COLOR_DOTS
-		if not use_transparency:
-			dot_color = '#D0D0D0'
 		for i in range(population_size):
-			ax.plot(generation_metric[:, i], 'o', markersize=4, color=dot_color, alpha=ALPHA_DOTS if use_transparency else 1.0, label='population', zorder=-32)
-		if len(stat.best.metric_k_fold(m)):
-			ax.plot(xscale, stat.best.metric_k_fold(m), '-', color='cyan', alpha=1, label="K-folds of best")
-			ax.errorbar(xscale, stat.best.metric_k_fold(m), yerr=stat.best.metric_k_fold_std(m), color='cyan', alpha=1, zorder=10)
-		ax.plot(stat.best_in_gen.metric(m), '-', color='magenta', alpha=ALPHA_BEST_IN_GEN, label='best in generation')
+			ax.plot(generation_metric[:, i], 'o', markersize=4, color=COLOR_DOTS if use_transparency else '#D0D0D0', alpha=ALPHA_DOTS if use_transparency else 1.0, label='population', zorder=-32)
+		# if len(stat.best.metric_k_fold(m)):
+		# 	ax.plot(xscale, stat.best.metric_k_fold(m), '-', color='cyan', alpha=1, label="K-folds of best")
+		# 	ax.errorbar(xscale, stat.best.metric_k_fold(m), yerr=stat.best.metric_k_fold_std(m), color='cyan', alpha=1, zorder=10)
+		ax.plot(stat.best_in_gen.metric(m), 'o', markersize=4, color=COLOR_DOTS_BEST_IN_GEN, alpha=ALPHA_BEST_IN_GEN, label='best in generation')
 	ax.plot(stat.best.metric(m), '-', color=RunStatistics.metric_color(m), alpha=1, label='best fitness individual')
 	plot_set_limits(stat, m, ax)
 	if m <= 2:
@@ -205,20 +206,22 @@ def plot_metric_multiple_runs(stats, m, ax=None, use_transparency=True, add_lege
 		ax = default_ax()
 	ax.set_title(f"{EXPERIMENT_TITLE} - {RunStatistics.metric_name(m)}", fontsize=14)
 	all_population_size = 0
+	nruns = 0
 	if m <= 2:
 		all_metrics = np.hstack([stat.metric_generation(m) for stat in stats])
 		(ngenerations, all_population_size) = all_metrics.shape
-		dot_color = COLOR_DOTS
-		if not use_transparency:
-			dot_color = '#D0D0D0'
 		for i in range(all_population_size):
-			ax.plot(all_metrics[:, i], 'o', markersize=4, color=dot_color, alpha=ALPHA_DOTS_MULTIPLE_RUNS if use_transparency else 1.0, label='population', zorder=-32)
+			ax.plot(all_metrics[:, i], 'o', markersize=4, color=COLOR_DOTS_MULTIPLE_RUNS if use_transparency else '#D0D0D0', alpha=ALPHA_DOTS_MULTIPLE_RUNS if use_transparency else 1.0, label='population', zorder=-32)
+		best_in_gen_metrics = np.asarray([stat.best_in_gen.metric(m) for stat in stats]).T
+		(ngenerations, nruns) = best_in_gen_metrics.shape
+		for i in range(nruns):
+			ax.plot(best_in_gen_metrics[:, i], 'o', markersize=4, color=COLOR_DOTS_BEST_IN_GEN, alpha=ALPHA_DOTS_MULTIPLE_RUNS if use_transparency else 1.0, label='best in generation', zorder=-31)
 	for stat in stats:
 		ax.plot(stat.best.metric(m), '-', color=RunStatistics.metric_color(m), alpha=ALPHA_LINES, label='best fitness')
 
 	plot_set_limits(stats[0], m, ax)
 	if add_legend:
-		reduced_legend(ax, all_population_size)
+		reduced_legend(ax, all_population_size + nruns)
 	show_plot()
 
 
@@ -249,13 +252,16 @@ def plot_metric_mean_and_sd(stats, m, ax=None):
 	xscale = np.arange(0, ngenerations)
 	ax.set_title(f"{EXPERIMENT_TITLE} - {RunStatistics.metric_name(m)}", fontsize=14)
 	all_metrics = np.vstack([stat.best.metric(m) for stat in stats])
-	all_means = np.mean(all_metrics, axis=0)
-	all_std = np.std(all_metrics, axis=0)
-	plot_color = RunStatistics.metric_color(m)
-	ax.plot(xscale, all_means, color=plot_color, label='best fitness')
-	ax.fill_between(xscale, all_means - all_std, all_means + all_std, color=lighten_color(plot_color))
+	draw_mean_and_sd(ax, xscale, np.mean(all_metrics, axis=0), np.std(all_metrics, axis=0), RunStatistics.metric_color(m), 'best fitness')
 	plot_set_limits(stats[0], m, ax)
 	show_plot()
+
+
+def draw_mean_and_sd(ax, xscale, all_means, all_std, plot_color, label):
+	""" plot mean and standard deviation as solid line and lighter color filled area """
+	ax.plot(xscale, all_means, color=plot_color, label=label)
+	# ax.fill_between(xscale, all_means - all_std, all_means + all_std, color=lighten_color(plot_color))
+	ax.fill_between(xscale, all_means - all_std, all_means + all_std, color=plot_color, alpha=0.3)
 
 
 def plot_different_accuracies(stat, ax=None):
@@ -476,10 +482,10 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 
 
 def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
-	names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
+	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
 
 	stats_list = []
-	for name in names:
+	for name in experiment_names:
 		stats = load_stats(name, experiment_path=experiments_path, max_runs=10)
 		stats_list.append(stats)
 
@@ -493,14 +499,14 @@ def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
 
 		for (exp1, exp2) in [(1, 0), (2, 1), (3, 1), (3, 2)]:
 			result = scipy.stats.mannwhitneyu(values_list[exp1], values_list[exp2], alternative=('greater' if m == 2 else 'less'))
-			print(f"{names[exp1]} > {names[exp2]}: p={result[1]:.6f}")
+			print(f"{experiment_names[exp1]} > {experiment_names[exp2]}: p={result[1]:.6f}")
 		# result = scipy.stats.mannwhitneyu(values_list[exp1], values_list[exp2])
-		# print(f"{names[exp1]} = {names[exp2]}: p={result[1]:.6f}")
+		# print(f"{experiment_names[exp1]} = {experiment_names[exp2]}: p={result[1]:.6f}")
 
 
 # Module's main function. Call this and uncomment to generate different plots.
 if __name__ == "__main__":
-	exp_path = 'D:/experiments.NAS_PAPER'
+	exp_path = 'D:/experiments.fashion3'
 	# run_nonparametric_tests(experiments_path=experiments_path)
 
 	exp_name = 'Stepper-Adaptive'

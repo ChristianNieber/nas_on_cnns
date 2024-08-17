@@ -18,7 +18,7 @@ from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar, StepperStrategy, RandomSearchStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-LOG_DEBUG = 0						    # log debug messages (about caching)
+LOG_DEBUG = 1						    # log debug messages (about caching)
 LOG_MUTATIONS = 0					    # log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 0			    # log long description of new best individual
 SAVE_MILESTONE_GENERATIONS = 50         # save milestone every 50 generations
@@ -28,30 +28,26 @@ EXPERIMENTAL_MULTITHREADING = False     # use multithreading when multiple (phys
 # from os import environ
 # environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
-
-def pickle_evaluator(evaluator: Evaluator, save_path):
-	""" Save the Evaluator instance to later enable resuming evolution - currently unused"""
-	with open(Path('%s/evaluator.pkl' % save_path), 'wb') as handle:
-		pickle.dump(evaluator, handle, protocol=pickle.HIGHEST_PROTOCOL)
+total_completed_generations = 0         # keeps track of completed generations over all runs
 
 
-def pickle_population_and_statistics(save_path, population, stat: RunStatistics):
+def pickle_population_and_statistics(save_path, stat: RunStatistics, population, best_individuals_list=None):
 	"""
 		Save the objects (pickle) necessary to later resume evolution:
 		Pickled objects:
-			.population
-			.statistics, containing random states: numpy and random
-		Useful for resuming later
-		Replaces the objects of the previous generation.
+			statistics, containing random states: numpy and random
+			population
+			best individuals list
 
 		Parameters
 		----------
 		save_path: str
 			path to the json file
-		population : list
-			a list of Individuals
 		stat: RunStatistics
 			statistics to store
+		population : list
+			a list of Individuals
+		best_individuals_list : None or list of individuals
 	"""
 
 	stat.random_state = random.getstate()
@@ -62,9 +58,18 @@ def pickle_population_and_statistics(save_path, population, stat: RunStatistics)
 	with open(save_path + 'population.pkl', 'wb') as handle_pop:
 		pickle.dump(population, handle_pop, protocol=pickle.HIGHEST_PROTOCOL)
 
+	if best_individuals_list:
+		with open(save_path + 'best_individuals.pkl', 'wb') as handle_statistics:
+			pickle.dump(best_individuals_list, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
 
-def pickle_population_and_statistics_milestone(save_path, generation, population, stat: RunStatistics):
-	pickle_population_and_statistics(save_path + 'gen%d_' % generation, population, stat)
+
+def pickle_population_and_statistics_milestone(save_path, generation, stat: RunStatistics, population, best_individuals_list):
+	pickle_population_and_statistics(save_path + 'gen%d_' % generation, stat, population, best_individuals_list)
+
+
+def pickle_best_individuals(save_path, best_individuals_list):
+	with open(save_path + 'best_individuals.pkl', 'wb') as handle_statistics:
+		pickle.dump(best_individuals_list, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
 
 
 def unpickle_population_and_statistics(load_path, resume_generation=0):
@@ -87,15 +92,12 @@ def unpickle_population_and_statistics(load_path, resume_generation=0):
 		-------
 		last_generation : int
 			idx of the last performed generation
-		pickle_evaluator : Evaluator
-			instance of the Evaluator class used for evaluating the individuals.
-			Loaded because it has the data used for training.
-		pickle_population : list
+		pickled_statistics : RunStatistics
+			statistics
+		pickled_population : list of Individual
 			population of the last performed generation
-		pickle_random : tuple
-			Random module random state
-		pickle_numpy : tuple
-			Numpy module random state
+		pickled_best_individuals_list : list of Individual
+			list of best individuals (empty in old experiments)
 	"""
 
 	gen_prefix = f"gen{resume_generation}_" if resume_generation else ''
@@ -104,13 +106,16 @@ def unpickle_population_and_statistics(load_path, resume_generation=0):
 			pickled_statistics = pickle.load(handle_statistics)
 		last_generation = pickled_statistics.run_generation
 
-		# with open(path + 'evaluator.pkl', 'rb') as handle_eval:
-		# pickled_evaluator = pickle.load(handle_eval)
-
 		with open(load_path + gen_prefix + 'population.pkl', 'rb') as handle_pop:
 			pickled_population = pickle.load(handle_pop)
 
-		return last_generation, pickled_population, pickled_statistics
+		pickled_best_individuals_list = []
+		best_individuals_file = load_path + gen_prefix + 'best_individuals.pkl'
+		if path.isfile(best_individuals_file):
+			with open(best_individuals_file, 'rb') as handle_best_individuals:
+				pickled_best_individuals_list = pickle.load(handle_best_individuals)
+
+		return last_generation, pickled_statistics, pickled_population, pickled_best_individuals_list
 
 	else:
 		return None
@@ -199,7 +204,8 @@ def evaluate_generation(generation_list: list[Individual], grammar: StepperGramm
 
 
 def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, dataset='mnist', config_file='config/config.json', grammar_file='lenet.grammar',
-					override_experiment_name=None, override_random_seed=None, override_evaluation_cache_file=None, return_after_generations=0):
+					override_experiment_name=None, override_random_seed=None, override_evaluation_cache_file=None, override_max_training_time=None, override_max_training_epochs=None,
+					reevaluate_best_10_seeds=False, return_after_generations=0):
 	"""
 		do (my+/,lambda)-ES for NAS search
 
@@ -215,12 +221,18 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			path to the configuration file
 		grammar_file : str
 			name of the grammar file (searched in same path as config file)
-		override_experiment_name : bool
+		override_experiment_name : str
 			overrides experiment_name from config file if set
 		override_random_seed : int
 			overrides random_seed from config file if set
 		override_evaluation_cache_file : str
 			overrides evaluation_cache_file from config file if set
+		override_max_training_time : int
+			overrides max_training_time from config file if set
+		override_max_training_epochs : int
+			overrides max_training_epochs from config file if set
+		reevaluate_best_10_seeds : bool
+			reevaluate average accuracy of new best with 10 folds
 		return_after_generations : int
 			0 or max number of completed generations after which the function returns
 
@@ -228,6 +240,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			True - completed search
 			False - not completed because max_generations were process
 	"""
+	global total_completed_generations
 
 	config = load_config(config_file)
 	EXPERIMENT_NAME = config['EVOLUTIONARY']['experiment_name']
@@ -235,9 +248,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		EXPERIMENT_NAME = override_experiment_name
 	RESUME = config['EVOLUTIONARY']['resume']
 	RESUME_GENERATION = config['EVOLUTIONARY']['resume_generation']
-	RANDOM_SEED = config['EVOLUTIONARY']['random_seed']
-	if override_random_seed is not None:
-		RANDOM_SEED = override_random_seed
+	RANDOM_SEED = override_random_seed if override_random_seed is not None else config['EVOLUTIONARY']['random_seed']
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
@@ -257,14 +268,12 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	NETWORK_STRUCTURE_INIT = config['NETWORK']['network_structure_init']
 
 	USE_EVALUATION_CACHE = config['TRAINING']['use_evaluation_cache']
-	EVALUATION_CACHE_FILE = config['TRAINING']['evaluation_cache_file']
-	if override_evaluation_cache_file is not None:
-		EVALUATION_CACHE_FILE = override_evaluation_cache_file
+	EVALUATION_CACHE_FILE = override_evaluation_cache_file if override_evaluation_cache_file else config['TRAINING']['evaluation_cache_file']
 
 	OVERRIDE_BATCH_SIZE = config['TRAINING']['batch_size'] if 'batch_size' in config['TRAINING'].keys() else None
 
-	MAX_TRAINING_TIME = config['TRAINING']['max_training_time']
-	MAX_TRAINING_EPOCHS = config['TRAINING']['max_training_epochs']
+	MAX_TRAINING_TIME = override_max_training_time if override_max_training_time else config['TRAINING']['max_training_time']
+	MAX_TRAINING_EPOCHS = override_max_training_epochs if override_max_training_epochs else config['TRAINING']['max_training_epochs']
 
 	USE_DATA_AUGMENTATION = config['TRAINING']['use_data_augmentation']
 
@@ -298,6 +307,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 	best_fitness = None
 	best_individual_overall = None
+	best_individuals_list = []
+	save_best_individuals_list = False
 
 	population = []
 	last_gen = -1
@@ -322,7 +333,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 	else:
 		logger_configure_overwrite(False)
-		last_gen, population, stat = unpickle
+		last_gen, stat, population, best_individuals_list = unpickle
 		if last_gen + 1 >= NUM_GENERATIONS:
 			print(f'{EXPERIMENT_NAME} run#{run_number:02} is already complete ({last_gen+1} generations)')
 			return True
@@ -341,8 +352,6 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 							override_batch_size=OVERRIDE_BATCH_SIZE, n_gpus=0)
 
 	if unpickle is None:
-		# pickle_evaluator(cnn_eval, save_path_with_run) # save evaluator
-
 		# set random seeds
 		if RANDOM_SEED != -1:
 			random.seed(RANDOM_SEED)
@@ -383,7 +392,6 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 		log_bold(f"[Resuming experiment {EXPERIMENT_NAME} run#{run_number:02} at generation {last_gen + 1} in folder '{save_path}']")
 
-	completed_generations = 0
 	generation_list = []
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
@@ -443,6 +451,10 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 						parent.log_long_description("New best" if best_fitness else "Initial")
 					else:
 						log_bold(f'*** New best: {parent.description()}')
+					if reevaluate_best_10_seeds:
+						parent.k_fold_metrics = parent.evaluate_individual_k_folds(grammar, cnn_eval, stat, epochs=parent.metrics.training_epochs, num_folds=0, num_random_seeds=10)
+					best_individuals_list.append(parent)
+					save_best_individuals_list = True
 
 					best_fitness = parent.fitness
 					best_individual_overall = parent
@@ -476,9 +488,10 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		stat.record_generation(generation_list)
 
 		# save population and statistics
-		pickle_population_and_statistics(save_path_with_run, population, stat)
+		pickle_population_and_statistics(save_path_with_run, stat, population, best_individuals_list if save_best_individuals_list else None)
+		save_best_individuals_list = False
 		if (gen + 1) % SAVE_MILESTONE_GENERATIONS == 0:
-			pickle_population_and_statistics_milestone(save_path_with_run, gen + 1, population, stat)
+			pickle_population_and_statistics_milestone(save_path_with_run, gen + 1, stat, population, best_individuals_list)
 
 		generation_list.clear()
 		selection_pool.clear()
@@ -488,9 +501,9 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		for parent in population:
 			parent.is_parent = True
 
-		completed_generations += 1
-		if return_after_generations and completed_generations >= return_after_generations and gen < NUM_GENERATIONS-1:
-			log_bold(f"[Exiting after {completed_generations} completed generations, {EXPERIMENT_NAME} run#{run_number} after generation {gen}]")
+		total_completed_generations += 1
+		if return_after_generations and total_completed_generations >= return_after_generations and gen < NUM_GENERATIONS-1:
+			log_bold(f"[Exiting after {total_completed_generations} completed generations, {EXPERIMENT_NAME} run#{run_number} after generation {gen}]")
 			return False
 
 	parent = population[0]
