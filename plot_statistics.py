@@ -9,7 +9,7 @@ import colorsys
 import scipy
 from pathlib import Path
 
-from runstatistics import RunStatistics, decimal_hours
+from runstatistics import Metric, RunStatistics, decimal_hours
 
 # plot colors and alpha channel
 ALPHA_LINES = 0.3
@@ -61,12 +61,12 @@ def load_stats(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH, max_run
 		del stats[-1]
 	return stats
 
-def calculate_statistics(stats, m):
-	values = [run.best.metric(m)[-1] for run in stats]  # get metric of best of last generation over all runs
+def calculate_statistics(stats, m : Metric, from_k_folds=False):
+	values = [(run.best.metric_k_fold(m) if from_k_folds else run.best.metric(m))[-1]   for run in stats]  # get metric of best of last generation over all runs
 	worst = np.min(values)
 	best = np.max(values)
 	best_index = np.argmax(values)
-	if m != 2 and m != 8:
+	if m != Metric.FITNESS and m != Metric.FINAL_TEST_FITNESS:
 		best, worst = worst, best
 		best_index = np.argmin(values)
 	std = np.std(values)
@@ -97,9 +97,13 @@ def print_statistics(stats, experiment_name):
 	print()
 	columns = ['', 'Average', 'Median', 'Std', 'Worst', 'Best', 'Best run']
 	data = []
-	for m in [2, 8, 1, 0, 7, 6]:
+	for m in [Metric.FITNESS, Metric.FINAL_TEST_FITNESS, Metric.PARAMETERS, Metric.ERROR_RATE, Metric.TRAINING_ERROR_RATE, Metric.FINAL_TEST_ERROR_RATE]:
 		mean, median, std, worst, best, best_index = calculate_statistics(stats, m)
 		data.append([RunStatistics.metric_name(m), mean, median, std, worst, best, best_index])
+	if hasattr(stats[0].best, 'k_fold_accuracy'):
+		for m in [Metric.FITNESS, Metric.ERROR_RATE]:
+			mean, median, std, worst, best, best_index = calculate_statistics(stats, m, from_k_folds=True)
+			data.append([RunStatistics.metric_name(m)+" 10 seeds", mean, median, std, worst, best, best_index])
 	# pd.options.display.float_format = '{: .4f}'.format
 	pd.set_option('display.max_columns', None)
 	pd.set_option('display.max_colwidth', None)
@@ -137,7 +141,7 @@ def show_plot():
 		plt.show()
 
 
-def plot_set_limits(stat, m, ax):
+def plot_set_limits(stat, m : Metric, ax):
 	ngenerations = stat.run_generation + 1
 	ax.set_xlim(0, ngenerations)
 	ax.xaxis.set_major_locator(ticker.MultipleLocator(20))
@@ -145,7 +149,7 @@ def plot_set_limits(stat, m, ax):
 
 	ylim = RunStatistics.metric_ylimits(m)
 	yticks_distance = stat.metric_ticks(m)
-	if stat.run_dataset != 'mnist' and m != 3:  # keep predefined ylimits only for mnist variants, and for step width plot
+	if stat.run_dataset != 'mnist' and m != Metric.STEP_SIZE:  # keep predefined ylimits only for mnist variants, and for step width plot
 		if m < 0:  # default ylimits for different error rates etc.
 			ylim = (0, None)
 			yticks_distance = None
@@ -153,13 +157,13 @@ def plot_set_limits(stat, m, ax):
 			metric = stat.best.metric(m)
 			if ngenerations >= 20 and not (m == 4 or m == 5):
 				metric = metric[5:]  # for maximum calculation exclude first 5 generations if already more than 20
-			if m == 2:
+			if m == Metric.FITNESS:
 				new_ylim = np.min(metric)  # lower limit for fitness
 				# print(f"limit of {stat.metric_name(m)} : {ylim[0]} -> {new_ylim}")
 				ylim = (new_ylim, ylim[1])
 			else:
 				new_ylim = np.max(metric)  # upper limit for other metrics
-				if m == 4 or m == 5:  # variable and layer counts -> space for one more in plot
+				if m == Metric.NLAYERS or m == Metric.NVARIABLES:  # variable and layer counts -> space for one more in plot
 					new_ylim += 1
 				print(f"limit of {stat.metric_name(m)} : {ylim[1]} -> {new_ylim}")
 				ylim = (ylim[0], new_ylim)
@@ -172,7 +176,7 @@ def plot_set_limits(stat, m, ax):
 	ax.grid(True)
 
 
-def plot_metric(stat, m, ax=None, use_transparency=False):
+def plot_metric(stat, m : Metric, ax=None, use_transparency=False):
 	global EXPERIMENT_TITLE
 
 	if ax is None:
@@ -185,7 +189,7 @@ def plot_metric(stat, m, ax=None, use_transparency=False):
 		title = f"{EXPERIMENT_TITLE} - {stat.metric_name(m)} (best: {round(stat.best.metric(m)[-1], 4)})"
 	ax.set_title(title, fontsize=20)
 	population_size = 0
-	if m <= 2:
+	if m <= Metric.FITNESS:
 		if len(stat.best.metric_k_fold(m)):
 			draw_mean_and_sd(ax, xscale, stat.best.metric_k_fold(m), stat.best.metric_k_fold_std(m), 'cyan' if m == 2 else 'orange', stat.metric_name(m) + ' 10 seeds')
 		generation_metric = np.array(stat.metric_generation(m))
@@ -203,7 +207,7 @@ def plot_metric(stat, m, ax=None, use_transparency=False):
 	show_plot()
 
 
-def plot_metric_multiple_runs(stats, m, ax=None, use_transparency=True, add_legend=True):
+def plot_metric_multiple_runs(stats, m : Metric, ax=None, use_transparency=True, add_legend=True):
 	global EXPERIMENT_TITLE
 
 	if ax is None:
@@ -211,7 +215,7 @@ def plot_metric_multiple_runs(stats, m, ax=None, use_transparency=True, add_lege
 	ax.set_title(f"{EXPERIMENT_TITLE} - {RunStatistics.metric_name(m)}", fontsize=14)
 	all_population_size = 0
 	nruns = 0
-	if m <= 2:
+	if m <= Metric.FITNESS:
 		all_metrics = np.hstack([stat.metric_generation(m) for stat in stats])
 		(ngenerations, all_population_size) = all_metrics.shape
 		for i in range(all_population_size):
@@ -247,7 +251,7 @@ def lighten_color(color, amount=0.5):
 	return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 
-def plot_metric_mean_and_sd(stats, m, ax=None):
+def plot_metric_mean_and_sd(stats, m : Metric, ax=None):
 	global EXPERIMENT_TITLE
 
 	if ax is None:
@@ -284,7 +288,7 @@ def plot_different_accuracies(stat, ax=None):
 	ax.plot(100.0 - np.array(stat.best.val_accuracy) * 100, label="validation error rate")
 	ax.plot(stat.best.metric(0), color='blue', label="(test) error rate")
 	ax.plot(100.0 - np.array(stat.best.final_test_accuracy) * 100, label="final test error rate")
-	plot_set_limits(stat, -1, ax)
+	plot_set_limits(stat, Metric.NONE, ax)
 	ax.legend(fontsize=12)
 	show_plot()
 
@@ -328,34 +332,34 @@ def do_all_plots(stats, experiment_name='', plot_individual_runs=True, plot_best
 	if len(stats) > 1:
 		if group_pictures:
 			fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-		plot_metric_mean_and_sd(stats, 2, ax1)
-		plot_metric_mean_and_sd(stats, 0, ax2)
-		plot_metric_mean_and_sd(stats, 1, ax3)
+		plot_metric_mean_and_sd(stats, Metric.FITNESS, ax1)
+		plot_metric_mean_and_sd(stats, Metric.ERROR_RATE, ax2)
+		plot_metric_mean_and_sd(stats, Metric.PARAMETERS, ax3)
 		plt.show()
 
 		if hasattr(stat.best, 'step_width'):
-			plot_metric_mean_and_sd(stats, 3)
+			plot_metric_mean_and_sd(stats, Metric.STEP_SIZE)
 			plt.show()
 
 		if plot_individual_runs:
 			if group_pictures:
 				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-			plot_metric_multiple_runs(stats, 2, ax1)
-			plot_metric_multiple_runs(stats, 0, ax2)
-			plot_metric_multiple_runs(stats, 1, ax3)
+			plot_metric_multiple_runs(stats, Metric.FITNESS, ax1)
+			plot_metric_multiple_runs(stats, Metric.ERROR_RATE, ax2)
+			plot_metric_multiple_runs(stats, Metric.PARAMETERS, ax3)
 			plt.show()
 
 		if plot_individual_runs:
 			if group_pictures:
 				fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
 			if hasattr(stat.best, 'step_width'):
-				plot_metric_multiple_runs(stats, 3, ax1)
+				plot_metric_multiple_runs(stats, Metric.STEP_SIZE, ax1)
 			if hasattr(stat.best, 'statistic_nlayers'):
-				plot_metric_multiple_runs(stats, 4, ax2)
-				plot_metric_multiple_runs(stats, 5, ax3)
+				plot_metric_multiple_runs(stats, Metric.NLAYERS, ax2)
+				plot_metric_multiple_runs(stats, Metric.NVARIABLES, ax3)
 			plt.show()
 
-		best_parameter_index = calculate_statistics(stats, 2)[-1]
+		best_parameter_index = calculate_statistics(stats, Metric.FITNESS)[-1]
 		stat = stats[best_parameter_index]
 		if plot_best_run:
 			print(f"Plots for best run #{best_parameter_index}")
@@ -363,15 +367,15 @@ def do_all_plots(stats, experiment_name='', plot_individual_runs=True, plot_best
 	if plot_best_run:
 		if group_pictures:
 			fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
-		plot_metric(stat, 2, ax1)
-		plot_metric(stat, 0, ax2)
-		plot_metric(stat, 1, ax3)
+		plot_metric(stat, Metric.FITNESS, ax1)
+		plot_metric(stat, Metric.ERROR_RATE, ax2)
+		plot_metric(stat, Metric.PARAMETERS, ax3)
 		plt.show()
 
 		if group_pictures:
 			fig, (ax1, ax2, ax3) = plt.subplots(1, 3, figsize=(30, 7))
 		if hasattr(stat.best, 'step_width'):
-			plot_metric(stat, 3, ax1)
+			plot_metric(stat, Metric.STEP_SIZE, ax1)
 		plot_different_accuracies(stat, ax2)
 		plot_variable_counts(stat, ax3)
 		plt.show()
@@ -386,9 +390,9 @@ def plot_all_mean_and_sd(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	for row, name in enumerate(EXPERIMENT_NAMES):
 		stats = load_stats(name)
 		EXPERIMENT_TITLE = name
-		plot_metric_mean_and_sd(stats, 2, ax[0, row])
-		plot_metric_mean_and_sd(stats, 0, ax[1, row])
-		plot_metric_mean_and_sd(stats, 1, ax[2, row])
+		plot_metric_mean_and_sd(stats, Metric.FITNESS, ax[0, row])
+		plot_metric_mean_and_sd(stats, Metric.ERROR_RATE, ax[1, row])
+		plot_metric_mean_and_sd(stats, Metric.PARAMETERS, ax[2, row])
 
 	plt.savefig(save_path + "Fitness Error Params Mean and SD." + save_format, format=save_format, dpi=1200, transparent=True)
 	plt.show()
@@ -402,7 +406,7 @@ def plot_fitness_mean_and_sd(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	for i, name in enumerate(EXPERIMENT_NAMES):
 		stats = load_stats(name)
 		EXPERIMENT_TITLE = name
-		plot_metric_mean_and_sd(stats, 2, ax[i])
+		plot_metric_mean_and_sd(stats, Metric.FITNESS, ax[i])
 
 	plt.savefig(save_path + "Fitness Mean and SD." + save_format, format=save_format, dpi=1200, transparent=True)
 	plt.show()
@@ -417,15 +421,15 @@ def plot_multiple_runs(save_path=DEFAULT_SAVE_PATH, save_format="png"):
 		stats = load_stats(name)
 		EXPERIMENT_TITLE = name
 		add_legend = (i == 0)
-		plot_metric_multiple_runs(stats, 2, ax[0, i], add_legend=add_legend)
-		plot_metric_multiple_runs(stats, 0, ax[1, i], add_legend=add_legend)
-		plot_metric_multiple_runs(stats, 1, ax[2, i], add_legend=add_legend)
+		plot_metric_multiple_runs(stats, Metric.FITNESS, ax[0, i], add_legend=add_legend)
+		plot_metric_multiple_runs(stats, Metric.ERROR_RATE, ax[1, i], add_legend=add_legend)
+		plot_metric_multiple_runs(stats, Metric.PARAMETERS, ax[2, i], add_legend=add_legend)
 
 	plt.savefig(save_path + "Multiple Runs." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200), transparent=True)
 	plt.show()
 
 
-def box_plot(m=2, save_path=DEFAULT_SAVE_PATH, save_format="svg"):
+def box_plot(m=Metric.FITNESS, save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
 	metric_color = ['lightsalmon', 'violet', 'lightblue']
 	medianprops = dict(linestyle='-', linewidth=1, color='black')
@@ -442,7 +446,7 @@ def box_plot(m=2, save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 
 	fig, ax = plt.subplots(figsize=(6, 4))
 	ax.set_title(f"{RunStatistics.metric_name(m)}", fontsize=14)
-	bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names, medianprops=medianprops)
+	bplot = ax.boxplot(values_list, patch_artist=True, tick_labels=experiment_names, medianprops=medianprops)
 	for patch in bplot['boxes']:
 		patch.set_facecolor(metric_color[m])
 	ax.yaxis.set_major_locator(ticker.MultipleLocator(RunStatistics.metric_ticks(m)))
@@ -465,7 +469,7 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	fig, axes = plt.subplots(1, 3, figsize=(20, 5))
 	for i in range(0, 2 + 1):
 		ax = axes[i]
-		m = [2, 0, 1][i]
+		m = [Metric.FITNESS, Metric.ERROR_RATE, Metric.PARAMETERS][i]
 		ax.set_title(f"{RunStatistics.metric_name(m)}", fontsize=14)
 		values_list = []
 		for stats in stats_list:
@@ -494,7 +498,7 @@ def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
 		stats_list.append(stats)
 
 	for i in range(0, 2 + 1):
-		m = [2, 0, 1][i]
+		m = [Metric.FITNESS, Metric.ERROR_RATE, Metric.PARAMETERS][i]
 		print(f"\nParameter {RunStatistics.metric_name(m)}:")
 		values_list = []
 		for stats in stats_list:
@@ -510,7 +514,7 @@ def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
 
 # Module's main function. Call this and uncomment to generate different plots.
 if __name__ == "__main__":
-	exp_path = "~/nas/experiments.MNIST2/"
+	exp_path = "~/nas/experiments.NAS_PAPER"
 
 	exp_name = 'Stepper-Adaptive'
 	experiment_stats = load_stats(exp_name, experiment_path=exp_path)

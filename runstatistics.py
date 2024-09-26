@@ -2,7 +2,20 @@ from time import time
 import json
 import numpy as np
 import random
+from enum import IntEnum
 from logger import *
+
+class Metric(IntEnum):
+	NONE = -1
+	ERROR_RATE = 0
+	PARAMETERS = 1
+	FITNESS = 2
+	STEP_SIZE = 3
+	NLAYERS = 4
+	NVARIABLES = 5
+	FINAL_TEST_ERROR_RATE = 6
+	TRAINING_ERROR_RATE = 7
+	FINAL_TEST_FITNESS = 8
 
 
 # The fitness metric used in experiments
@@ -59,44 +72,43 @@ class RunStatistics:
 
 			self.step_width = []
 
-		def metric(self, index):
+		def metric(self, m : Metric):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
-			if index == 0:
+			if m == Metric.ERROR_RATE:
 				return 100.0 - np.array(self.accuracy) * 100.0
-			elif index == 1:
+			elif m == Metric.PARAMETERS:
 				return np.array(self.parameters)
-			elif index == 2:
+			elif m == Metric.FITNESS:
 				return np.array(self.fitness)
-			elif index == 3:
+			elif m == Metric.STEP_SIZE:
 				return np.array(self.step_width)
-			elif index == 4:
+			elif m == Metric.NLAYERS:
 				return np.array(self.statistic_nlayers)
-			elif index == 5:
+			elif m == Metric.NVARIABLES:
 				return np.array(self.statistic_variables)
-			elif index == 6:
+			elif m == Metric.FINAL_TEST_ERROR_RATE:
 				return 100.0 - np.array(self.final_test_accuracy) * 100.0
-			elif index == 7:
+			elif m == Metric.TRAINING_ERROR_RATE:
 				return 100.0 - np.array(self.train_accuracy) * 100.0
-			elif index == 8:
-				fitness_list = [fitness_metric_with_size_penalty(acc, params) for acc, params in zip(self.final_test_accuracy, self.parameters)]
-				return np.array(fitness_list)
+			elif m == Metric.FINAL_TEST_FITNESS:
+				return np.array([fitness_metric_with_size_penalty(acc, params) for acc, params in zip(self.final_test_accuracy, self.parameters)])
 
-		def metric_k_fold(self, index):
+		def metric_k_fold(self, m : Metric):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
-			if index == 0:
+			if m == Metric.ERROR_RATE:
 				return 100.0 - np.array(self.k_fold_accuracy) * 100.0
-			elif index == 1:
+			elif m == Metric.PARAMETERS:
 				return []
-			elif index == 2:
+			elif m == Metric.FITNESS:
 				return np.array(self.k_fold_fitness)
 
-		def metric_k_fold_std(self, index):
+		def metric_k_fold_std(self, m : Metric):
 			""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
-			if index == 0:
+			if m == Metric.ERROR_RATE:
 				return np.array(self.k_fold_accuracy_std) * 100.0
-			elif index == 1:
+			elif m == Metric.PARAMETERS:
 				return []
-			elif index == 2:
+			elif m == Metric.FITNESS:
 				return np.array(self.k_fold_fitness_std)
 
 	def __init__(self, random_seed=-1, run_nas_strategy='', run_number=-1, run_dataset=''):
@@ -144,103 +156,89 @@ class RunStatistics:
 		self.random_state = random.getstate()
 		self.random_state_numpy = np.random.get_state()
 
-	def metric_generation(self, index):
+	def metric_generation(self, m : Metric):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
-		if index == 0:
+		if m == Metric.ERROR_RATE:
 			return 100.0 - np.array(self.generation_accuracy) * 100.0
-		elif index == 1:
+		elif m == Metric.PARAMETERS:
 			return self.generation_parameters
-		elif index == 2:
+		elif m == Metric.FITNESS:
 			return np.array(self.generation_fitness)
 		else:
 			return None
 
 	@staticmethod
-	def metric_name(index):
+	def metric_name(m : Metric):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
-		if index == 0:
-			return "Error Rate"
-		elif index == 1:
-			return "Number of Parameters"
-		elif index == 2:
-			return "Fitness"
-		elif index == 3:
-			return "Step Size"
-		elif index == 4:
-			return "Number of Layers"
-		elif index == 5:
-			return "Number of Variables"
-		elif index == 6:
-			return "Final Test Error Rate"
-		elif index == 7:
-			return "Training Error Rate"
-		elif index == 8:
-			return "Final Test Fitness"
+		metric_names = ["Error Rate",
+						"Number of Parameters",
+						"Fitness",
+						"Step Size",
+						"Number of Layers",
+						"Number of Variables",
+						"Final Test Error Rate",
+						"Training Error Rate",
+						"Final Test Fitness",
+						]
+		return metric_names[int(m)]
 
 	@staticmethod
-	def metric_name_lowercase(index):
+	def metric_name_lowercase(m : Metric):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
-		if index == 0:
-			return "Error rate"
-		elif index == 1:
-			return "Number of parameters"
-		elif index == 2:
-			return "Fitness"
-		elif index == 3:
-			return "Step size"
-		elif index == 4:
-			return "Number of layers"
-		elif index == 5:
-			return "Number of variables"
-		elif index == 6:
-			return "Final test error rate"
-		elif index == 7:
-			return "Training error rate"
-		elif index == 8:
-			return "Final test fitness"
+		metric_names_lowercase = ["Error Rate",
+						"Number of parameters",
+						"Fitness",
+						"Step size",
+						"Number of layers",
+						"Number of variables",
+						"Final test error rate",
+						"Training error rate",
+						"Final test fitness",
+						]
+		return metric_names_lowercase[int(m)]
 
 	@staticmethod
-	def metric_color(index):
+	def metric_color(m : Metric):
 		""" Read by index 0-accuracy / 1-parameters / 2-fitness value """
-		if index == 0:
+		if m == Metric.ERROR_RATE:
 			return "red"
-		elif index == 1:
+		elif m == Metric.PARAMETERS:
 			return "darkviolet"
-		elif index == 2:
+		elif m == Metric.FITNESS:
 			return "blue"
 		else:
 			return "blue"
 
 	@staticmethod
-	def metric_ylimits(index):
-		if index == 0:
+	def metric_ylimits(m : Metric):
+		if m == Metric.ERROR_RATE:
 			return 0.0, 8.0
-		elif index == 1:
+		elif m == Metric.PARAMETERS:
 			return 0, 100000
-		elif index == 2:
+		elif m == Metric.FITNESS:
 			return -8, 2.3
-		elif index == 3:
+		elif m == Metric.STEP_SIZE:
 			return 0, 0.6
-		elif index == 4:
+		elif m == Metric.NLAYERS:
 			return 0, 10
-		elif index == 5:
+		elif m == Metric.NVARIABLES:
 			return 0, 40
-		elif index == -1:
+		elif m == Metric.NONE:
 			return 0.0, 5.0
 
 	@staticmethod
-	def metric_ticks(index):
-		if index < 0:
+	def metric_ticks(m : Metric):
+		if int(m) < 0:
 			return 0.5
-		elif index == 0:
+		elif m == Metric.ERROR_RATE:
 			return 1.0
-		elif index == 1:
+		elif m == Metric.PARAMETERS:
 			return 10000
-		elif index == 2:
+		elif m == Metric.FITNESS:
 			return 1.0
-		elif index == 3:
+		elif m == Metric.STEP_SIZE:
 			return 0.05
-		elif index == 5:
+		elif m == Metric.NVARIABLES:
 			return 2
 		else:
 			return 1
