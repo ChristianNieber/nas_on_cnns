@@ -6,12 +6,12 @@ from shutil import copyfile
 from glob import glob
 from jsmin import jsmin
 from pathlib import Path
-from keras.models import load_model
+# from keras.models import load_model
 # from keras.preprocessing.image import ImageDataGenerator
 # from data_augmentation import augmentation
 
 from runstatistics import *
-from plot_statistics import DEFAULT_EXPERIMENT_PATH
+from plot_statistics import DEFAULT_EXPERIMENT_PATH, fixup_path
 from logger import *
 from utils import Evaluator, Individual
 
@@ -24,9 +24,9 @@ LOG_NEW_BEST_INDIVIDUAL = 0			    # log long description of new best individual
 SAVE_MILESTONE_GENERATIONS = 50         # save milestone every 50 generations
 EXPERIMENTAL_MULTITHREADING = False     # use multithreading when multiple (physical or logical) GPUS are available
 
-# turn off Keras log messages
+# turn off Keras log messages - does not work?
 # from os import environ
-# environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
+# environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
 
 total_completed_generations = 0         # keeps track of completed generations over all runs
 
@@ -277,8 +277,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 
 	USE_DATA_AUGMENTATION = config['TRAINING']['use_data_augmentation']
 
-	if not experiments_path.endswith('/'):
-		experiments_path += '/'
+	experiments_path = fixup_path(experiments_path)
 	if not Path(experiments_path).exists():
 		log_bold(f"Creating experiments directory {experiments_path}")
 		makedirs(experiments_path)         # create directory
@@ -514,22 +513,18 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	log_bold(f"[{EXPERIMENT_NAME} Run#{run_number} completed]")
 
 	return True
-	# if NAS_STRATEGY == "F-DENSER":
-	# 	nas_strategy.dump_mutated_variables(stat.evaluations_total)
 
-
-def test_saved_model(save_path, name='best.h5'):
+def test_saved_model(save_path):
 	# datagen_test = ImageDataGenerator()
 	# evaluator = Evaluator('mnist', fitness_function)
 
-	if not save_path.endswith('/'):
-		save_path += '/'
+	save_path = fixup_path(save_path)
 	with open(Path(save_path, 'evaluator.pkl'), 'rb') as f_data:
 		evaluator = pickle.load(f_data)
-	x_final_test = evaluator.dataset['x_final_test']
-	y_final_test = evaluator.dataset['y_final_test']
+	# x_final_test = evaluator.dataset['x_final_test']
+	# y_final_test = evaluator.dataset['y_final_test']
 
-	model = load_model(Path(save_path, name))
-	accuracy = Evaluator.test_model_with_data(model, x_final_test, y_final_test)
-	log('Best test accuracy: %f' % accuracy)
-	return model
+	# model = load_model(Path(save_path, name))
+	# accuracy = Evaluator.test_model_with_data(model, x_final_test, y_final_test)
+	# log('Best test accuracy: %f' % accuracy)
+	# return model

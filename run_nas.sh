@@ -2,6 +2,8 @@
 # run NAS search from a command line. Will restart if the Python process crashes.
 export PYTHONUNBUFFERED=1
 export PYTHONHASHSEED=0
+# change the log level to 0 to include info messages, or to 3 to exclude everything
+export TF_CPP_MIN_LOG_LEVEL=1
 # the following fixes "UnicodeEncodeError: ‘charmap’ codec can’t encode characters" problem with unusual characters
 export PYTHONIOENCODING=utf-8
 export PYTHONLEGACYWINDOWSSTDIO=utf-8

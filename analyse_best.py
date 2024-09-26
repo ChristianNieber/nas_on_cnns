@@ -8,7 +8,7 @@ import pandas as pd
 from os import path
 
 from runstatistics import *
-from plot_statistics import DEFAULT_EXPERIMENT_PATH, lighten_color
+from plot_statistics import DEFAULT_EXPERIMENT_PATH, fixup_path, lighten_color
 from logger import *
 from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar
@@ -44,8 +44,7 @@ def load_best_individuals(experiment_name, experiments_path=DEFAULT_EXPERIMENT_P
 	"""
 		load the best individuals of all runs in an experiment
 	"""
-	if not experiments_path.endswith('/'):
-		experiments_path += '/'
+	experiments_path = fixup_path(experiments_path)
 	file_list = sorted(glob.glob(experiments_path + experiment_name + ('/r??_best_individuals.pkl' if over_all_generations else '/r??_population.pkl')))
 	population = []
 	for i, file in enumerate(file_list):
@@ -327,8 +326,7 @@ def reevaluation_description(num_folds=0, num_random_seeds=10, num_epochs=0, use
 
 
 def reevaluate_best(experiments_path=EXPERIMENTS_PATH, dataset=DATASET, num_individuals=10, over_all_generations=False, num_folds=0, num_random_seeds=10, num_epochs=0, use_float=False, batch_size=0, use_augmentation=False):
-	if not experiments_path.endswith('/'):
-		experiments_path += '/'
+	experiments_path = fixup_path(experiments_path)
 	description = reevaluation_description(num_folds, num_random_seeds, num_epochs, use_float, batch_size, use_augmentation)
 	stat, grammar, cnn_eval = init_eval_environment(log_file=experiments_path + description + ".log", dataset=dataset, max_training_epochs=num_epochs, for_k_fold_validation=num_folds, use_test_cache=False, use_float=use_float, use_augmentation=use_augmentation)
 
@@ -422,8 +420,7 @@ def plot_reevaluation_variant(ax, population, description, by_parameters=False, 
 
 
 def plot_reevaluation_results(experiments_path=EXPERIMENTS_PATH, over_all_generations=False):
-	if not experiments_path.endswith('/'):
-		experiments_path += '/'
+	experiments_path = fixup_path(experiments_path)
 	reevaluate_file_name = experiments_path + ('reevaluated_generations.pkl' if over_all_generations else 'reevaluated_individuals.pkl')
 	with open(reevaluate_file_name, 'rb') as handle_pop:
 		population = pickle.load(handle_pop)[0:20]
@@ -454,15 +451,16 @@ def plot_reevaluation_results(experiments_path=EXPERIMENTS_PATH, over_all_genera
 
 if __name__ == "__main__":
 	n_individuals = 20
-	EXPERIMENTS_PATH = 'D:/experiments.fashion3'
-	DATASET = 'fashion-mnist'
+	EXPERIMENTS_PATH = '~/nas/experiments.MNIST2/'
+	DATASET = 'mnist'
 	all_generations = True
-	plot_reevaluation_results(EXPERIMENTS_PATH, over_all_generations=True)
-	reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=30, over_all_generations=all_generations)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, over_all_generations=over_all_generations)
+	list_best(EXPERIMENTS_PATH, over_all_generations=all_generations)
+	# plot_reevaluation_results(EXPERIMENTS_PATH, over_all_generations=True)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=30, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, num_random_seeds=0, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=10, over_all_generations=all_generations)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=512, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=1024, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=1536, over_all_generations=all_generations)
@@ -473,6 +471,5 @@ if __name__ == "__main__":
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, use_float=True)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=256, use_augmentation=True)
-	# list_best("D:/experiments.fashion3", over_all_generations=True)
 	# benchmark_batch_sizes()
 	# plot_benchmark_results()

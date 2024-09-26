@@ -1,15 +1,13 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.ticker as ticker
+import matplotlib.colors as mc
 import pickle
 import glob
-# import tabulate
-# from IPython.display import HTML, display
-# import tabletext
 import pandas as pd
-import matplotlib.colors as mc
 import colorsys
 import scipy
+from pathlib import Path
 
 from runstatistics import RunStatistics, decimal_hours
 
@@ -23,20 +21,27 @@ COLOR_DOTS_BEST_IN_GEN = 'magenta'
 ALPHA_BEST_IN_GEN = 0.3
 
 # global variables
-DEFAULT_EXPERIMENT_PATH = "D:/experiments/"
+DEFAULT_EXPERIMENT_PATH = "~/nas/experiments.NAS_PAPER/"
 # in colab use '/content/gdrive/MyDrive/experiments/'
-DEFAULT_SAVE_PATH = "D:/experiments/graphs/"
+DEFAULT_SAVE_PATH = DEFAULT_EXPERIMENT_PATH + "graphs/"
 EXPERIMENT_NAMES = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']  # All experiment folders used in plots
 SAVE_ALL_PICTURES_FORMAT = None
 EXPERIMENT_TITLE = ''
 picture_count = 0
 
 
+def fixup_path(path):
+	""" replace '~' with user's home directory, and make path absolute """
+	path = str(Path(path).expanduser().absolute())
+	if not path.endswith('/'):
+		path += '/'
+	return path
+
 def load_stats(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH, max_runs=-1):
 	""" load statistics of all runs (or max_runs if given) in an experiment """
-	if not experiment_path.endswith('/'):
-		experiment_path += '/'
-	file_list = sorted(glob.glob(experiment_path + experiment_name + "/r??_statistics.pkl"))
+	experiment_path = fixup_path(experiment_path)
+	files_path = experiment_path + experiment_name + "/r??_statistics.pkl"
+	file_list = sorted(glob.glob(files_path))
 	stats = []
 	for i, file in enumerate(file_list):
 		if max_runs < 0 or i < max_runs:
@@ -55,7 +60,6 @@ def load_stats(experiment_name, experiment_path=DEFAULT_EXPERIMENT_PATH, max_run
 	while stats[-1].run_generation < stats[0].run_generation:  # delete last stat if incomplete
 		del stats[-1]
 	return stats
-
 
 def calculate_statistics(stats, m):
 	values = [run.best.metric(m)[-1] for run in stats]  # get metric of best of last generation over all runs
@@ -87,7 +91,7 @@ def print_statistics(stats, experiment_name):
 	eval_time_k_folds = sum(stat.eval_time_k_folds for stat in stats)
 	eval_time_k_folds_this_run = sum(stat.eval_time_k_folds_this_run for stat in stats)
 	print(f"{total_evaluations} evaluations, " + (
-		f" {k_fold_evaluations} for k-folds), " if k_fold_evaluations else "") + f"{cache_hits} cache hits, {invalid} invalid, {constraints_violated} constraints violated, avg evaluation time: {run_time / total_evaluations:.2f} s")
+		f" ({k_fold_evaluations} for k-folds) " if k_fold_evaluations else "") + f"{cache_hits} cache hits, {invalid} invalid, {constraints_violated} constraints violated, avg evaluation time: {run_time / total_evaluations:.2f} s")
 	print(f"runtime {decimal_hours(run_time)}, evaluation time {decimal_hours(eval_time)} (this run {decimal_hours(eval_time_this_run)})" + (
 		f", k-folds: {decimal_hours(eval_time_k_folds)} (this run {decimal_hours(eval_time_k_folds_this_run)})" if eval_time_k_folds else ""))
 	print()
@@ -272,14 +276,14 @@ def plot_different_accuracies(stat, ax=None):
 	ngenerations = stat.run_generation + 1
 	xscale = np.arange(0, ngenerations)
 	ax.set_title(f"{EXPERIMENT_TITLE} - Different error rates", fontsize=20)
+	if len(stat.best.k_fold_accuracy):
+		ax.plot(xscale, stat.best.metric_k_fold(0), '-', color='cyan', label="avg 10 seed error rate")
+		ax.errorbar(xscale, stat.best.metric_k_fold(0), yerr=stat.best.k_fold_accuracy_std, color='cyan', zorder=10)
+		ax.plot(100.0 - np.array(stat.best.k_fold_final_accuracy) * 100, label="avg 10 seed final error rate")
 	ax.plot(100.0 - np.array(stat.best.train_accuracy) * 100, label="training error rate")
 	ax.plot(100.0 - np.array(stat.best.val_accuracy) * 100, label="validation error rate")
 	ax.plot(stat.best.metric(0), color='blue', label="(test) error rate")
 	ax.plot(100.0 - np.array(stat.best.final_test_accuracy) * 100, label="final test error rate")
-	if len(stat.best.k_fold_accuracy):
-		ax.plot(xscale, stat.best.metric_k_fold(0), '-', color='cyan', label="avg k-fold error rate")
-		ax.errorbar(xscale, stat.best.metric_k_fold(0), yerr=stat.best.k_fold_accuracy_std, color='cyan', zorder=10)
-		ax.plot(100.0 - np.array(stat.best.k_fold_final_accuracy) * 100, label="avg k-fold final error rate")
 	plot_set_limits(stat, -1, ax)
 	ax.legend(fontsize=12)
 	show_plot()
@@ -293,10 +297,10 @@ def plot_variable_counts(stat, ax=None):
 	ax.set_title(f"{EXPERIMENT_TITLE} - Variable Counts", fontsize=20)
 	if hasattr(stat.best, 'statistic_variables'):
 		ax.plot(stat.best.statistic_variables, label="variables")
+		ax.plot(stat.best.statistic_cats, label="categoricals")
+		ax.plot(stat.best.statistic_ints, label="integers")
 		ax.plot(stat.best.statistic_nlayers, label="layers")
 		ax.plot(stat.best.statistic_floats, label="floats")
-		ax.plot(stat.best.statistic_ints, label="integers")
-		ax.plot(stat.best.statistic_cats, label="categoricals")
 		ax.plot(stat.best_in_gen.statistic_variable_mutations, label="variable mutations best in gen.")
 		ax.plot(stat.best_in_gen.statistic_layer_mutations, label="layer mutations")
 	# ax.plot(stat.best_in_gen.training_time, label="training time (s)")
@@ -506,20 +510,19 @@ def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
 
 # Module's main function. Call this and uncomment to generate different plots.
 if __name__ == "__main__":
-	exp_path = 'D:/experiments.fashion3'
-	# run_nonparametric_tests(experiments_path=experiments_path)
+	exp_path = "~/nas/experiments.MNIST2/"
 
 	exp_name = 'Stepper-Adaptive'
 	experiment_stats = load_stats(exp_name, experiment_path=exp_path)
 	print_statistics(experiment_stats, exp_name)
 	do_all_plots(experiment_stats, experiment_name=exp_name, plot_individual_runs=True, plot_best_run=True, group_pictures=True)
 
-# run_nonparametric_tests()
-# box_plots_3()
-# box_plot(2)
-# box_plot(0)
-# box_plot(1)
+	# run_nonparametric_tests(experiments_path=experiments_path)
+	# box_plots_3()
+	# box_plot(2)
+	# box_plot(0)
+	# box_plot(1)
 
-# plot_fitness_mean_and_sd()
-# plot_all_mean_and_sd()
-# plot_multiple_runs()
+	# plot_fitness_mean_and_sd()
+	# plot_all_mean_and_sd()
+	# plot_multiple_runs()

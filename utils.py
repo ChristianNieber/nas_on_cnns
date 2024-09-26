@@ -11,7 +11,7 @@ import pynvml
 from utilities.data import Dataset
 from sklearn.metrics import accuracy_score
 from sklearn.model_selection import StratifiedShuffleSplit
-from keras.preprocessing.image import ImageDataGenerator
+# from keras.preprocessing.image import ImageDataGenerator
 from utilities.data_augmentation import augmentation
 import concurrent.futures
 import threading
@@ -312,9 +312,9 @@ class Evaluator:
 
 		self.data_generator = None
 		self.data_generator_test = None
-		if use_augmentation:
-			self.data_generator = ImageDataGenerator(preprocessing_function=augmentation)
-			self.data_generator_test = ImageDataGenerator()
+		# if use_augmentation:
+		#	self.data_generator = ImageDataGenerator(preprocessing_function=augmentation)
+		#	self.data_generator_test = ImageDataGenerator()
 
 		if self.evaluation_cache_path:
 			if os.path.isfile(self.evaluation_cache_path):
@@ -627,14 +627,9 @@ class Evaluator:
 	@staticmethod
 	def get_model_summary(model):
 		""" returns model summary from keras as a line list """
-		stringlist = []
-		model.summary(line_length=100, print_fn=lambda x: stringlist.append(x))
-		stringlist = [s.rstrip() for s in stringlist if not s.isspace()]
-		if stringlist[0].startswith('Model:'):
-			del stringlist[0]
-		if stringlist[0].startswith('______'):
-			del stringlist[0]
-		return '\n'.join(stringlist)
+		result = []
+		model.summary(line_length=100, print_fn=lambda x: result.append(x))
+		return result[0]
 
 	@staticmethod
 	def assemble_optimizer(learning):
@@ -711,8 +706,10 @@ class Evaluator:
 	def get_model_parameters(model):
 		""" calculate number of trainable parameters from keras model """
 		# parameters = count_params(model.trainable_weights)                    ! Deprecated !
-		parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.trainable_weights])
-		# non_trainable_parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.non_trainable_weights])  # not used
+		# parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.trainable_weights])	! does not exist in tf 2.16 !
+		parameters = np.sum([tf.keras.backend.count_params(w) for w in model.trainable_weights])
+		p2 = model.count_params()
+# 		non_trainable_count = np.sum([tf.keras.backend.count_params(w) for w in model.non_trainable_weights])
 		return parameters
 
 	def check_model_constraints(self, parameters):
@@ -815,7 +812,6 @@ class Evaluator:
 			score = model.fit(dataset.train_dataset,
 								batch_size=batch_size,
 								epochs=max_training_epochs,
-								steps_per_epoch=(dataset.train_dataset_size // batch_size),
 								validation_data=dataset.val_dataset,
 								callbacks=callbacks_list,
 								initial_epoch=0,
@@ -824,9 +820,7 @@ class Evaluator:
 			score = model.fit(dataset.X_train, dataset.y_train,
 								batch_size=batch_size,
 								epochs=max_training_epochs,
-								steps_per_epoch=(dataset.train_dataset_size // batch_size),
 								validation_data=(dataset.X_val, dataset.y_val),
-								validation_steps=(dataset.X_val.shape[0] // batch_size),
 								callbacks=callbacks_list,
 								initial_epoch=0,
 								verbose=LOG_MODEL_TRAINING)
@@ -1044,7 +1038,7 @@ class Individual:
 		return result
 
 	def id_and_layer_description(self):
-		return f"{self.id:<6} {len(self.modules_including_macro[0].layers)}+{len(self.modules_including_macro[1].layers)} "
+		return (f"{self.id:<10}" if '#' in self.id else f"{self.id:<6}") + f" {len(self.modules_including_macro[0].layers)}+{len(self.modules_including_macro[1].layers)} "
 
 	def log_long_description(self, title, with_history=False):
 		""" output long description to log, with phenotype, model summary and evolution history """
@@ -1242,6 +1236,8 @@ class Individual:
 		error_text = str(e)
 		if "Negative dimension size" in error_text:
 			error_text = "Negative dimension size"
+		elif "would be negative" in error_text and "Pooling" in error_text:
+			error_text = "Output would be negative in Pooling"
 		else:
 			i = error_text.find("OOM when allocating tensor")
 			if i > 0:
