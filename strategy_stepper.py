@@ -355,6 +355,7 @@ class MutableVar:
 
 
 def interval_transform(value, a, b):
+	""" Interval transformation according to MIES paper """
 	if value < a or value > b:
 		y = (value-a)/(b-a)
 		(integer_part, fractional_part) = np.divmod(y, 1)
@@ -541,6 +542,7 @@ class StepperStrategy(NasStrategy):
 			ind.log_mutation(f"{mvar.info_string(): <34} {mvar.type: <25} {format_val(mvar.value): <10} -> {format_val(mvar.new_value)}, σ: {format_val(module.previous_step)} -> {format_val(module.step)} : {layer}")
 
 	def mutate_variable_step_per_parameter(self, mvar: MutableVar, mutation_state: MutationState):
+		""" Mutation where each variable has its own step width. From a failed experiment, currently unused """
 		value = mvar.value
 		step = mvar.step
 		var = mvar.var
@@ -674,11 +676,12 @@ class StepperStrategy(NasStrategy):
 				assert type(val) != list
 				if var.type != Type.TERMINAL and not nonterminals_only:
 					assert key == var.name
-					if mutable_vars[index].new_step is not None or mutable_vars[index].new_value is not None:
-						new_value = mutable_vars[index].new_value
+					new_value = mutable_vars[index].new_value
+					new_step = mutable_vars[index].new_step	# new_step is currently unused, should always be None
+					if new_step is not None or new_value is not None:
 						if new_value is None:
 							new_value = mutable_vars[index].value
-						layer[layer_idx] = (key, new_value, mutable_vars[index].new_step)
+						layer[layer_idx] = (key, new_value, new_step) if new_step is not None else (key, new_value)
 					index += 1
 		return index
 
