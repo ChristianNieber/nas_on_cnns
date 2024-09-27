@@ -7,6 +7,7 @@ import glob
 import pandas as pd
 import colorsys
 import scipy
+import platform
 from pathlib import Path
 
 from runstatistics import Metric, RunStatistics, decimal_hours
@@ -22,6 +23,7 @@ ALPHA_BEST_IN_GEN = 0.3
 
 # global variables
 DEFAULT_EXPERIMENT_PATH = "~/nas/experiments.NAS_PAPER/"
+DEFAULT_HOME_PATH_WINDOWS = "D:"        # replaces '~' (home directory) when running on Windows
 # in colab use '/content/gdrive/MyDrive/experiments/'
 DEFAULT_SAVE_PATH = DEFAULT_EXPERIMENT_PATH + "graphs/"
 EXPERIMENT_NAMES = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']  # All experiment folders used in plots
@@ -32,7 +34,10 @@ picture_count = 0
 
 def fixup_path(path):
 	""" replace '~' with user's home directory, and make path absolute """
-	path = str(Path(path).expanduser().absolute())
+	if platform.system() == 'Windows':
+		path = path.replace('~', DEFAULT_HOME_PATH_WINDOWS)
+	else:
+		path = str(Path(path).expanduser().absolute())
 	if not path.endswith('/'):
 		path += '/'
 	return path
@@ -100,7 +105,7 @@ def print_statistics(stats, experiment_name):
 	for m in [Metric.FITNESS, Metric.FINAL_TEST_FITNESS, Metric.PARAMETERS, Metric.ERROR_RATE, Metric.TRAINING_ERROR_RATE, Metric.FINAL_TEST_ERROR_RATE]:
 		mean, median, std, worst, best, best_index = calculate_statistics(stats, m)
 		data.append([RunStatistics.metric_name(m), mean, median, std, worst, best, best_index])
-	if hasattr(stats[0].best, 'k_fold_accuracy'):
+	if hasattr(stats[0].best, 'k_fold_accuracy') and len(stats[0].best.k_fold_accuracy):
 		for m in [Metric.FITNESS, Metric.ERROR_RATE]:
 			mean, median, std, worst, best, best_index = calculate_statistics(stats, m, from_k_folds=True)
 			data.append([RunStatistics.metric_name(m)+" 10 seeds", mean, median, std, worst, best, best_index])
@@ -137,7 +142,7 @@ def show_plot():
 		title, _, _ = title.partition(':')
 		title = title.strip().replace(' ', '_')
 		picture_count += 1
-		plt.savefig(f"{DEFAULT_SAVE_PATH}{picture_count:02d}_{title}.{SAVE_ALL_PICTURES_FORMAT}", format=SAVE_ALL_PICTURES_FORMAT, dpi=600 if SAVE_ALL_PICTURES_FORMAT == 'png' else 1200, transparent=True)
+		plt.savefig(f"{fixup_path(DEFAULT_SAVE_PATH)}{picture_count:02d}_{title}.{SAVE_ALL_PICTURES_FORMAT}", format=SAVE_ALL_PICTURES_FORMAT, dpi=600 if SAVE_ALL_PICTURES_FORMAT == 'png' else 1200, transparent=True)
 		plt.show()
 
 
@@ -394,7 +399,7 @@ def plot_all_mean_and_sd(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 		plot_metric_mean_and_sd(stats, Metric.ERROR_RATE, ax[1, row])
 		plot_metric_mean_and_sd(stats, Metric.PARAMETERS, ax[2, row])
 
-	plt.savefig(save_path + "Fitness Error Params Mean and SD." + save_format, format=save_format, dpi=1200, transparent=True)
+	plt.savefig(fixup_path(save_path) + "Fitness Error Params Mean and SD." + save_format, format=save_format, dpi=1200, transparent=True)
 	plt.show()
 
 
@@ -408,7 +413,7 @@ def plot_fitness_mean_and_sd(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 		EXPERIMENT_TITLE = name
 		plot_metric_mean_and_sd(stats, Metric.FITNESS, ax[i])
 
-	plt.savefig(save_path + "Fitness Mean and SD." + save_format, format=save_format, dpi=1200, transparent=True)
+	plt.savefig(fixup_path(save_path) + "Fitness Mean and SD." + save_format, format=save_format, dpi=1200, transparent=True)
 	plt.show()
 
 
@@ -425,7 +430,7 @@ def plot_multiple_runs(save_path=DEFAULT_SAVE_PATH, save_format="png"):
 		plot_metric_multiple_runs(stats, Metric.ERROR_RATE, ax[1, i], add_legend=add_legend)
 		plot_metric_multiple_runs(stats, Metric.PARAMETERS, ax[2, i], add_legend=add_legend)
 
-	plt.savefig(save_path + "Multiple Runs." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200), transparent=True)
+	plt.savefig(fixup_path(save_path) + "Multiple Runs." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200), transparent=True)
 	plt.show()
 
 
@@ -452,7 +457,7 @@ def box_plot(m=Metric.FITNESS, save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	ax.yaxis.set_major_locator(ticker.MultipleLocator(RunStatistics.metric_ticks(m)))
 	ax.grid(True)
 
-	plt.savefig(save_path + f"Box Plot {RunStatistics.metric_name_lowercase(m)}." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
+	plt.savefig(fixup_path(save_path) + f"Box Plot {RunStatistics.metric_name_lowercase(m)}." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
 	plt.show()
 
 
@@ -475,7 +480,7 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 		for stats in stats_list:
 			values = [run.best.metric(m)[-1] for run in stats]  # get metric of best of last generation over all runs
 			values_list.append(values)
-		bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names, medianprops=medianprops, notch=True)
+		bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names, medianprops=medianprops)    # can add notch=True
 		if m == 0:
 			ax.set_ylim(0)
 		if m == 1:
@@ -485,7 +490,7 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 		ax.yaxis.set_major_locator(ticker.MultipleLocator(RunStatistics.metric_ticks(m)))
 		ax.grid(True)
 
-	plt.savefig(save_path + f"Box Plots Fitness Error Parameters." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
+	plt.savefig(fixup_path(save_path) + f"Box Plots Fitness Error Parameters." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
 	plt.show()
 
 
@@ -494,7 +499,7 @@ def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
 
 	stats_list = []
 	for name in experiment_names:
-		stats = load_stats(name, experiment_path=experiments_path, max_runs=10)
+		stats = load_stats(name, experiment_path=experiments_path)
 		stats_list.append(stats)
 
 	for i in range(0, 2 + 1):
@@ -514,15 +519,15 @@ def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
 
 # Module's main function. Call this and uncomment to generate different plots.
 if __name__ == "__main__":
-	exp_path = "~/nas/experiments.NAS_PAPER"
+	exp_path = "~/nas/experiments.MNIST_X"
 
-	exp_name = 'Stepper-Adaptive'
-	experiment_stats = load_stats(exp_name, experiment_path=exp_path)
-	print_statistics(experiment_stats, exp_name)
-	do_all_plots(experiment_stats, experiment_name=exp_name, plot_individual_runs=True, plot_best_run=True, group_pictures=True)
+	# exp_name = 'Stepper-Adaptive'
+	# experiment_stats = load_stats(exp_name, experiment_path=exp_path)
+	# print_statistics(experiment_stats, exp_name)
+	# do_all_plots(experiment_stats, experiment_name=exp_name, plot_individual_runs=True, plot_best_run=True, group_pictures=True)
 
-	# run_nonparametric_tests(experiments_path=experiments_path)
-	# box_plots_3()
+	run_nonparametric_tests(experiments_path=exp_path)
+	box_plots_3()
 	# box_plot(2)
 	# box_plot(0)
 	# box_plot(1)

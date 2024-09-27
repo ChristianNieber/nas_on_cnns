@@ -4,6 +4,7 @@ from sklearn.model_selection import train_test_split
 import tensorflow as tf
 import sys
 import scipy
+from logger import *
 
 # dataset paths - change if the path is different
 SVHN_PATH = 'utilities/data'
@@ -170,6 +171,7 @@ class Dataset:
 				x_train = x_train.astype(np.float16) / 255.0    # converting from uint8 to float slows training down
 				x_test = x_test.astype(np.float16) / 255.0
 
+			log_blue(f"Loaded dataset {dataset_name}: {len(y_train)} training, {len(y_test)} test, shape {self.input_size}, {self.n_classes} classes")
 			self.prepare_data(x_train, y_train, x_test, y_test, reshape_data, for_k_fold_validation)
 
 	@classmethod

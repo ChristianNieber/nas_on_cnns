@@ -20,7 +20,7 @@ import matplotlib.ticker as ticker
 
 NUM_INDIVIDUALS = 20
 LOG_FILE = 'analyse.log'
-EXPERIMENTS_PATH = "D:/experiments.NAS_PAPER/"
+EXPERIMENTS_PATH = "~/dev/experiments.NAS_PAPER/"
 PICTURE_SAVE_PATH = EXPERIMENTS_PATH + "graphs2/"
 EXPERIMENT_LIST = ['Stepper-Adaptive', 'Stepper-Decay', 'Random Search']    # evaluate_cnn currently cannot handle 'F-DENSER' architectures
 GRAMMAR_FILE = 'config/lenet.grammar'
@@ -283,7 +283,7 @@ def plot_training_history(population: list[Individual], title: str, experiment_n
 	fig.suptitle(title + '\n', fontsize=28)
 	fig.tight_layout()
 	if experiment_name:
-		plt.savefig(DEFAULT_EXPERIMENT_PATH + experiment_name + '.svg', format='svg', dpi=1200)
+		plt.savefig(fixup_path(DEFAULT_EXPERIMENT_PATH) + experiment_name + '.svg', format='svg', dpi=1200)
 	plt.show()
 
 
@@ -317,7 +317,7 @@ def plot_benchmark_results():
 	ax2.set_xlabel('Batch size')
 	ax2.set_ylabel('Seconds per Evaluation')
 	ax2.set_ylim(0, 14)
-	plt.savefig(PICTURE_SAVE_PATH + title + '.svg', format='svg', dpi=1200)
+	plt.savefig(fixup_path(PICTURE_SAVE_PATH) + title + '.svg', format='svg', dpi=1200)
 	plt.show()
 
 
@@ -450,12 +450,12 @@ def plot_reevaluation_results(experiments_path=EXPERIMENTS_PATH, over_all_genera
 
 
 if __name__ == "__main__":
-	n_individuals = 20
-	EXPERIMENTS_PATH = '~/nas/experiments.MNIST2/'
+	n_individuals = 10
+	EXPERIMENTS_PATH = '~/nas/experiments.NAS_PAPER'
 	DATASET = 'mnist'
-	all_generations = True
+	all_generations = False
 	list_best(EXPERIMENTS_PATH, over_all_generations=all_generations)
-	# plot_reevaluation_results(EXPERIMENTS_PATH, over_all_generations=True)
+	plot_reevaluation_results(EXPERIMENTS_PATH, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=30, over_all_generations=all_generations)
