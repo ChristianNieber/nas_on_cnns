@@ -3,7 +3,7 @@
 "EVOLUTIONARY": {
 
     // Experiment name is used for folder name where all files are stored. This is overridden if main_20_runs.py is used
-    "experiment_name" : "Stepper-Adaptive",
+    "experiment_name" : "Stepper-Decay",
 
     // initial population, "lenet, "perceptron" or "random"
     "initial_individuals" : "random",
