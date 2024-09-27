@@ -205,7 +205,7 @@ def evaluate_generation(generation_list: list[Individual], grammar: StepperGramm
 
 def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, dataset='mnist', config_file='config/config.json', grammar_file='lenet.grammar',
 					override_experiment_name=None, override_random_seed=None, override_evaluation_cache_file=None, override_max_training_time=None, override_max_training_epochs=None,
-					reevaluate_best_10_seeds=False, return_after_generations=0):
+					reevaluate_best_10_seeds=False, return_after_generations=0, rerandomize_after_crash=0):
 	"""
 		do (my+/,lambda)-ES for NAS search
 
@@ -235,6 +235,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			reevaluate average accuracy of new best with 10 folds
 		return_after_generations : int
 			0 or max number of completed generations after which the function returns
+		rerandomize_after_crash : int
+			if != 0, shake random number generation, if evaluation of a mutated individual caused a crash of the process before
 
 		returns bool:
 			True - completed search
@@ -390,6 +392,11 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		population = new_parents
 
 		log_bold(f"[Resuming experiment {EXPERIMENT_NAME} run#{run_number:02} at generation {last_gen + 1} in folder '{save_path}']")
+
+	if rerandomize_after_crash:
+		log_warning(f"After detected crash setting new random seed for mutations: {RANDOM_SEED + rerandomize_after_crash * 100}")
+		random.seed(RANDOM_SEED + rerandomize_after_crash * 100)
+		np.random.seed(RANDOM_SEED + rerandomize_after_crash * 100)
 
 	generation_list = []
 	for gen in range(last_gen + 1, NUM_GENERATIONS):

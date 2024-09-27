@@ -15,5 +15,12 @@ while true; do
       exit 0
   fi
   echo 'run_nas.sh: PROCESS RETURNED' $ret_code ', RESTARTING PROCESS'
+  if [ $ret_code == 1 ]; then
+    export NAS_RERANDOMIZE_AFTER_CRASH=$((++crash_counter))
+    echo 'run_nas.sh: Crash detected, setting NAS_RERANDOMIZE_AFTER_CRASH =' $NAS_RERANDOMIZE_AFTER_CRASH
+  else
+    unset NAS_RERANDOMIZE_AFTER_CRASH
+    crash_counter=0
+  fi
   echo ''
 done
