@@ -906,7 +906,7 @@ class Evaluator:
 		"""
 
 		model = keras.models.load_model(model_path)
-		accuracy, model_test_time, million_inferences_time = Evaluator.test_model_with_data(model, self.dataset['x_final_test'], self.dataset['y_final_test'], self.data_generator_test)
+		accuracy, model_test_time, million_inferences_time = Evaluator.test_model_with_data(model, self.dataset.x_final_test, self.dataset.y_final_test, self.data_generator_test)
 
 		return accuracy
 
@@ -937,7 +937,7 @@ class Individual:
 		output_rule : str
 			output non-terminal symbol
 		macro_symbols : list
-			list of non-terminals (str) with the marco rules (e.g., learning)
+			list of non-terminals (str) with the macro rules (e.g., learning)
 		modules : list
 			list of Modules (genotype) of the layers
 		output : dict

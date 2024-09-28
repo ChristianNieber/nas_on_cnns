@@ -18,7 +18,7 @@ from utils import Evaluator, Individual
 from strategy_stepper import StepperGrammar, StepperStrategy, RandomSearchStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-LOG_DEBUG = 1						    # log debug messages (about caching)
+LOG_DEBUG = 0						    # log debug messages (about caching)
 LOG_MUTATIONS = 0					    # log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 0			    # log long description of new best individual
 SAVE_MILESTONE_GENERATIONS = 50         # save milestone every 50 generations
@@ -26,7 +26,7 @@ EXPERIMENTAL_MULTITHREADING = False     # use multithreading when multiple (phys
 
 # turn off Keras log messages - does not work?
 # from os import environ
-# environ['TF_CPP_MIN_LOG_LEVEL'] = '1'
+# environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 
 total_completed_generations = 0         # keeps track of completed generations over all runs
 
@@ -355,6 +355,10 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	if unpickle is None:
 		# set random seeds
 		if RANDOM_SEED != -1:
+			if rerandomize_after_crash:
+				RANDOM_SEED += rerandomize_after_crash * 100
+				rerandomize_after_crash = 0
+				log_warning(f"Initial random seed for mutations (after detected crash): {RANDOM_SEED}")
 			random.seed(RANDOM_SEED)
 			np.random.seed(RANDOM_SEED)
 
@@ -424,7 +428,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 					parent = select_parent(population[0:MY])
 					while True:
 						new_individual = nas_strategy.mutation(parent, gen, idx)
-						if new_individual.evaluate_individual(grammar, cnn_eval, stat, use_cache=False):
+						if new_individual.evaluate_individual(grammar, cnn_eval, stat, use_cache=True):
 							break
 					generation_list.append(new_individual)
 			generation_time = time() - generation_start_time
