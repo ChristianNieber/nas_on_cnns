@@ -1,13 +1,12 @@
 import engine
-import sys
+from sys import exit
 from os import environ
 
-
-EXPERIMENTS_PATH = "~/nas/experiments.fashion4"
+EXPERIMENTS_PATH = "~/nas/experiments.MNIST2"
 
 FIRST_RUN = 0      # first run number and random seed number to execute (zero-based, usually 0)
-LAST_RUN = 39      # last run number and random seed number to execute (usually 9 or 19)
-DATASET = 'fashion-mnist'
+LAST_RUN = 9	   # last run number and random seed number to execute (usually 9 or 19)
+DATASET = 'mnist'
 GRAMMAR_FILE = 'lenet.grammar'
 MAX_TRAINING_EPOCHS = 10
 MAX_TRAINING_TIME = 10 if DATASET == 'mnist' else 50
@@ -35,16 +34,16 @@ for config_file in CONFIG_FILE_LIST:
 											dataset=DATASET,
 											config_file=f'config/{config_file}',
 											grammar_file=GRAMMAR_FILE,
-											override_random_seed=100 + run,
+											override_random_seed=run + 1,
 											override_max_training_epochs=MAX_TRAINING_EPOCHS,
 											override_max_training_time=MAX_TRAINING_TIME,
-											override_evaluation_cache_file=f"../cache_{DATASET}_{MAX_TRAINING_EPOCHS}ep_{MAX_TRAINING_TIME}s.pkl",
+											override_evaluation_cache_file=f"../../cache_{DATASET}_{MAX_TRAINING_EPOCHS}ep_{MAX_TRAINING_TIME}s.pkl",
 											reevaluate_best_10_seeds=True,
 											return_after_generations=RETURN_AFTER_GENERATIONS,
 											rerandomize_after_crash=rerandomize_after_crash)
 		if not is_completed:
-			sys.exit(2)
+			exit(2)
 	print(f"[{config_file} {LAST_RUN+1} runs completed]")
 
 print(f"[All complete]")
-sys.exit(0)
+exit(0)

@@ -1,4 +1,3 @@
-import random
 import tensorflow as tf
 import keras
 from time import time
@@ -54,6 +53,7 @@ def init_gpu(n_gpus=N_GPUS):
 	if len(gpu_list) == 0:
 		# tf.keras.mixed_precision.set_global_policy("mixed_float16") # using mixed precision made training about 30% slower on average ?!?
 		# tf.config.optimizer.set_jit(True)
+		# tf.config.experimental.enable_op_determinism()		! doesn't work. Also change model.fit(... shuffle=False) !
 
 		if n_gpus <= 0:
 			n_gpus = N_GPUS
@@ -70,16 +70,14 @@ def init_gpu(n_gpus=N_GPUS):
 		gpu_list = tf.config.list_logical_devices('GPU')
 		log_bold(f"{len(gpus)} physical GPUs, {len(gpu_list)} logical GPUs")
 
-
-def store_random_state():
-	""" store the random state relevant for mutations """
-	return random.getstate(), np.random.get_state()
-
-
-def restore_random_state(random_state: tuple):
-	random.setstate(random_state[0])
-	np.random.set_state(random_state[1])
-
+def set_random_seed(run_random_seed, generation, salt):
+	"""
+		set random seed that depends on run number, generation and salt (number in generation etc.) to random, numpy and tf random number generations
+		to ensure deterministic mutations and evaluation (in tensorflow this would also require  tf.config.experimental.enable_op_determinism()
+	"""
+	random_seed = run_random_seed * 10000000 + generation * 1000 + salt
+	# log(f"set_random_seed({run_random_seed}, {generation}, {salt}): {random_seed}")
+	tf.keras.utils.set_random_seed(random_seed)
 
 class TimedStopping(keras.callbacks.Callback):
 	"""
@@ -276,7 +274,7 @@ class Evaluator:
 			self.k_fold_metrics = k_fold_metrics
 
 	def __init__(self, dataset_name, fitness_func=fitness_function_accuracy, max_training_time=10, max_training_epochs=10, max_parameters=0, for_k_fold_validation=False,
-					evaluation_cache_path='', experiment_name='', use_float=False, use_augmentation=False, n_gpus=None, override_batch_size=None):
+					evaluation_cache_path='', experiment_name='', run_random_seed=0, use_float=False, use_augmentation=False, n_gpus=None, override_batch_size=None):
 		"""
 			Creates the Evaluator instance and loads the dataset.
 
@@ -298,6 +296,8 @@ class Evaluator:
 		self.max_training_time = max_training_time
 		self.max_training_epochs = max_training_epochs
 		self.max_parameters = max_parameters
+		self.run_random_seed = run_random_seed
+		self.generation = 0
 
 		self.early_stop_delta = EARLY_STOP_DELTA
 		self.early_stop_patience = EARLY_STOP_PATIENCE
@@ -327,6 +327,9 @@ class Evaluator:
 	def init_options(self, early_stop_patience, early_stop_delta):
 		self.early_stop_patience = early_stop_patience
 		self.early_stop_delta = early_stop_delta
+
+	def set_generation(self, generation):
+		self.generation = generation
 
 	@staticmethod
 	def get_n_gpus():
@@ -708,8 +711,8 @@ class Evaluator:
 		# parameters = count_params(model.trainable_weights)                    ! Deprecated !
 		# parameters = sum([np.prod(keras.backend.get_value(w).shape) for w in model.trainable_weights])	! does not exist in tf 2.16 !
 		parameters = np.sum([tf.keras.backend.count_params(w) for w in model.trainable_weights])
-		p2 = model.count_params()
-# 		non_trainable_count = np.sum([tf.keras.backend.count_params(w) for w in model.non_trainable_weights])
+		# parameters = model.count_params() # includes non trainable parameters
+		# non_trainable_count = np.sum([tf.keras.backend.count_params(w) for w in model.non_trainable_weights])
 		return parameters
 
 	def check_model_constraints(self, parameters):
@@ -755,8 +758,6 @@ class Evaluator:
 				or True/False in validate_only mode
 			The function throws exceptions if the keras model is invalid, or some resources are exhausted
 		"""
-		# Using mixed precision slows down LeNet training by 50%. Is this because this model is too small?
-		# tf.keras.mixed_precision.set_global_policy("mixed_float16")
 
 		start_time = time()
 
@@ -850,24 +851,26 @@ class Evaluator:
 
 		return result
 
-	def evaluate_cnn_init_seeds(self, phenotype, name, epochs, n_seeds, dataset, stat):
+	def evaluate_cnn_init_seeds(self, phenotype, name, number_in_generation, epochs, n_seeds, dataset, stat):
 		""" evaluate individual for different initialisation seeds """
 
 		k_folds_result = KFoldEvalResult()
 
 		for seed in range(0, n_seeds):
+			set_random_seed(self.run_random_seed, self.generation, number_in_generation + (seed + 1) * 83)
 			result = self.evaluate_cnn(phenotype, dataset, stat, epochs_for_k_folds_validation=epochs)
 			log_training(f"Seed #{seed}" + result.summary(''))
 			k_folds_result.append_cnn_eval_result(result)
 
 		return k_folds_result
 
-	def evaluate_cnn_k_folds(self, phenotype, name, epochs, n_folds, stat):
+	def evaluate_cnn_k_folds(self, phenotype, name, number_in_generation, epochs, n_folds, stat):
 		""" evaluate individual for k-folds, using cache """
 
 		X_train = self.dataset.X_combined
 		y_train = self.dataset.y_combined
 
+		set_random_seed(self.run_random_seed, self.generation, number_in_generation)
 		split = StratifiedShuffleSplit(n_splits=n_folds, test_size=7000)
 
 		k_folds_result = KFoldEvalResult()
@@ -877,12 +880,14 @@ class Evaluator:
 			evo_x_train, x_val = X_train[train_index], X_train[test_index]
 			evo_y_train, y_val = y_train[train_index], y_train[test_index]
 
+			set_random_seed(self.run_random_seed, self.generation, number_in_generation + fold_number * 83)
 			val_test_split = StratifiedShuffleSplit(n_splits=1, test_size=3500)
 			for train_index2, test_index2 in val_test_split.split(x_val, y_val):
 				evo_x_val, evo_x_test = x_val[train_index2], x_val[test_index2]
 				evo_y_val, evo_y_test = y_val[train_index2], y_val[test_index2]
 
 			fold_dataset = Dataset.from_data(evo_x_train, evo_y_train, evo_x_val, evo_y_val, evo_x_test, evo_y_test, self.dataset.X_final_test, self.dataset.y_final_test)
+			set_random_seed(self.run_random_seed, self.generation, number_in_generation + fold_number * 83)
 			result = self.evaluate_cnn(phenotype, fold_dataset, stat, epochs_for_k_folds_validation=epochs)
 			log_training(f"Fold #{fold_number}" + result.summary(''))
 			fold_number += 1
@@ -1013,6 +1018,10 @@ class Individual:
 		self.fitness = None
 		self.metrics = None
 		self.k_fold_metrics = None
+
+	def get_number_in_generation(self):
+		""" return number of individual in its generation (0-based) """
+		return int(self.id.split('-')[1])
 
 	def __repr__(self):
 		return self.description()
@@ -1256,11 +1265,10 @@ class Individual:
 		if use_cache:
 			metrics = cnn_eval.cache_lookup(phenotype, stat)
 			if metrics:
-				self.set_metrics(metrics, cnn_eval, 'v')
+				self.set_metrics(metrics, cnn_eval, 'val. cached')
 				return True
 
-		# store random state
-		random_state = store_random_state()
+		set_random_seed(cnn_eval.run_random_seed, cnn_eval.generation, self.get_number_in_generation())
 
 		is_valid = False
 		try:
@@ -1270,8 +1278,6 @@ class Individual:
 			log_warning(f"While validating {self.id} caught exception: {Individual.pretty_exception_text(e)}")
 			keras.backend.clear_session()
 			stat.record_evaluation(is_invalid=True)
-
-		restore_random_state(random_state)
 
 		return is_valid
 
@@ -1300,9 +1306,9 @@ class Individual:
 		# look up in cache
 		metrics = cnn_eval.cache_lookup(phenotype, stat) if use_cache else None
 		if metrics:
-			self.set_metrics(metrics, cnn_eval, 'c')
+			self.set_metrics(metrics, cnn_eval, 'cached')
 		else:
-			random_state = store_random_state()
+			set_random_seed(cnn_eval.run_random_seed, cnn_eval.generation, self.get_number_in_generation())
 
 			# evaluate and catch exceptions
 			try:
@@ -1314,8 +1320,6 @@ class Individual:
 				log_warning(f"While evaluating {self.id} caught exception: {Individual.pretty_exception_text(e)}")
 				keras.backend.clear_session()
 				stat.record_evaluation(is_invalid=True)
-			finally:
-				restore_random_state(random_state)
 		return self.metrics is not None
 
 		# phenotype_list = [ind.get_phenotype(grammar) for ind in individual_list]
@@ -1375,19 +1379,15 @@ class Individual:
 			fitness : float
 		"""
 
-		random_state = store_random_state()
-
 		phenotype = self.get_phenotype(grammar)
 
 		log(f"Starting {f'{num_folds} folds' if num_folds else f'{num_random_seeds} seeds'} with {epochs} epochs on {self.id_and_layer_description()}")
 		if num_folds:
-			k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, epochs, num_folds, stat)
+			k_fold_metrics = cnn_eval.evaluate_cnn_k_folds(phenotype, self.id, self.get_number_in_generation(), epochs, num_folds, stat)
 		else:
-			k_fold_metrics = cnn_eval.evaluate_cnn_init_seeds(phenotype, self.id, epochs, num_random_seeds, cnn_eval.dataset, stat)
+			k_fold_metrics = cnn_eval.evaluate_cnn_init_seeds(phenotype, self.id, self.get_number_in_generation(), epochs, num_random_seeds, cnn_eval.dataset, stat)
 
 		k_fold_metrics.finalize(cnn_eval)
-
-		restore_random_state(random_state)
 
 		stat.k_fold_accuracy_stds.append(k_fold_metrics.accuracy_std)
 		stat.k_fold_final_accuracy_stds.append(k_fold_metrics.final_accuracy_std)

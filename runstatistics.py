@@ -366,7 +366,7 @@ class CnnEvalResult:
 		return self.summary()
 
 	def summary(self, suffix=''):
-		return f"{format_fitness(self.fitness)} {(self.parameters/1000.0):6.1f}k err:{format_accuracy(self.accuracy)} val:{format_accuracy(self.val_accuracy)} final:{format_accuracy(self.final_test_accuracy)} {'T' if self.timer_stop_triggered else ''}{'E' if self.early_stop_triggered else ''} ep: {self.training_epochs:2d} t: {self.training_time:0.1f}{f' b: {self.batch_size}' if hasattr(self, 'batch_size') else ''}{suffix}"
+		return f"{format_fitness(self.fitness)} {(self.parameters/1000.0):6.1f}k err:{format_accuracy(self.accuracy)} val:{format_accuracy(self.val_accuracy)} final:{format_accuracy(self.final_test_accuracy)} ep: {self.training_epochs:2d} t: {self.training_time:0.1f}{f' b: {self.batch_size}' if hasattr(self, 'batch_size') else ''}{' (T)' if self.timer_stop_triggered else ''}{' (E)' if self.early_stop_triggered else ''} {suffix}"
 
 	@staticmethod
 	def dummy_eval_result():

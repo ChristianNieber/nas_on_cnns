@@ -321,13 +321,13 @@ def plot_benchmark_results():
 	plt.show()
 
 
-def reevaluation_description(num_folds=0, num_random_seeds=10, num_epochs=0, use_float=False, batch_size=0, use_augmentation=False):
-	return f"{f'folds{num_folds}' if num_folds else f'seeds{num_random_seeds}'}_epochs{num_epochs}{'_float' if use_float else ''}{f'_b{batch_size}' if batch_size else ''}{'_aug' if use_augmentation else ''}"
+def reevaluation_description(num_folds=0, num_random_seeds=10, num_epochs=0, use_float=False, use_mixed_precision=False, batch_size=0, use_augmentation=False):
+	return f"{f'folds{num_folds}' if num_folds else f'seeds{num_random_seeds}'}_epochs{num_epochs}{'_float' if use_float else ''}{'_mixedprec' if use_mixed_precision else ''}{f'_b{batch_size}' if batch_size else ''}{'_aug' if use_augmentation else ''}"
 
 
-def reevaluate_best(experiments_path=EXPERIMENTS_PATH, dataset=DATASET, num_individuals=10, over_all_generations=False, num_folds=0, num_random_seeds=10, num_epochs=0, use_float=False, batch_size=0, use_augmentation=False):
+def reevaluate_best(experiments_path=EXPERIMENTS_PATH, dataset=DATASET, num_individuals=10, over_all_generations=False, num_folds=0, num_random_seeds=10, num_epochs=0, use_float=False, use_mixed_precision=False, batch_size=0, use_augmentation=False):
 	experiments_path = fixup_path(experiments_path)
-	description = reevaluation_description(num_folds, num_random_seeds, num_epochs, use_float, batch_size, use_augmentation)
+	description = reevaluation_description(num_folds, num_random_seeds, num_epochs, use_float, use_mixed_precision, batch_size, use_augmentation)
 	stat, grammar, cnn_eval = init_eval_environment(log_file=experiments_path + description + ".log", dataset=dataset, max_training_epochs=num_epochs, for_k_fold_validation=num_folds, use_test_cache=False, use_float=use_float, use_augmentation=use_augmentation)
 
 	reevaluate_file_name = experiments_path + ('reevaluated_generations.pkl' if over_all_generations else 'reevaluated_individuals.pkl')
@@ -393,7 +393,7 @@ def reevaluation_get_accuracies(population, description: str, sort_by_parameters
 		final_accuracy.append(k_fold_metrics.final_accuracy)
 		final_accuracy_std.append(k_fold_metrics.final_accuracy_std)
 		final_accuracy_diff.append(ind.metrics.final_test_accuracy - k_fold_metrics.final_accuracy)
-	log(f"{description:24}:{len(parameters):3}  {format_accuracy(np.mean(accuracy))} ± {gmean(accuracy_std):5.2%} (original {format_accuracy(np.mean(original_accuracy))}, diff {np.mean(accuracy_diff):5.2%}), "
+	log(f"{description:34}:{len(parameters):3}  {format_accuracy(np.mean(accuracy))} ± {gmean(accuracy_std):5.2%} (original {format_accuracy(np.mean(original_accuracy))}, diff {np.mean(accuracy_diff):5.2%}), "
 		+ f"final {format_accuracy(np.mean(final_accuracy))} ± {gmean(final_accuracy_std):5.2%} (original {format_accuracy(np.mean(original_final_accuracy))}, diff {np.mean(final_accuracy_diff):5.2%})  avg {avg_eval_time/len(parameters):.2f} s")
 	return parameters, batch_size, original_accuracy, original_final_accuracy, accuracy, accuracy_std, accuracy_diff, final_accuracy, final_accuracy_std, final_accuracy_diff
 
@@ -416,8 +416,7 @@ def plot_reevaluation_variant(ax, population, description, by_parameters=False, 
 	ax.plot(xscale, accuracy_diff, label='Diff')
 	ax.plot(xscale, final_accuracy_diff, label='Final diff')
 	ax.grid()
-	ax.set_ylim(-0.5, 20)
-
+	ax.set_ylim(-0.5, 4)
 
 def plot_reevaluation_results(experiments_path=EXPERIMENTS_PATH, over_all_generations=False):
 	experiments_path = fixup_path(experiments_path)
@@ -427,49 +426,37 @@ def plot_reevaluation_results(experiments_path=EXPERIMENTS_PATH, over_all_genera
 	log_bold(f"[Plot reevaluation: loaded {len(population)} individuals from {reevaluate_file_name}]")
 
 	by_parameters = False
-	fig, (ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8) = plt.subplots(1, 8, figsize=(40, 3.5))
+	fig, ((ax1, ax2, ax3, ax4, ax5, ax6, ax7, ax8), (ax21, ax22, ax23, ax24, ax25, ax26, ax27, ax28)) = plt.subplots(2, 8, figsize=(40, 7))
 	plot_reevaluation_variant(ax1, population, reevaluation_description(), by_parameters)
 	ax1.legend(fontsize=8)
-	plot_reevaluation_variant(ax2, population, reevaluation_description(num_folds=10), by_parameters)
-	plot_reevaluation_variant(ax3, population, reevaluation_description(num_epochs=10), by_parameters)
-	plot_reevaluation_variant(ax4, population, reevaluation_description(use_float=True), by_parameters)
-	plot_reevaluation_variant(ax5, population, reevaluation_description(batch_size=512), by_parameters)
-	plot_reevaluation_variant(ax6, population, reevaluation_description(batch_size=1024), by_parameters)
-	plot_reevaluation_variant(ax7, population, reevaluation_description(batch_size=1536), by_parameters)
-	plot_reevaluation_variant(ax8, population, reevaluation_description(num_epochs=30), by_parameters)
-	# plot_reevaluation_variant(ax3, population, reevaluation_description(batch_size=384), by_parameters)
-	# plot_reevaluation_variant(ax5, population, reevaluation_description(batch_size=768), by_parameters)
+	# plot_reevaluation_variant(ax2, population, reevaluation_description(num_folds=10), by_parameters)
+	plot_reevaluation_variant(ax3, population, reevaluation_description(use_float=True), by_parameters)
+	# plot_reevaluation_variant(ax4, population, reevaluation_description(batch_size=512), by_parameters)
+	plot_reevaluation_variant(ax5, population, reevaluation_description(batch_size=1024), by_parameters)
+	# plot_reevaluation_variant(ax6, population, reevaluation_description(batch_size=1536), by_parameters)
+	# plot_reevaluation_variant(ax7, population, reevaluation_description(num_epochs=30), by_parameters)
 
-	# plot_reevaluation_variant(ax11, population, reevaluation_description(), by_parameters)
-	# plot_reevaluation_variant(ax12, population, reevaluation_description(use_float=True), by_parameters)
-	# plot_reevaluation_variant(ax13, population, reevaluation_description(num_epochs=30), by_parameters)
-	# plot_reevaluation_variant(ax14, population, reevaluation_description(num_epochs=30, use_float=True), by_parameters)
-	# plot_reevaluation_variant(ax15, population, reevaluation_description(use_float=False), by_parameters)
-	# plot_reevaluation_variant(ax16, population, reevaluation_description(use_float=True), by_parameters)
 	plt.show()
 
-
 if __name__ == "__main__":
-	n_individuals = 10
-	EXPERIMENTS_PATH = '~/nas/experiments.NAS_PAPER'
+	n_individuals = 20
+	EXPERIMENTS_PATH = '~/nas/experiments.MNIST2'
 	DATASET = 'mnist'
 	all_generations = False
 	list_best(EXPERIMENTS_PATH, over_all_generations=all_generations)
-	plot_reevaluation_results(EXPERIMENTS_PATH, over_all_generations=all_generations)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, over_all_generations=all_generations)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True, over_all_generations=all_generations)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=30, over_all_generations=all_generations)
+	reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, over_all_generations=all_generations)
+	reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, num_random_seeds=0, over_all_generations=all_generations)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=10, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=512, over_all_generations=all_generations)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=1024, over_all_generations=all_generations)
+	reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=1024, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=1536, over_all_generations=all_generations)
+	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_epochs=30, over_all_generations=all_generations)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=256)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=384)
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=768)
 
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, num_folds=10, use_float=True)
-	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, use_float=True)
+	plot_reevaluation_results(EXPERIMENTS_PATH, over_all_generations=all_generations)
+
 	# reevaluate_best(EXPERIMENTS_PATH, DATASET, num_individuals=n_individuals, batch_size=256, use_augmentation=True)
 	# benchmark_batch_sizes()
 	# plot_benchmark_results()

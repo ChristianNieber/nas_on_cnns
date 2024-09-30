@@ -25,7 +25,7 @@ ALPHA_BEST_IN_GEN = 0.3
 DEFAULT_EXPERIMENT_PATH = "~/nas/experiments.NAS_PAPER/"
 DEFAULT_HOME_PATH_WINDOWS = "D:"        # replaces '~' (home directory) when running on Windows
 # in colab use '/content/gdrive/MyDrive/experiments/'
-DEFAULT_SAVE_PATH = DEFAULT_EXPERIMENT_PATH + "graphs/"
+DEFAULT_SAVE_PATH = "~/nas/graphs/"
 EXPERIMENT_NAMES = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']  # All experiment folders used in plots
 SAVE_ALL_PICTURES_FORMAT = None
 EXPERIMENT_TITLE = ''
@@ -248,11 +248,7 @@ def lighten_color(color, amount=0.5):
 		>> lighten_color('#F034A3', 0.6)
 		>> lighten_color((.3,.55,.1), 0.5)
 	"""
-	try:
-		c = mc.cnames[color]
-	except:
-		c = color
-	c = colorsys.rgb_to_hls(*mc.to_rgb(c))
+	c = colorsys.rgb_to_hls(*mc.to_rgb(color))
 	return colorsys.hls_to_rgb(c[0], 1 - amount * (1 - c[1]), c[2])
 
 
@@ -461,14 +457,14 @@ def box_plot(m=Metric.FITNESS, save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	plt.show()
 
 
-def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
+def box_plots_3(experiment_path=DEFAULT_EXPERIMENT_PATH, save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
 	metric_color = ['lightsalmon', 'violet', 'lightblue']
 	medianprops = dict(linestyle='-', linewidth=1, color='black')
 
 	stats_list = []
 	for name in experiment_names:
-		stats = load_stats(name)
+		stats = load_stats(name, experiment_path=experiment_path)
 		stats_list.append(stats)
 
 	fig, axes = plt.subplots(1, 3, figsize=(20, 5))
@@ -494,12 +490,12 @@ def box_plots_3(save_path=DEFAULT_SAVE_PATH, save_format="svg"):
 	plt.show()
 
 
-def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
+def run_nonparametric_tests(experiment_path=DEFAULT_EXPERIMENT_PATH):
 	experiment_names = ['Random Search', 'F-DENSER', 'Stepper-Decay', 'Stepper-Adaptive']
 
 	stats_list = []
 	for name in experiment_names:
-		stats = load_stats(name, experiment_path=experiments_path)
+		stats = load_stats(name, experiment_path=experiment_path)
 		stats_list.append(stats)
 
 	for i in range(0, 2 + 1):
@@ -519,15 +515,15 @@ def run_nonparametric_tests(experiments_path=DEFAULT_EXPERIMENT_PATH):
 
 # Module's main function. Call this and uncomment to generate different plots.
 if __name__ == "__main__":
-	exp_path = "~/nas/experiments.MNIST_X"
+	exp_path = "~/nas/experiments.MNIST2"
 
 	# exp_name = 'Stepper-Adaptive'
 	# experiment_stats = load_stats(exp_name, experiment_path=exp_path)
 	# print_statistics(experiment_stats, exp_name)
 	# do_all_plots(experiment_stats, experiment_name=exp_name, plot_individual_runs=True, plot_best_run=True, group_pictures=True)
 
-	run_nonparametric_tests(experiments_path=exp_path)
-	box_plots_3()
+	run_nonparametric_tests(experiment_path=exp_path)
+	box_plots_3(experiment_path=exp_path)
 	# box_plot(2)
 	# box_plot(0)
 	# box_plot(1)

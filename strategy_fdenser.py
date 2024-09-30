@@ -251,11 +251,12 @@ class FDENSERGrammar:
 
 				[var_name, var_type, min_val, max_val] = symbol.replace('[', '').replace(']', '').split(',')
 
-				min_val, max_val = float(min_val), float(max_val)
 
 				if var_type == 'int':
+					min_val, max_val = int(min_val), int(max_val)
 					value = random.randint(min_val, max_val)
 				elif var_type == 'float':
+					min_val, max_val = float(min_val), float(max_val)
 					value = random.uniform(min_val, max_val)
 
 				genotype[genotype_key][genotype_idx]['ga'][var_name] = (var_type, min_val, max_val, value)
@@ -395,10 +396,11 @@ class FDENSERGrammar:
 					if '[' in sym[0] and ']' in sym[0]:
 						[var_name, var_type, var_min, var_max] = sym[0].replace('[', '').replace(']', '').split(',')
 						if var_name not in layer_genotype[symbol][current_nt]['ga']:
-							var_min, var_max = float(var_min), float(var_max)
 							if var_type == 'int':
+								var_min, var_max = int(var_min), int(var_max)
 								value = random.randint(var_min, var_max)
 							elif var_type == 'float':
+								var_min, var_max = float(var_min), float(var_max)
 								value = random.uniform(var_min, var_max)
 							# print(f"*** new number {var_name}:{value} ***")
 							layer_genotype[symbol][current_nt]['ga'][var_name] = (var_type, var_min, var_max, value)
@@ -565,7 +567,6 @@ class FDENSERStrategy(NasStrategy):
 	def mutation(self, parent, gen=0, idx=0):
 		"""
 			does all kinds of mutations
-
 
 			Parameters
 			----------

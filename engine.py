@@ -13,12 +13,12 @@ from pathlib import Path
 from runstatistics import *
 from plot_statistics import DEFAULT_EXPERIMENT_PATH, fixup_path
 from logger import *
-from utils import Evaluator, Individual
+from utils import Evaluator, Individual, set_random_seed
 
 from strategy_stepper import StepperGrammar, StepperStrategy, RandomSearchStrategy
 from strategy_fdenser import FDENSERGrammar, FDENSERStrategy
 
-LOG_DEBUG = 0						    # log debug messages (about caching)
+LOG_DEBUG = 1						    # log debug messages (about caching)
 LOG_MUTATIONS = 0					    # log all mutations
 LOG_NEW_BEST_INDIVIDUAL = 0			    # log long description of new best individual
 SAVE_MILESTONE_GENERATIONS = 50         # save milestone every 50 generations
@@ -50,8 +50,8 @@ def pickle_population_and_statistics(save_path, stat: RunStatistics, population,
 		best_individuals_list : None or list of individuals
 	"""
 
-	stat.random_state = random.getstate()
-	stat.random_state_numpy = np.random.get_state()
+	stat.random_state = random.getstate()			# obsolete
+	stat.random_state_numpy = np.random.get_state() # obsolete
 	with open(save_path + 'statistics.pkl', 'wb') as handle_statistics:
 		pickle.dump(stat, handle_statistics, protocol=pickle.HIGHEST_PROTOCOL)
 
@@ -251,6 +251,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	RESUME = config['EVOLUTIONARY']['resume']
 	RESUME_GENERATION = config['EVOLUTIONARY']['resume_generation']
 	RANDOM_SEED = override_random_seed if override_random_seed is not None else config['EVOLUTIONARY']['random_seed']
+	if RANDOM_SEED == -1:
+		RANDOM_SEED = random.randint(1, 1000)
 	NUM_GENERATIONS = config['EVOLUTIONARY']['num_generations']
 	INITIAL_INDIVIDUALS = config['EVOLUTIONARY']['initial_individuals']
 	MY = config['EVOLUTIONARY']['my']
@@ -339,34 +341,26 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			print(f'{EXPERIMENT_NAME} run#{run_number:02} is already complete ({last_gen+1} generations)')
 			return True
 
-	# set random seeds
-	if RANDOM_SEED != -1:
-		random.seed(RANDOM_SEED)
-		np.random.seed(RANDOM_SEED)
-
 	# create evaluator
 	evaluation_cache_path = None
 	if USE_EVALUATION_CACHE:
 		evaluation_cache_path = Path(save_path, EVALUATION_CACHE_FILE).resolve()
 	cnn_eval = Evaluator(dataset, fitness_metric_with_size_penalty, MAX_TRAINING_TIME, MAX_TRAINING_EPOCHS, max_parameters=MAX_PARAMETERS,
-							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, use_augmentation=USE_DATA_AUGMENTATION,
-							override_batch_size=OVERRIDE_BATCH_SIZE, n_gpus=0)
+							evaluation_cache_path=evaluation_cache_path, experiment_name=EXPERIMENT_NAME, run_random_seed=RANDOM_SEED,
+						 	use_augmentation=USE_DATA_AUGMENTATION, override_batch_size=OVERRIDE_BATCH_SIZE, n_gpus=0)
 
 	if unpickle is None:
-		# set random seeds
-		if RANDOM_SEED != -1:
-			if rerandomize_after_crash:
-				RANDOM_SEED += rerandomize_after_crash * 100
-				rerandomize_after_crash = 0
-				log_warning(f"Initial random seed for mutations (after detected crash): {RANDOM_SEED}")
-			random.seed(RANDOM_SEED)
-			np.random.seed(RANDOM_SEED)
+		if rerandomize_after_crash:
+			log_warning(f"Initialize first generation after detected crash, change random seed by {rerandomize_after_crash}")
 
 		initial_population_size = LAMBDA if INITIAL_INDIVIDUALS == 'random' else 1
 		start_time = time()
+		mutation_count = 0
 		log_bold(f"[{EXPERIMENT_NAME} run#{run_number:02} in folder '{save_path}', {RANDOM_SEED=}: Creating the initial population of {initial_population_size}]")
 		for idx in range(initial_population_size):
 			while True:
+				set_random_seed(RANDOM_SEED, rerandomize_after_crash, mutation_count)
+				mutation_count += 1
 				new_individual = Individual(NETWORK_STRUCTURE, MACRO_STRUCTURE, OUTPUT_STRUCTURE, 0, idx)
 				if INITIAL_INDIVIDUALS == "lenet":
 					new_individual.initialise_as_lenet(grammar)
@@ -382,6 +376,7 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 			population.append(new_individual)
 			cnn_eval.flush_evaluation_cache()  # flush after every created individual
 
+		rerandomize_after_crash = 0
 		generation_time = time() - start_time
 		stat.eval_time_of_generation = [generation_time]
 
@@ -389,8 +384,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 	else:
 		stat.init_session()
 
-		random.setstate(stat.random_state)
-		np.random.set_state(stat.random_state_numpy)
+		# random.setstate(stat.random_state)
+		# np.random.set_state(stat.random_state_numpy)
 
 		new_parents = select_new_parents(population, MY)
 		population = new_parents
@@ -398,21 +393,23 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		log_bold(f"[Resuming experiment {EXPERIMENT_NAME} run#{run_number:02} at generation {last_gen + 1} in folder '{save_path}']")
 
 	if rerandomize_after_crash:
-		log_warning(f"After detected crash setting new random seed for mutations: {RANDOM_SEED + rerandomize_after_crash * 100}")
-		random.seed(RANDOM_SEED + rerandomize_after_crash * 100)
-		np.random.seed(RANDOM_SEED + rerandomize_after_crash * 100)
+		log_warning(f"After detected crash changing random seed for mutations by {rerandomize_after_crash}")
 
 	generation_list = []
 	for gen in range(last_gen + 1, NUM_GENERATIONS):
 		# generate offspring by mutations and evaluate population
 		if gen:
+			cnn_eval.set_generation(gen + 1)
 			generation_start_time = time()
+			mutation_count = 0
 			if EXPERIMENTAL_MULTITHREADING:
 				idx = 0
 				while True:
 					while len(generation_list) < LAMBDA:
 						parent = select_parent(population[0:MY])
 						while True:
+							set_random_seed(RANDOM_SEED, gen + 1, mutation_count + rerandomize_after_crash * 10)
+							mutation_count += 1
 							new_individual = nas_strategy.mutation(parent, gen, idx)
 							if new_individual.validate_individual(grammar, cnn_eval, stat, use_cache=True):
 								break
@@ -427,12 +424,16 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 				for idx in range(LAMBDA):
 					parent = select_parent(population[0:MY])
 					while True:
+						set_random_seed(RANDOM_SEED, gen + 1, mutation_count + rerandomize_after_crash * 10)
+						mutation_count += 1
 						new_individual = nas_strategy.mutation(parent, gen, idx)
 						if new_individual.evaluate_individual(grammar, cnn_eval, stat, use_cache=True):
 							break
 					generation_list.append(new_individual)
 			generation_time = time() - generation_start_time
 			stat.eval_time_of_generation.append(generation_time)
+
+		rerandomize_after_crash = 0
 		# select candidates for parents
 		population += generation_list
 		if gen and COMMA_STRATEGY:
@@ -489,7 +490,8 @@ def do_nas_search(experiments_path=DEFAULT_EXPERIMENT_PATH, run_number=0, datase
 		else:
 			best_individual.record_statistics(stat.best)
 			best_in_generation.record_statistics(stat.best_in_gen)
-			log(f'Best: {best_individual.description()}, in generation: {best_in_generation.description()}')
+			log(f'Best: {best_individual.description()}')
+			# log(' in generation: {best_in_generation.description()}')
 
 		for idx in range(1, len(new_parents)):
 			log(f'  #{idx+1}: {new_parents[idx].description()}')

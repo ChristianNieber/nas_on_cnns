@@ -53,4 +53,10 @@ Done
 - save log
 - colored log
 - simplify layer representation
+
+Install keras with jax:
+- only runs on Linux
+pip install --upgrade jax[cuda12]==0.4.28
+set environment variable:
+export KERAS_BACKEND=jax
 '''
