@@ -477,13 +477,15 @@ def box_plots_3(experiment_path=DEFAULT_EXPERIMENT_PATH, save_path=DEFAULT_SAVE_
 			values = [run.best.metric(m)[-1] for run in stats]  # get metric of best of last generation over all runs
 			values_list.append(values)
 		bplot = ax.boxplot(values_list, patch_artist=True, labels=experiment_names, medianprops=medianprops)    # can add notch=True
+		ticks = RunStatistics.metric_ticks(m)
 		if m == 0:
 			ax.set_ylim(0)
 		if m == 1:
-			ax.set_ylim(0, 130000)
+			ax.set_ylim(0, 500000)
+			ticks = 50000
 		for patch in bplot['boxes']:
 			patch.set_facecolor(metric_color[m])
-		ax.yaxis.set_major_locator(ticker.MultipleLocator(RunStatistics.metric_ticks(m)))
+		ax.yaxis.set_major_locator(ticker.MultipleLocator(ticks))
 		ax.grid(True)
 
 	plt.savefig(fixup_path(save_path) + f"Box Plots Fitness Error Parameters." + save_format, format=save_format, dpi=(300 if save_format == 'png' else 1200))
@@ -515,7 +517,7 @@ def run_nonparametric_tests(experiment_path=DEFAULT_EXPERIMENT_PATH):
 
 # Module's main function. Call this and uncomment to generate different plots.
 if __name__ == "__main__":
-	exp_path = "~/nas/experiments.MNIST2"
+	exp_path = "~/nas/experiments.fashion4"
 
 	# exp_name = 'Stepper-Adaptive'
 	# experiment_stats = load_stats(exp_name, experiment_path=exp_path)
