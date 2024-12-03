@@ -1243,17 +1243,16 @@ class Individual:
 	@staticmethod
 	def pretty_exception_text(e):
 		error_text = str(e)
-		if "Negative dimension size" in error_text:
+		if "Negative dimension size" in error_text or "Computed output size would be negative" in error_text:
 			error_text = "Negative dimension size"
 		elif "would be negative" in error_text and "Pooling" in error_text:
 			error_text = "Output would be negative in Pooling"
 		else:
-			i = error_text.find("OOM when allocating tensor")
+			i = max(error_text.find("OOM when allocating tensor"), error_text.find("Out of memory"))
 			if i > 0:
 				j = error_text.find('\n', i + 1)
-				k = error_text.find('\n', j + 1)
-				if j > 0 and k > 0:
-					error_text = error_text[i:k]
+				if j > 0:
+					error_text = error_text[i:j]
 			error_text = '\n' + error_text
 		return error_text
 
